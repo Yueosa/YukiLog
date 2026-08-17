@@ -112,7 +112,7 @@
     &:nth-child(3n)   { width: calc(52% - var(--spacing-md)); }
 
     &:hover {
-      transform: rotate(0deg) translateX(0) translateY(-4px) scale(1.03);
+      transform: rotate(0deg) translateX(0) translateY(-6px);
       z-index: 2;
 
       .theme-arrow {
@@ -129,6 +129,10 @@
       opacity 500ms var(--ease-gentle),
       transform var(--transition-base) var(--ease-gentle),
       box-shadow var(--transition-base) var(--ease-gentle);
+  }
+
+  :global(.theme-card.visible:hover) {
+    transform: rotate(0deg) translateX(0) translateY(-6px);
   }
 
   .theme-card-inner {

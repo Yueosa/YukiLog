@@ -106,16 +106,19 @@
 
     img {
       display: block;
-      width: 100%;
+      width: 116%;
+      max-width: none;
       height: auto;
       min-height: 220px;
+      margin-left: -8%;
       object-fit: cover;
+      transform-origin: center center;
       transition: transform 500ms cubic-bezier(0.4, 0, 0.2, 1);
     }
   }
 
   .post-list-card:hover .plc-cover-inner img {
-    transform: scale(1.05);
+    transform: scale(1.06);
   }
 
   .plc-fallback {
@@ -164,14 +167,7 @@
     margin: 0;
     line-height: 1.4;
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    transform-origin: left center;
-    transition:
-      color 300ms cubic-bezier(0.4, 0, 0.2, 1),
-      transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .post-list-card:hover .plc-title {
-    transform: scale(1.04);
+    transition: color 300ms cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .post-list-card:not(.has-cover) .plc-title {
@@ -237,10 +233,9 @@
     border-radius: 12px;
     backdrop-filter: blur(8px);
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-    transition: transform 200ms ease, opacity 200ms ease;
+    transition: opacity 200ms ease;
 
     &:hover {
-      transform: scale(1.08);
       opacity: 0.9;
     }
   }
@@ -270,11 +265,7 @@
     border-radius: 12px;
     backdrop-filter: none;
     text-shadow: none;
-    transition: transform 200ms ease;
-
-    &:hover {
-      transform: scale(1.08);
-    }
+    transition: opacity 200ms ease;
   }
 
   .post-list-card:not(.has-cover) .plc-tag[data-ti="0"] {

@@ -75,7 +75,7 @@
 
     &:global(.visible) {
       opacity: 1;
-      transform: translateY(0);
+      transform: none;
     }
 
     &:hover {
@@ -102,9 +102,9 @@
     min-height: 240px;
 
     .cover-inner {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
+      position: absolute;
+      inset: -8%;
+      transition: transform 500ms var(--ease-gentle);
     }
 
     img {
@@ -112,11 +112,10 @@
       height: 100%;
       object-fit: cover;
       display: block;
-      transition: transform 500ms var(--ease-gentle);
     }
 
-    &:hover img {
-      transform: scale(1.08);
+    &:hover .cover-inner {
+      transform: scale(1.06);
     }
   }
 
