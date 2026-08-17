@@ -1,181 +1,162 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { page } from '$app/state';
   import PageHero from '../../components/shared/PageHero.svelte';
   import PostListCard from '../../components/shared/PostListCard.svelte';
+  import { tagsApi } from '$lib/api';
   import { contentConfig } from '$lib/config';
   import { navIcons } from '$lib/svg-icons';
+  import type { Tag } from '$types/api';
 
   const tagIcon = navIcons.tag;
   const tagsPageConfig = contentConfig.pages.tags;
-
-  let { data } = $props();
-  let tags = $derived(data.tags);
-  let tagPosts = $derived(data.tagPosts);
-
-  // 计算标签云大小
-  let maxCount = $derived(Math.max(...tags.map((t: any) => t.post_count), 1));
-  let tagCloud = $derived(tags.map((tag: any) => ({
-    ...tag,
-    size: Math.max(1, Math.min(5, Math.ceil((tag.post_count / maxCount) * 5))),
-  })));
-
   const colorCycle = tagsPageConfig.colorCycle;
   const colorNames = tagsPageConfig.colorNames;
 
-  // 当前选中的标签
-  let activeSlug: string | null = $state(null);
-  let activeTagName = $state('');
-  let showPosts = $state(false);
+  let { data } = $props();
+  let tags = $derived(data.tags as Tag[]);
+  let posts = $derived(data.posts);
+  let total = $derived(data.total);
 
-  // 当前选中标签的文章
-  const activePosts = $derived(activeSlug ? (tagPosts[activeSlug] || []) : []);
+  const selectedSlugs = $derived(
+    page.url.searchParams
+      .getAll('tag')
+      .map((slug) => slug.trim())
+      .filter((slug) => tags.some((tag) => tag.slug === slug)),
+  );
+  const selectedSet = $derived(new Set(selectedSlugs));
+  const selectedTags = $derived(
+    selectedSlugs
+      .map((slug) => tags.find((tag) => tag.slug === slug))
+      .filter((tag): tag is Tag => Boolean(tag)),
+  );
+  const poolTags = $derived(tags.filter((tag) => !selectedSet.has(tag.slug)));
 
-  // 双栏布局
-  const col0 = $derived(() => {
-    if (typeof window !== 'undefined' && window.innerWidth <= 768) return activePosts;
-    return activePosts.filter((_: any, i: number) => i % 2 === 0);
-  });
-  const col1 = $derived(() => {
-    if (typeof window !== 'undefined' && window.innerWidth <= 768) return [];
-    return activePosts.filter((_: any, i: number) => i % 2 === 1);
-  });
-
-  function selectTag(slug: string, name: string) {
-    if (activeSlug === slug) {
-      closePanel();
-      return;
-    }
-
-    activeSlug = slug;
-    activeTagName = name;
-    showPosts = true;
-
-    // 增加标签浏览量
-    fetch(`/api/public/tags/${slug}/view`, { method: 'POST' }).catch(() => {});
-
-    // 平滑滚动到文章区域
-    setTimeout(() => {
-      document.getElementById('tagPosts')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+  function tagsHref(slugs: string[]): string {
+    const params = new URLSearchParams();
+    for (const slug of slugs) params.append('tag', slug);
+    const query = params.toString();
+    return query ? `/tags?${query}` : '/tags';
   }
 
-  function closePanel() {
-    activeSlug = null;
-    activeTagName = '';
-    showPosts = false;
+  function addHref(slug: string): string {
+    if (selectedSet.has(slug)) return tagsHref(selectedSlugs);
+    return tagsHref([...selectedSlugs, slug]);
   }
 
-  // 标签云和卡片入场动画
-  let cloudVisible = $state(false);
+  function removeHref(slug: string): string {
+    return tagsHref(selectedSlugs.filter((item) => item !== slug));
+  }
+
+  let filtersVisible = $state(false);
 
   onMount(() => {
-    // 标签云入场
-    const cloudSection = document.querySelector('.tag-cloud-section');
-    if (cloudSection) {
-      const cloudObserver = new IntersectionObserver(
+    filtersVisible = true;
+    for (const slug of selectedSlugs) {
+      tagsApi.incrementView(slug).catch(() => {});
+    }
+  });
+
+  $effect(() => {
+    void posts;
+    let observer: IntersectionObserver | undefined;
+    let cancelled = false;
+
+    tick().then(() => {
+      if (cancelled) return;
+      observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
             if (entry.isIntersecting) {
-              cloudVisible = true;
-              cloudObserver.unobserve(entry.target);
+              entry.target.classList.add('visible');
+              observer?.unobserve(entry.target);
             }
           });
         },
-        { threshold: 0.1 }
+        { threshold: 0.08 },
       );
-      cloudObserver.observe(cloudSection);
-    }
-
-    // 卡片入场
-    const cardObserver = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('visible');
-            cardObserver.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.1 }
-    );
-
-    // 监听卡片出现（响应式重新绑定）
-    const interval = setInterval(() => {
-      document.querySelectorAll('.post-list-card:not(.visible)').forEach((card) => {
-        cardObserver.observe(card);
-      });
-    }, 200);
-
-    // 支持 ?tag=xxx 自动选中
-    const autoTag = page.url.searchParams.get('tag');
-    if (autoTag) {
-      const target = tagCloud.find((t: any) => t.slug === autoTag);
-      if (target) {
-        setTimeout(() => selectTag(target.slug, target.name), 700);
-      }
-    }
+      document
+        .querySelectorAll('.post-list-card:not(.visible)')
+        .forEach((card) => observer?.observe(card));
+    });
 
     return () => {
-      clearInterval(interval);
-      cardObserver.disconnect();
+      cancelled = true;
+      observer?.disconnect();
     };
   });
 </script>
 
 <svelte:head>
   <title>标签 - YukiLog</title>
-  <meta name="description" content="按标签分类浏览所有文章" />
+  <meta name="description" content="按标签筛选文章，多个标签取交集" />
 </svelte:head>
 
-<PageHero title="标签" subtitle="共 {tagCloud.length} 个标签" icon={tagIcon} />
+<PageHero title="标签" subtitle="共 {tags.length} 个标签" icon={tagIcon} />
 
 <div class="tags-page">
-  <!-- 标签云 -->
-  <section class="tag-cloud-section" class:visible={cloudVisible}>
-    <div class="tag-cloud">
-      {#each tagCloud as tag, i}
-        <button
-          class="tag-bubble"
-          class:active={activeSlug === tag.slug}
-          data-size={tag.size}
-          data-color={colorNames[colorCycle[i % colorCycle.length]]}
-          style="--i: {i}"
-          onclick={() => selectTag(tag.slug, tag.name)}
-        >
-          <span class="tag-name"># {tag.name}</span>
-          <span class="tag-count">{tag.post_count}</span>
-        </button>
-      {/each}
-    </div>
-  </section>
-
-  <!-- 文章列表 -->
-  <section class="tag-posts-section" class:show={showPosts} id="tagPosts">
-    <div class="tag-posts-header">
-      <h2 class="tag-posts-title">{activeTagName}</h2>
-      <button class="tag-posts-close" onclick={closePanel} aria-label="关闭">×</button>
+  <section class="filters" class:visible={filtersVisible}>
+    <div class="tray" aria-label="已选标签">
+      {#if selectedTags.length === 0}
+        <span class="tray-placeholder">已选标签会出现在这里，多个标签取交集</span>
+      {:else}
+        {#each selectedTags as tag}
+          <a
+            class="pill on"
+            href={removeHref(tag.slug)}
+            data-sveltekit-noscroll
+            aria-label="取消标签 {tag.name}"
+          >
+            #{tag.name}
+            <span class="pill-x" aria-hidden="true">×</span>
+          </a>
+        {/each}
+        <a class="tray-clear" href="/tags" data-sveltekit-noscroll>清空</a>
+      {/if}
     </div>
 
-    {#if activePosts.length > 0}
-      <div class="tag-group">
-        <div class="tag-group-column">
-          {#each col0() as post, i}
-            <PostListCard {post} index={i * 2} />
-          {/each}
-        </div>
-        {#if col1().length > 0}
-          <div class="tag-group-column">
-            {#each col1() as post, i}
-              <PostListCard {post} index={i * 2 + 1} />
-            {/each}
-          </div>
-        {/if}
+    {#if poolTags.length > 0}
+      <div class="pool" aria-label="可选标签">
+        {#each poolTags as tag, i}
+          {@const originalIndex = tags.findIndex((item) => item.slug === tag.slug)}
+          <a
+            class="pill"
+            data-color={colorNames[colorCycle[(originalIndex >= 0 ? originalIndex : i) % colorCycle.length]]}
+            href={addHref(tag.slug)}
+            data-sveltekit-noscroll
+            onclick={() => tagsApi.incrementView(tag.slug).catch(() => {})}
+          >
+            <span class="pill-name">#{tag.name}</span>
+            <span class="pill-count">{tag.post_count}</span>
+          </a>
+        {/each}
       </div>
-    {:else if showPosts}
-      <p class="tag-posts-empty">{tagsPageConfig.emptyText}</p>
     {/if}
   </section>
+
+  <p class="result-count">
+    {#if selectedTags.length === 0}
+      未筛选 · 共 {total} 篇
+    {:else}
+      同时包含
+      {#each selectedTags as tag}
+        <span class="result-tag">#{tag.name}</span>
+      {/each}
+      · {total} 篇
+    {/if}
+  </p>
+
+  {#if posts.length > 0}
+    <div class="post-grid">
+      {#each posts as post, i}
+        <PostListCard {post} index={i} />
+      {/each}
+    </div>
+  {:else}
+    <p class="empty">
+      {selectedTags.length > 0 ? '没有同时带这些标签的文章' : '还没有已发布的文章'}
+    </p>
+  {/if}
 </div>
 
 <style>
@@ -185,182 +166,158 @@
     padding: var(--spacing-xl) var(--spacing-lg) calc(var(--spacing-xxl) * 2);
   }
 
-  /* ================================ */
-  /* 标签云 */
-  /* ================================ */
-  .tag-cloud-section {
+  .filters {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(16px);
     transition:
-      opacity 600ms var(--ease-gentle),
-      transform 600ms var(--ease-gentle);
+      opacity 500ms var(--ease-gentle),
+      transform 500ms var(--ease-gentle);
 
     &.visible {
       opacity: 1;
-      transform: translateY(0);
-
-      .tag-bubble {
-        opacity: 1;
-        transform: translateY(0);
-      }
+      transform: none;
     }
   }
 
-  .tag-cloud {
+  .tray {
+    min-height: 52px;
     display: flex;
     flex-wrap: wrap;
-    justify-content: center;
-    gap: var(--spacing-sm);
-    padding: var(--spacing-md) 0;
-  }
-
-  .tag-bubble {
-    display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 7px 14px;
-    border: 1.5px solid transparent;
-    border-radius: 24px;
-    background: var(--color-surface, #fff);
-    color: var(--color-text-light);
-    cursor: pointer;
-    font-family: inherit;
-    transition:
-      border-color var(--transition-fast) var(--ease-gentle),
-      background var(--transition-fast) var(--ease-gentle),
-      box-shadow var(--transition-fast) var(--ease-gentle),
-      transform var(--transition-fast) var(--ease-gentle),
-      opacity 400ms var(--ease-gentle),
-      color var(--transition-fast) var(--ease-gentle);
-
-    opacity: 0;
-    transform: translateY(12px);
-    transition-delay: calc(var(--i) * 40ms);
-
-    &[data-size="1"] { font-size: 11px; padding: 5px 10px; }
-    &[data-size="2"] { font-size: 12px; padding: 6px 12px; }
-    &[data-size="3"] { font-size: 13px; padding: 7px 14px; }
-    &[data-size="4"] { font-size: 14px; padding: 8px 16px; }
-    &[data-size="5"] { font-size: 15px; padding: 9px 18px; }
-
-    &[data-color="pink"] {
-      background: rgba(232, 164, 180, 0.12);
-      border-color: rgba(232, 164, 180, 0.2);
-      .tag-name { color: var(--color-pink-d18); }
-      .tag-count { background: rgba(232, 164, 180, 0.15); color: var(--color-pink); }
-      &:hover { background: rgba(232, 164, 180, 0.2); box-shadow: var(--shadow-pink); transform: translateY(-2px); }
-    }
-
-    &[data-color="blue"] {
-      background: rgba(126, 182, 217, 0.12);
-      border-color: rgba(126, 182, 217, 0.2);
-      .tag-name { color: var(--color-blue-d20); }
-      .tag-count { background: rgba(126, 182, 217, 0.15); color: var(--color-blue); }
-      &:hover { background: rgba(126, 182, 217, 0.2); box-shadow: var(--shadow-blue); transform: translateY(-2px); }
-    }
-
-    &[data-color="white"] {
-      background: var(--color-surface, #fff);
-      border-color: var(--color-border);
-      .tag-name { color: var(--color-text); }
-      .tag-count { background: var(--muted-alpha-10); color: var(--color-text-muted); }
-      &:hover { background: var(--color-white); box-shadow: var(--shadow-sm); transform: translateY(-2px); }
-    }
-
-    &.active {
-      background: var(--color-blue);
-      color: var(--color-on-primary, #fff);
-      border-color: var(--color-blue);
-      box-shadow: var(--shadow-blue-offset-hover);
-      .tag-name { color: var(--color-on-primary, #fff); }
-      .tag-count { background: rgba(255, 255, 255, 0.25); color: var(--color-on-primary, #fff); }
-    }
+    gap: 8px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: var(--pink-alpha-08);
   }
 
-  .tag-name {
-    font-weight: var(--font-weight-semibold);
-    letter-spacing: 0.01em;
-  }
-
-  .tag-count {
-    font-size: var(--font-size-xs);
-    padding: 1px 8px;
-    border-radius: 10px;
-    transition:
-      background var(--transition-fast) var(--ease-gentle),
-      color var(--transition-fast) var(--ease-gentle);
-  }
-
-  /* ================================ */
-  /* 文章列表面板 */
-  /* ================================ */
-  .tag-posts-section {
-    margin-top: var(--spacing-xl);
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
-    transition:
-      max-height 500ms var(--ease-gentle),
-      opacity 400ms var(--ease-gentle);
-
-    &.show {
-      max-height: 5000px;
-      opacity: 1;
-    }
-  }
-
-  .tag-posts-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--spacing-md);
-    padding-bottom: var(--spacing-sm);
-    border-bottom: 1.5px solid var(--color-divider);
-  }
-
-  .tag-posts-title {
-    font-size: var(--font-size-xl);
-    font-weight: var(--font-weight-semibold);
-    color: var(--color-blue);
-    margin: 0;
-    letter-spacing: 0.02em;
-  }
-
-  .tag-posts-close {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: var(--muted-alpha-08);
+  .tray-placeholder {
+    font-size: var(--font-size-sm);
     color: var(--color-text-muted);
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: var(--font-size-lg);
-    transition:
-      background var(--transition-fast) var(--ease-gentle),
-      color var(--transition-fast) var(--ease-gentle);
+  }
+
+  .tray-clear {
+    margin-left: auto;
+    font-size: var(--font-size-xs);
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color var(--transition-fast) var(--ease-gentle);
 
     &:hover {
-      background: rgba(232, 164, 180, 0.12);
       color: var(--color-pink);
     }
   }
 
-  .tag-group {
+  .pool {
     display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: var(--spacing-md);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1.5px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-surface, #fff);
+    color: var(--color-text-light);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    text-decoration: none;
+    transition:
+      border-color var(--transition-fast) var(--ease-gentle),
+      background var(--transition-fast) var(--ease-gentle),
+      box-shadow var(--transition-fast) var(--ease-gentle),
+      color var(--transition-fast) var(--ease-gentle);
+
+    &:hover {
+      color: var(--color-blue);
+      border-color: var(--blue-alpha-20);
+      background: var(--blue-alpha-08);
+    }
+
+    &[data-color='pink'] {
+      background: rgba(232, 164, 180, 0.12);
+      border-color: rgba(232, 164, 180, 0.2);
+      color: var(--color-pink-d18);
+
+      &:hover {
+        background: rgba(232, 164, 180, 0.2);
+        box-shadow: var(--shadow-pink);
+      }
+    }
+
+    &[data-color='blue'] {
+      background: rgba(126, 182, 217, 0.12);
+      border-color: rgba(126, 182, 217, 0.2);
+      color: var(--color-blue-d20);
+
+      &:hover {
+        background: rgba(126, 182, 217, 0.2);
+        box-shadow: var(--shadow-blue);
+      }
+    }
+
+    &[data-color='white'] {
+      background: var(--color-surface, #fff);
+      border-color: var(--color-border);
+      color: var(--color-text);
+
+      &:hover {
+        background: var(--color-white);
+        box-shadow: var(--shadow-sm);
+      }
+    }
+
+    &.on {
+      color: var(--color-on-primary, #fff);
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--color-blue), var(--color-pink));
+
+      &:hover {
+        color: var(--color-on-primary, #fff);
+        box-shadow: var(--shadow-pink);
+      }
+    }
+  }
+
+  .pill-count {
+    font-size: var(--font-size-xs);
+    opacity: 0.75;
+  }
+
+  .pill-x {
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.85;
+  }
+
+  .result-count {
+    margin: 8px 0 16px;
+    font-size: var(--font-size-sm);
+    color: var(--color-text-muted);
+  }
+
+  .result-tag {
+    margin-left: 6px;
+    color: var(--color-pink);
+  }
+
+  .post-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
     gap: var(--spacing-lg);
-    align-items: flex-start;
+    align-items: start;
   }
 
-  .tag-group-column {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+  .post-grid :global(.post-list-card) {
+    margin-bottom: 0;
   }
 
-  .tag-posts-empty {
+  .empty {
     text-align: center;
     color: var(--color-text-muted);
     font-size: var(--font-size-sm);
@@ -369,22 +326,14 @@
   }
 
   @media (max-width: 768px) {
-    .tag-group {
-      flex-direction: column;
-    }
-
-    .tag-group-column:not(:first-child) {
-      display: none;
+    .post-grid {
+      grid-template-columns: 1fr;
     }
   }
 
   @media (max-width: 640px) {
     .tags-page {
       padding: var(--spacing-lg) var(--spacing-sm) var(--spacing-xxl);
-    }
-
-    .tag-cloud {
-      gap: var(--spacing-xs);
     }
   }
 </style>
