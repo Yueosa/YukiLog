@@ -141,8 +141,8 @@ export interface Comment {
   visitor_info: string | null;
   avatar_url?: string | null;
   created_at: string;
-  /** 仅管理端返回 */
   guest_email?: string | null;
+  /** 仅管理端返回 */
   ip?: string | null;
   ua?: string | null;
   post_title?: string;

@@ -93,7 +93,7 @@ const mockComments: CommentNode[] = [
   {
     comment: {
       id: 1, post_id: 1, content: '写得真好！Rust 确实是后端开发的利器。',
-      guest_nick: '路人甲', guest_website: null,
+      guest_nick: '路人甲', guest_email: 'visitor@example.com', guest_website: null,
       parent_id: null, root_id: null, status: 'approved',
       visitor_info: 'Desktop Chrome 136.0 · macOS 15',
       avatar_url: null,
@@ -103,7 +103,7 @@ const mockComments: CommentNode[] = [
       {
         comment: {
           id: 2, post_id: 1, content: '谢谢！后续会继续分享更多 Rust 内容。',
-          guest_nick: '博主', guest_website: 'https://blog.yeastar.xin',
+          guest_nick: '博主', guest_email: 'admin@example.com', guest_website: 'https://blog.yeastar.xin',
           parent_id: 1, root_id: 1, status: 'approved',
           visitor_info: null,
           avatar_url: null,
@@ -116,7 +116,7 @@ const mockComments: CommentNode[] = [
   {
     comment: {
       id: 3, post_id: 1, content: '请问 SeaORM 和 Diesel 相比有什么优势？',
-      guest_nick: '好奇猫', guest_website: null,
+      guest_nick: '好奇猫', guest_email: 'curious@example.com', guest_website: null,
       parent_id: null, root_id: null, status: 'approved',
       visitor_info: 'Mobile Safari · iOS 19',
       avatar_url: null,

@@ -506,7 +506,7 @@ GET /api/public/posts/:slug/comments
 }
 ```
 
-**响应（评论树，data 是 PublicCommentNode 数组；不含邮箱 / IP / UA）**
+**响应（评论树，data 是 PublicCommentNode 数组；不含 IP / 原始 UA）**
 
 ```json
 {
@@ -518,6 +518,7 @@ GET /api/public/posts/:slug/comments
                 "post_id": 1,
                 "content": "评论内容",
                 "guest_nick": "张三",
+                "guest_email": "zhangsan@example.com",
                 "guest_website": "https://example.com",
                 "parent_id": null,
                 "root_id": null,
@@ -557,6 +558,7 @@ GET /api/public/posts/:slug/comments/:id
             "post_id": 1,
             "content": "评论内容",
             "guest_nick": "张三",
+            "guest_email": "zhangsan@example.com",
             "guest_website": "https://example.com",
             "parent_id": null,
             "root_id": null,
@@ -605,7 +607,7 @@ POST /api/public/posts/:slug/comments
 
 **字段说明：**
 * PublicCommentNode：`comment` 是评论本体，`children` 是子评论数组
-* 公开接口不返回 `guest_email` / `ip` / `ua`；头像用 `avatar_url`（Gravatar）
+* 公开接口返回访客主动填写的 `guest_email`，不返回 `ip` / 原始 `ua`；头像用 `avatar_url`（Gravatar）
 * 提交评论只需返回 `id` 和 `created_at`，默认进入 pending 审核
 
 ---

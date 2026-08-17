@@ -43,13 +43,14 @@ pub struct CreateCommentResponse {
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
 }
 
-/// 公开评论：不含邮箱 / IP / UA
+/// 公开评论：含访客主动填写的邮箱，不含 IP / 原始 UA
 #[derive(Debug, Serialize)]
 pub struct PublicComment {
     pub id: i64,
     pub post_id: i64,
     pub content: String,
     pub guest_nick: String,
+    pub guest_email: Option<String>,
     pub guest_website: Option<String>,
     pub parent_id: Option<i64>,
     pub root_id: Option<i64>,
@@ -70,6 +71,7 @@ fn to_public_comment(comment: &Comment) -> PublicComment {
         post_id: comment.post_id,
         content: comment.content.clone(),
         guest_nick: comment.guest_nick.clone(),
+        guest_email: comment.guest_email.clone(),
         guest_website: comment.guest_website.clone(),
         parent_id: comment.parent_id,
         root_id: comment.root_id,

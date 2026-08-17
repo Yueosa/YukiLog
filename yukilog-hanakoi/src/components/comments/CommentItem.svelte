@@ -51,6 +51,11 @@
       </div>
 
       <div class="comment-user-info">
+        {#if comment.guest_email}
+          <a href="mailto:{comment.guest_email}" class="user-email" title="发送邮件">
+            {cc.item.emailIcon} {comment.guest_email}
+          </a>
+        {/if}
         {#if comment.guest_website}
           <a href={comment.guest_website} target="_blank" rel="noopener noreferrer" class="user-website" title="访问网站">
             {cc.item.websiteIcon} {comment.guest_website}
@@ -185,6 +190,7 @@
     font-size: 11px;
   }
 
+  .user-email,
   .user-website {
     display: inline-flex;
     align-items: center;
