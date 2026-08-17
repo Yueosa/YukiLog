@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
+  import { afterNavigate, goto } from '$app/navigation';
   import { svgIcons } from '$lib/svg-icons';
   import { contentConfig } from '$lib/config';
   import { postsApi } from '$lib/api';
@@ -39,6 +39,15 @@
     items = [];
     view = 'hint';
   }
+
+  function handleResultClick(e: MouseEvent) {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    closeSearch();
+  }
+
+  afterNavigate(() => {
+    if (isOpen) closeSearch();
+  });
 
   async function doSearch(query: string, page: number) {
     if (!query.trim()) {
@@ -190,7 +199,7 @@
           <ul class="search-result-list">
             {#each items as item, i}
               <li class="search-result-item" class:active={i === activeIndex}>
-                <a href="/posts/{item.post.slug}">
+                <a href="/posts/{item.post.slug}" onclick={handleResultClick}>
                   <div class="search-result-title">
                     {#each splitHighlights(item.post.title) as part}
                       {#if part.mark}<mark>{part.text}</mark>{:else}{part.text}{/if}
