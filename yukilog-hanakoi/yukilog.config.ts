@@ -42,7 +42,7 @@ export const siteConfig = {
   author: {
     name: "Lian",
     nickname: "恋",
-    avatar: "/images/avatar.jpg",
+    avatar: "https://q1.qlogo.cn/g?b=qq&nk=1303028790&s=640",
     bio: "我能走到这里，是因为你没有放弃",
     birthday: "2005-05-16",
     genderIdentity: "非二元",

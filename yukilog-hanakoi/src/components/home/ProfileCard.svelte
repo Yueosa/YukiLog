@@ -1,7 +1,6 @@
 <script lang="ts">
   import { siteConfig } from '$lib/config';
   import { socialIcons, uiIcons } from '$lib/svg-icons';
-  import avatarImage from '../../assets/icon/logo/logo.jpg';
 
   const resolvedSocialIcons = siteConfig.social.map((s) => ({
     ...s,
@@ -15,11 +14,12 @@
 <div class="profile-card" id="profile-card">
   <div class="profile-avatar">
     <img
-      src={avatarImage}
+      src={siteConfig.author.avatar}
       alt={siteConfig.author.nickname}
       width="96"
       height="96"
       class="avatar-img"
+      referrerpolicy="no-referrer"
     />
   </div>
 
