@@ -146,10 +146,29 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+CREATE OR REPLACE FUNCTION update_posts_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- 仅浏览量变化时保持 updated_at，避免「最近更新」被阅读刷新带偏
+    IF (NEW.view_count IS DISTINCT FROM OLD.view_count)
+       AND (NEW.title, NEW.slug, NEW.summary, NEW.content, NEW.cover_image,
+            NEW.status, NEW.is_featured, NEW.theme_id)
+           IS NOT DISTINCT FROM
+           (OLD.title, OLD.slug, OLD.summary, OLD.content, OLD.cover_image,
+            OLD.status, OLD.is_featured, OLD.theme_id)
+    THEN
+        NEW.updated_at = OLD.updated_at;
+    ELSE
+        NEW.updated_at = CURRENT_TIMESTAMP;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE TRIGGER update_posts_updated_at
     BEFORE UPDATE ON posts
     FOR EACH ROW
-    EXECUTE FUNCTION update_modified_column();
+    EXECUTE FUNCTION update_posts_modified_column();
 
 CREATE TRIGGER update_notes_updated_at
     BEFORE UPDATE ON notes
