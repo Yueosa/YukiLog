@@ -506,7 +506,7 @@ GET /api/public/posts/:slug/comments
 }
 ```
 
-**响应（评论树，data 是 CommentNode 数组）**
+**响应（评论树，data 是 PublicCommentNode 数组；不含邮箱 / IP / UA）**
 
 ```json
 {
@@ -518,13 +518,11 @@ GET /api/public/posts/:slug/comments
                 "post_id": 1,
                 "content": "评论内容",
                 "guest_nick": "张三",
-                "guest_email": "zhangsan@example.com",
                 "guest_website": "https://example.com",
                 "parent_id": null,
                 "root_id": null,
-                "status": "approved",
-                "ip": null,
-                "ua": null,
+                "visitor_info": "Desktop Chrome · macOS",
+                "avatar_url": "https://www.gravatar.com/avatar/...",
                 "created_at": "2026-01-01T00:00:00+08:00"
             },
             "children": []
@@ -548,7 +546,7 @@ GET /api/public/posts/:slug/comments/:id
 }
 ```
 
-**响应（data 是 Comment 数组）**
+**响应（data 是 PublicComment 数组）**
 
 ```json
 {
@@ -559,13 +557,11 @@ GET /api/public/posts/:slug/comments/:id
             "post_id": 1,
             "content": "评论内容",
             "guest_nick": "张三",
-            "guest_email": "zhangsan@example.com",
             "guest_website": "https://example.com",
             "parent_id": null,
             "root_id": null,
-            "status": "approved",
-            "ip": null,
-            "ua": null,
+            "visitor_info": "Desktop Chrome · macOS",
+            "avatar_url": "https://www.gravatar.com/avatar/...",
             "created_at": "2026-01-01T00:00:00+08:00"
         }
     ],
@@ -601,7 +597,6 @@ POST /api/public/posts/:slug/comments
     "success": true,
     "data": {
         "id": 1,
-        "avatar_url": "https://www.gravatar.com/avatar/...",
         "created_at": "2026-01-01T00:00:00+08:00"
     },
     "message": null
@@ -609,9 +604,9 @@ POST /api/public/posts/:slug/comments
 ```
 
 **字段说明：**
-* CommentNode：`comment` 是评论本体，`children` 是子评论数组
-* Comment.status：approved / pending / spam
-* CreateCommentResponse.avatar_url：后端根据 email 生成的 gravatar 地址
+* PublicCommentNode：`comment` 是评论本体，`children` 是子评论数组
+* 公开接口不返回 `guest_email` / `ip` / `ua`；头像用 `avatar_url`（Gravatar）
+* 提交评论只需返回 `id` 和 `created_at`，默认进入 pending 审核
 
 ---
 

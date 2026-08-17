@@ -4,6 +4,8 @@
   import { svgIcons } from '$lib/svg-icons';
   import { contentConfig } from '$lib/config';
   import { postsApi } from '$lib/api';
+  import { splitHighlights } from '$lib/sanitize';
+  import { formatDate } from '$lib/date';
   import type { PostWithRelations } from '$types';
 
   const sc = contentConfig.components.search;
@@ -109,14 +111,6 @@
     }
   }
 
-  function formatDate(iso: string): string {
-    return new Date(iso).toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  }
-
   onMount(() => {
     const onGlobalKeydown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
@@ -197,9 +191,17 @@
             {#each items as item, i}
               <li class="search-result-item" class:active={i === activeIndex}>
                 <a href="/posts/{item.post.slug}">
-                  <div class="search-result-title">{@html item.post.title}</div>
+                  <div class="search-result-title">
+                    {#each splitHighlights(item.post.title) as part}
+                      {#if part.mark}<mark>{part.text}</mark>{:else}{part.text}{/if}
+                    {/each}
+                  </div>
                   {#if item.post.summary || item.post.content}
-                    <div class="search-result-excerpt">{@html item.post.summary || item.post.content}</div>
+                    <div class="search-result-excerpt">
+                      {#each splitHighlights(item.post.summary || item.post.content) as part}
+                        {#if part.mark}<mark>{part.text}</mark>{:else}{part.text}{/if}
+                      {/each}
+                    </div>
                   {/if}
                   <div class="search-result-meta">
                     <time>{formatDate(item.post.created_at)}</time>

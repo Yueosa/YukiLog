@@ -331,14 +331,14 @@ where
 {
     use sea_orm::{FromQueryResult, Statement};
 
-    let pattern = format!("%{}%", keyword);
+    let pattern = format!("%{}%", escape_ilike_pattern(keyword));
     let offset = (page - 1) * count;
 
     // 统计总数
     let count_sql = r#"
         SELECT COUNT(*) as total FROM posts 
         WHERE status = 'published' 
-          AND (title ILIKE $1 OR summary ILIKE $1 OR content ILIKE $1)
+          AND (title ILIKE $1 ESCAPE '\' OR summary ILIKE $1 ESCAPE '\' OR content ILIKE $1 ESCAPE '\')
     "#;
     
     #[derive(FromQueryResult)]
@@ -365,10 +365,10 @@ where
     let search_sql = r#"
         SELECT * FROM posts 
         WHERE status = 'published' 
-          AND (title ILIKE $1 OR summary ILIKE $1 OR content ILIKE $1)
+          AND (title ILIKE $1 ESCAPE '\' OR summary ILIKE $1 ESCAPE '\' OR content ILIKE $1 ESCAPE '\')
         ORDER BY 
-          CASE WHEN title ILIKE $1 THEN 0 ELSE 1 END,
-          CASE WHEN summary ILIKE $1 THEN 0 ELSE 1 END,
+          CASE WHEN title ILIKE $1 ESCAPE '\' THEN 0 ELSE 1 END,
+          CASE WHEN summary ILIKE $1 ESCAPE '\' THEN 0 ELSE 1 END,
           created_at DESC
         LIMIT $2 OFFSET $3
     "#;
@@ -390,6 +390,13 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok((dtos, total))
+}
+
+fn escape_ilike_pattern(keyword: &str) -> String {
+    keyword
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// 获取站点统计数据：文章总数、总浏览量、总字数

@@ -9,9 +9,13 @@ use std::net::SocketAddr;
 use crate::handler::{
     response::{ok, ApiResponse},
     state::AppState,
-    utils::{check_rate_limit, get_client_ip, get_user_agent},
+    utils::{check_rate_limit, generate_gravatar_url, get_client_ip, get_user_agent},
 };
-use crate::service::{self, comments::{Comment, CommentNode, CreateCommentInput}, error::ServiceError};
+use crate::service::{
+    self,
+    comments::{Comment, CommentNode, CreateCommentInput},
+    error::ServiceError,
+};
 
 // ================================
 // DTO 定义
@@ -37,6 +41,52 @@ pub struct CreateCommentResponse {
     pub id: i64,
     /// 创建时间
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+/// 公开评论：不含邮箱 / IP / UA
+#[derive(Debug, Serialize)]
+pub struct PublicComment {
+    pub id: i64,
+    pub post_id: i64,
+    pub content: String,
+    pub guest_nick: String,
+    pub guest_website: Option<String>,
+    pub parent_id: Option<i64>,
+    pub root_id: Option<i64>,
+    pub visitor_info: Option<String>,
+    pub avatar_url: String,
+    pub created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublicCommentNode {
+    pub comment: PublicComment,
+    pub children: Vec<PublicCommentNode>,
+}
+
+fn to_public_comment(comment: &Comment) -> PublicComment {
+    PublicComment {
+        id: comment.id,
+        post_id: comment.post_id,
+        content: comment.content.clone(),
+        guest_nick: comment.guest_nick.clone(),
+        guest_website: comment.guest_website.clone(),
+        parent_id: comment.parent_id,
+        root_id: comment.root_id,
+        visitor_info: comment.visitor_info.clone(),
+        avatar_url: generate_gravatar_url(comment.guest_email.as_deref().unwrap_or("")),
+        created_at: comment.created_at,
+    }
+}
+
+fn to_public_tree(nodes: Vec<CommentNode>) -> Vec<PublicCommentNode> {
+    nodes
+        .into_iter()
+        .map(|node| PublicCommentNode {
+            comment: to_public_comment(&node.comment),
+            children: to_public_tree(node.children),
+        })
+        .collect()
 }
 
 // ================================
@@ -88,11 +138,9 @@ pub struct CreateCommentResponse {
 pub async fn get_post_comments(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<ApiResponse<Vec<CommentNode>>>, ServiceError> {
-    // 获取评论树
+) -> Result<Json<ApiResponse<Vec<PublicCommentNode>>>, ServiceError> {
     let comments = service::comments::get_post_comment_tree(&state.db, &slug).await?;
-
-    Ok(ok(comments))
+    Ok(ok(to_public_tree(comments)))
 }
 
 /// GET /api/public/posts/:slug/comments/:id
@@ -124,9 +172,9 @@ pub async fn get_post_comments(
 pub async fn get_comment_replies(
     State(state): State<AppState>,
     Path((_slug, id)): Path<(String, i64)>,
-) -> Result<Json<ApiResponse<Vec<Comment>>>, ServiceError> {
+) -> Result<Json<ApiResponse<Vec<PublicComment>>>, ServiceError> {
     let replies = service::comments::list_comment_replies(&state.db, id).await?;
-    Ok(ok(replies))
+    Ok(ok(replies.iter().map(to_public_comment).collect()))
 }
 
 /// POST /api/public/posts/:slug/comments

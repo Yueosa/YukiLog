@@ -3,6 +3,7 @@
   import type { CommentNode } from '$types/api';
   import { getRelativeTime } from '$lib/date';
   import { getCommentAvatar } from '$lib/avatar';
+  import { sanitizeHtml } from '$lib/sanitize';
   import { contentConfig } from '$lib/config';
   import CommentReplyForm from './CommentReplyForm.svelte';
   import Self from './CommentItem.svelte';
@@ -15,9 +16,11 @@
   let children = $derived(node.children);
 
   marked.setOptions({ breaks: true, gfm: true });
-  let renderedContent = $derived(marked.parse(comment.content) as string);
+  let renderedContent = $derived(sanitizeHtml(marked.parse(comment.content) as string));
   let relativeTime = $derived(getRelativeTime(comment.created_at));
-  let avatarUrl = $derived(getCommentAvatar(comment.guest_website, comment.guest_email));
+  let avatarUrl = $derived(
+    getCommentAvatar(comment.guest_website, comment.guest_email, comment.avatar_url),
+  );
   let isMaxDepth = $derived(depth >= maxDepth);
 
   let showReplyForm = $state(false);
@@ -48,13 +51,8 @@
       </div>
 
       <div class="comment-user-info">
-        {#if comment.guest_email}
-          <a href="mailto:{comment.guest_email}" class="user-email" title="发送邮件">
-            {cc.item.emailIcon} {comment.guest_email}
-          </a>
-        {/if}
         {#if comment.guest_website}
-          <a href={comment.guest_website} target="_blank" rel="noopener" class="user-website" title="访问网站">
+          <a href={comment.guest_website} target="_blank" rel="noopener noreferrer" class="user-website" title="访问网站">
             {cc.item.websiteIcon} {comment.guest_website}
           </a>
         {/if}
@@ -187,7 +185,6 @@
     font-size: 11px;
   }
 
-  .user-email,
   .user-website {
     display: inline-flex;
     align-items: center;

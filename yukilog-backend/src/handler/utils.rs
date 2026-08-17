@@ -132,7 +132,6 @@ pub async fn check_rate_limit(
 /// let url = generate_gravatar_url("user@example.com");
 /// // https://www.gravatar.com/avatar/b58996c504c5638798eb6b511e6f49af?s=80&d=identicon
 /// ```
-#[allow(dead_code)]
 pub fn generate_gravatar_url(email: &str) -> String {
     use md5;
 

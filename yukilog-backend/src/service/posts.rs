@@ -635,21 +635,35 @@ fn is_valid_slug(slug: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
 }
 
+fn escape_html(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 /// 生成搜索摘要：在 content 中找到关键词附近的文本，截取并高亮
 ///
 /// 如果 content 中包含关键词，截取关键词前后各 max_len/2 字符作为摘要；
 /// 如果不包含，截取开头 max_len 字符。关键词用 <mark> 包裹。
+/// 文本会先做 HTML 转义，避免搜索结果被当成脚本执行。
 fn generate_search_excerpt(content: &str, keyword: &str, max_len: usize) -> String {
     let content_lower = content.to_lowercase();
     let keyword_lower = keyword.to_lowercase();
 
     if let Some(pos) = content_lower.find(&keyword_lower) {
-        // 以关键词为中心截取
         let half = max_len / 2;
         let start = if pos > half { pos - half } else { 0 };
-        let end = (pos + keyword.len() + half).min(content.len());
+        let end = (pos + keyword_lower.len() + half).min(content.len());
 
-        // 确保按字符边界截取（UTF-8 安全）
         let start = content.floor_char_boundary(start);
         let end = content.ceil_char_boundary(end);
         let slice = &content[start..end];
@@ -664,10 +678,9 @@ fn generate_search_excerpt(content: &str, keyword: &str, max_len: usize) -> Stri
         }
         excerpt
     } else {
-        // 未找到（理论上不会走到这，因为 SQL 已经匹配了）
         let end = max_len.min(content.len());
         let end = content.ceil_char_boundary(end);
-        let mut excerpt = content[..end].to_string();
+        let mut excerpt = escape_html(&content[..end]);
         if end < content.len() {
             excerpt.push_str("...");
         }
@@ -675,22 +688,58 @@ fn generate_search_excerpt(content: &str, keyword: &str, max_len: usize) -> Stri
     }
 }
 
-/// 高亮关键词：大小写不敏感替换为 <mark>keyword</mark>
+/// 高亮关键词：先转义 HTML，再按字符窗口做大小写不敏感匹配。
 fn highlight_keyword(text: &str, keyword: &str) -> String {
-    let keyword_lower = keyword.to_lowercase();
-    let text_lower = text.to_lowercase();
-    let mut result = String::with_capacity(text.len() + keyword.len() * 2);
-    let mut last_end = 0;
-
-    for (start, _) in text_lower.match_indices(&keyword_lower) {
-        result.push_str(&text[last_end..start]);
-        result.push_str("<mark>");
-        result.push_str(&text[start..start + keyword.len()]);
-        result.push_str("</mark>");
-        last_end = start + keyword.len();
+    if keyword.is_empty() {
+        return escape_html(text);
     }
-    result.push_str(&text[last_end..]);
+
+    let kw_lower: Vec<char> = keyword.to_lowercase().chars().collect();
+    let text_chars: Vec<char> = text.chars().collect();
+    let kw_len = kw_lower.len();
+    let mut result = String::with_capacity(text.len() + keyword.len() * 2);
+    let mut i = 0;
+
+    while i < text_chars.len() {
+        if kw_len > 0 && i + kw_len <= text_chars.len() {
+            let window: String = text_chars[i..i + kw_len].iter().collect();
+            if window.to_lowercase().chars().eq(kw_lower.iter().copied()) {
+                result.push_str("<mark>");
+                result.push_str(&escape_html(&window));
+                result.push_str("</mark>");
+                i += kw_len;
+                continue;
+            }
+        }
+        result.push_str(&escape_html(&text_chars[i].to_string()));
+        i += 1;
+    }
+
     result
+}
+
+#[cfg(test)]
+mod highlight_tests {
+    use super::{escape_html, highlight_keyword};
+
+    #[test]
+    fn highlight_escapes_html() {
+        let out = highlight_keyword("<script>alert(1)</script>", "script");
+        assert!(!out.contains("<script>"));
+        assert!(out.contains("&lt;"));
+        assert!(out.contains("<mark>script</mark>"));
+    }
+
+    #[test]
+    fn highlight_handles_chinese() {
+        let out = highlight_keyword("今天学了 Rust 的生命周期", "生命周期");
+        assert_eq!(out, "今天学了 Rust 的<mark>生命周期</mark>");
+    }
+
+    #[test]
+    fn escape_html_quotes() {
+        assert_eq!(escape_html("a&b<c>\"'"), "a&amp;b&lt;c&gt;&quot;&#39;");
+    }
 }
 
 // ================================

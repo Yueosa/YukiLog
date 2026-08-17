@@ -119,7 +119,7 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, argon2::passw
 
 /// 管理员登录接口
 ///
-/// POST /api/admin/auth/login
+/// POST /api/admin/login
 ///
 /// # 请求体
 ///
@@ -147,7 +147,7 @@ pub async fn login(
 ) -> Result<Json<ApiResponse<LoginResponse>>, AuthError> {
     // 1. 验证用户名
     if req.username != state.config.admin_username {
-        tracing::warn!("Login attempt with invalid username: {}", req.username);
+        tracing::warn!("Login attempt rejected: unknown username");
         return Err(AuthError::InvalidCredentials);
     }
 
@@ -157,7 +157,7 @@ pub async fn login(
             // 密码正确
         }
         Ok(false) => {
-            tracing::warn!("Login attempt with incorrect password for user: {}", req.username);
+            tracing::warn!("Login attempt rejected: incorrect password");
             return Err(AuthError::InvalidCredentials);
         }
         Err(e) => {

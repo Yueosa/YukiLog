@@ -134,16 +134,17 @@ export interface Comment {
   post_id: number;
   content: string;
   guest_nick: string;
-  guest_email: string;
   guest_website: string | null;
   parent_id: number | null;
   root_id: number | null;
   status: CommentStatus;
-  ip: string | null;
-  ua: string | null;
-  visitor_info: string | null;  // 解析后的访客信息（如 "Desktop Chrome 136.0 · macOS 15"）
+  visitor_info: string | null;
+  avatar_url?: string | null;
   created_at: string;
-  // 管理端扩展字段（后端 join 返回）
+  /** 仅管理端返回 */
+  guest_email?: string | null;
+  ip?: string | null;
+  ua?: string | null;
   post_title?: string;
   post_slug?: string;
 }

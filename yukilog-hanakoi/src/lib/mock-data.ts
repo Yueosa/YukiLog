@@ -93,18 +93,20 @@ const mockComments: CommentNode[] = [
   {
     comment: {
       id: 1, post_id: 1, content: '写得真好！Rust 确实是后端开发的利器。',
-      guest_nick: '路人甲', guest_email: 'visitor@example.com', guest_website: null,
+      guest_nick: '路人甲', guest_website: null,
       parent_id: null, root_id: null, status: 'approved',
-      ip: null, ua: null, visitor_info: 'Desktop Chrome 136.0 · macOS 15',
+      visitor_info: 'Desktop Chrome 136.0 · macOS 15',
+      avatar_url: null,
       created_at: '2026-03-10T16:00:00+08:00',
     },
     children: [
       {
         comment: {
           id: 2, post_id: 1, content: '谢谢！后续会继续分享更多 Rust 内容。',
-          guest_nick: '博主', guest_email: 'admin@example.com', guest_website: 'https://blog.yeastar.xin',
+          guest_nick: '博主', guest_website: 'https://blog.yeastar.xin',
           parent_id: 1, root_id: 1, status: 'approved',
-          ip: null, ua: null, visitor_info: null,
+          visitor_info: null,
+          avatar_url: null,
           created_at: '2026-03-10T17:00:00+08:00',
         },
         children: [],
@@ -114,9 +116,10 @@ const mockComments: CommentNode[] = [
   {
     comment: {
       id: 3, post_id: 1, content: '请问 SeaORM 和 Diesel 相比有什么优势？',
-      guest_nick: '好奇猫', guest_email: 'curious@example.com', guest_website: null,
+      guest_nick: '好奇猫', guest_website: null,
       parent_id: null, root_id: null, status: 'approved',
-      ip: null, ua: null, visitor_info: 'Mobile Safari · iOS 19',
+      visitor_info: 'Mobile Safari · iOS 19',
+      avatar_url: null,
       created_at: '2026-03-11T09:00:00+08:00',
     },
     children: [],
@@ -241,7 +244,7 @@ const mockRoutes: MockHandler[] = [
   },
   // 登录
   (ep, opts) => {
-    if (ep === '/api/auth/login' && opts?.method === 'POST') {
+    if (ep === '/api/admin/login' && opts?.method === 'POST') {
       return { token: 'mock-jwt-token-for-dev', expires_in: 86400 } satisfies LoginResponse;
     }
     return null;
