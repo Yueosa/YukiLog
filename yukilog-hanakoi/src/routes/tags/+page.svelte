@@ -49,12 +49,33 @@
   }
 
   let filtersVisible = $state(false);
+  let isNarrow = $state(false);
+
+  function splitColumns<T>(list: T[]) {
+    const col0: { item: T; index: number }[] = [];
+    const col1: { item: T; index: number }[] = [];
+    list.forEach((item, index) => {
+      if (index % 2 === 0) col0.push({ item, index });
+      else col1.push({ item, index });
+    });
+    return [col0, col1] as const;
+  }
+
+  const postCols = $derived(splitColumns(posts));
 
   onMount(() => {
     filtersVisible = true;
     for (const slug of selectedSlugs) {
       tagsApi.incrementView(slug).catch(() => {});
     }
+
+    const mq = window.matchMedia('(max-width: 768px)');
+    const syncNarrow = () => {
+      isNarrow = mq.matches;
+    };
+    syncNarrow();
+    mq.addEventListener('change', syncNarrow);
+    return () => mq.removeEventListener('change', syncNarrow);
   });
 
   $effect(() => {
@@ -147,10 +168,23 @@
   </p>
 
   {#if posts.length > 0}
-    <div class="post-grid">
-      {#each posts as post, i}
-        <PostListCard {post} index={i} />
-      {/each}
+    <div class="post-masonry">
+      {#if isNarrow}
+        {#each posts as post, i}
+          <PostListCard {post} index={i} />
+        {/each}
+      {:else}
+        <div class="post-col">
+          {#each postCols[0] as { item, index }}
+            <PostListCard post={item} {index} />
+          {/each}
+        </div>
+        <div class="post-col">
+          {#each postCols[1] as { item, index }}
+            <PostListCard post={item} {index} />
+          {/each}
+        </div>
+      {/if}
     </div>
   {:else}
     <p class="empty">
@@ -306,15 +340,24 @@
     color: var(--color-pink);
   }
 
-  .post-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+  .post-masonry {
+    display: flex;
+    flex-direction: column;
     gap: var(--spacing-lg);
-    align-items: start;
   }
 
-  .post-grid :global(.post-list-card) {
-    margin-bottom: 0;
+  .post-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  @media (min-width: 769px) {
+    .post-masonry {
+      flex-direction: row;
+      align-items: flex-start;
+    }
   }
 
   .empty {
@@ -323,12 +366,6 @@
     font-size: var(--font-size-sm);
     font-style: italic;
     padding: var(--spacing-xl) 0;
-  }
-
-  @media (max-width: 768px) {
-    .post-grid {
-      grid-template-columns: 1fr;
-    }
   }
 
   @media (max-width: 640px) {

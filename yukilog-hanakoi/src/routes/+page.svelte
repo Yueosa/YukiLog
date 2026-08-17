@@ -28,28 +28,32 @@
       btn.addEventListener('click', handleClick);
     }
 
-    const profileCard = document.getElementById('profile-card');
-    const hitokotoCard = document.getElementById('hitokoto-card');
-    const siteinfoCard = document.getElementById('siteinfo-card');
+    const railCards = [
+      document.getElementById('profile-card'),
+      document.getElementById('hitokoto-card'),
+      document.getElementById('siteinfo-card'),
+    ].filter((el): el is HTMLElement => Boolean(el));
 
-    const observer = target
-      ? new IntersectionObserver(
-          ([entry]) => {
-            if (!entry.isIntersecting) return;
-            profileCard?.classList.add('visible');
-            hitokotoCard?.classList.add('visible');
-            if (siteinfoCard && !siteinfoCard.classList.contains('visible')) {
-              setTimeout(() => siteinfoCard.classList.add('visible'), 400);
-            }
-          },
-          { threshold: 0.08 },
-        )
-      : null;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const el = entry.target as HTMLElement;
+          if (el.id === 'siteinfo-card') {
+            setTimeout(() => el.classList.add('visible'), 400);
+          } else {
+            el.classList.add('visible');
+          }
+          observer.unobserve(el);
+        });
+      },
+      { threshold: 0.15 },
+    );
 
-    if (target) observer?.observe(target);
+    railCards.forEach((card) => observer.observe(card));
 
     cleanup = () => {
-      observer?.disconnect();
+      observer.disconnect();
     };
   });
 
@@ -157,7 +161,8 @@
     --home-inset: clamp(16px, 2vw, 32px);
 
     display: grid;
-    grid-template-columns: var(--home-rail) minmax(0, 1fr) var(--home-rail);
+    grid-template-columns: var(--home-rail) minmax(0, 900px) var(--home-rail);
+    justify-content: center;
     column-gap: var(--home-gap);
     width: 100%;
     min-height: 100vh;
@@ -180,9 +185,10 @@
     min-width: 0;
   }
 
-  @media (max-width: 1200px) {
+  @media (max-width: 1400px) {
     .home-second-screen {
-      grid-template-columns: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 900px);
+      justify-content: center;
       row-gap: var(--spacing-lg);
       padding: var(--spacing-lg) var(--spacing-md) var(--spacing-xl);
     }
@@ -203,17 +209,6 @@
 
     .home-rail-right {
       order: 2;
-    }
-
-    .home-rail-right :global(#hitokoto-card) {
-      display: none;
-    }
-
-    :global(#profile-card),
-    :global(#hitokoto-card),
-    :global(#siteinfo-card) {
-      opacity: 1 !important;
-      transform: translateX(0) !important;
     }
   }
 </style>

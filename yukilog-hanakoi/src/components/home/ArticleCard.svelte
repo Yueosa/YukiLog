@@ -9,15 +9,36 @@
 
   let { post, index }: Props = $props();
   const isReversed = $derived(index % 2 === 1);
+  let isPortrait = $state(false);
 
   const placeholderCover = '/images/placeholder-cover.jpg';
   const coverSrc = $derived(post.cover_image || placeholderCover);
+
+  function coverAction(img: HTMLImageElement) {
+    const update = () => {
+      if (img.naturalWidth) {
+        isPortrait = img.naturalHeight > img.naturalWidth;
+      }
+    };
+    if (img.complete) update();
+    img.addEventListener('load', update);
+    return {
+      destroy() {
+        img.removeEventListener('load', update);
+      },
+    };
+  }
 </script>
 
-<article class="article-card" class:reversed={isReversed} data-index={index}>
+<article
+  class="article-card"
+  class:reversed={isReversed}
+  class:portrait={isPortrait}
+  data-index={index}
+>
   <a href={`/posts/${post.slug}`} class="article-cover" aria-label={`阅读 ${post.title}`}>
     <div class="cover-inner">
-      <img src={coverSrc} alt={post.title} loading="lazy" />
+      <img src={coverSrc} alt={post.title} loading="lazy" use:coverAction />
     </div>
   </a>
 
@@ -82,7 +103,7 @@
       box-shadow: var(--shadow-blue-offset-hover);
     }
 
-    &.reversed {
+    &.reversed:not(.portrait) {
       grid-template-columns: 6fr 4fr;
 
       .article-cover {
@@ -92,6 +113,10 @@
       .article-info {
         order: 1;
       }
+    }
+
+    &.portrait {
+      grid-template-columns: 1fr;
     }
   }
 
@@ -115,6 +140,33 @@
     }
 
     &:hover .cover-inner {
+      transform: scale(1.06);
+    }
+  }
+
+  .article-card.portrait .article-cover {
+    min-height: 0;
+
+    .cover-inner {
+      position: static;
+      inset: auto;
+      overflow: hidden;
+    }
+
+    img {
+      width: 116%;
+      max-width: none;
+      height: auto;
+      margin-left: -8%;
+      object-fit: unset;
+      transition: transform 500ms var(--ease-gentle);
+    }
+
+    &:hover .cover-inner {
+      transform: none;
+    }
+
+    &:hover img {
       transform: scale(1.06);
     }
   }
@@ -247,6 +299,10 @@
       .article-info {
         order: 1;
       }
+    }
+
+    .article-card.portrait .article-cover {
+      min-height: 0;
     }
   }
 </style>

@@ -109,9 +109,7 @@
       width: 116%;
       max-width: none;
       height: auto;
-      min-height: 220px;
       margin-left: -8%;
-      object-fit: cover;
       transform-origin: center center;
       transition: transform 500ms cubic-bezier(0.4, 0, 0.2, 1);
     }
