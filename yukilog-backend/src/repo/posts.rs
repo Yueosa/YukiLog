@@ -108,6 +108,25 @@ where
     PostDto::try_from(model)
 }
 
+pub async fn get_posts_by_ids<C>(db: &C, ids: &[i64]) -> RepoResult<Vec<PostDto>>
+where
+    C: ConnectionTrait,
+{
+    if ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let models = posts::Entity::find()
+        .filter(posts::Column::Id.is_in(ids.iter().copied()))
+        .all(db)
+        .await?;
+
+    models
+        .into_iter()
+        .map(PostDto::try_from)
+        .collect::<Result<Vec<_>, _>>()
+}
+
 pub async fn get_post_by_slug<C>(db: &C, slug: &str) -> RepoResult<PostDto>
 where
     C: ConnectionTrait,

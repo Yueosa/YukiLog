@@ -30,6 +30,12 @@ pub struct Comment {
     pub ua: Option<String>,
     pub visitor_info: Option<String>, // 解析后的访客信息（如 "Desktop Chrome 136.0 · macOS 15"）
     pub created_at: DateTime<FixedOffset>,
+    /// 所属文章标题（管理列表填充）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_title: Option<String>,
+    /// 所属文章 slug（管理列表填充）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub post_slug: Option<String>,
 }
 
 impl From<repo::comments::CommentDto> for Comment {
@@ -48,6 +54,8 @@ impl From<repo::comments::CommentDto> for Comment {
             status: dto.status.unwrap_or(CommentStatus::Pending),
             ip: dto.ip,
             ua: dto.ua,
+            post_title: None,
+            post_slug: None,
             visitor_info,
             created_at: dto.created_at.unwrap_or_else(|| chrono::Utc::now().into()),
         }
@@ -224,7 +232,42 @@ pub async fn list_all_comments(
         filter.page,
     )
     .await?;
-    Ok(dtos.into_iter().map(Into::into).collect())
+
+    let mut comments: Vec<Comment> = dtos.into_iter().map(Into::into).collect();
+    attach_post_meta(db, &mut comments).await?;
+    Ok(comments)
+}
+
+async fn attach_post_meta(
+    db: &DatabaseConnection,
+    comments: &mut [Comment],
+) -> ServiceResult<()> {
+    let mut post_ids: Vec<i64> = comments
+        .iter()
+        .map(|c| c.post_id)
+        .filter(|id| *id > 0)
+        .collect();
+    post_ids.sort_unstable();
+    post_ids.dedup();
+
+    if post_ids.is_empty() {
+        return Ok(());
+    }
+
+    let posts = repo::posts::get_posts_by_ids(db, &post_ids).await?;
+    let post_map: std::collections::HashMap<i64, (String, String)> = posts
+        .into_iter()
+        .map(|p| (p.id, (p.title, p.slug)))
+        .collect();
+
+    for comment in comments.iter_mut() {
+        if let Some((title, slug)) = post_map.get(&comment.post_id) {
+            comment.post_title = Some(title.clone());
+            comment.post_slug = Some(slug.clone());
+        }
+    }
+
+    Ok(())
 }
 
 /// 6. 审核评论：通过

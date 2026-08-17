@@ -184,13 +184,15 @@
 
 				<div class="comment-content">{comment.content}</div>
 
-				{#if comment.post_slug}
-					<div class="comment-post">
-						<a href="/posts/{comment.post_slug}" target="_blank" class="post-chip">
-							📝 {comment.post_title || comment.post_slug}
+				<div class="comment-post">
+					{#if comment.post_slug}
+						<a href="/posts/{comment.post_slug}" target="_blank" rel="noopener noreferrer" class="post-chip">
+							来自：{comment.post_title || comment.post_slug}
 						</a>
-					</div>
-				{/if}
+					{:else}
+						<span class="post-chip muted">未关联文章</span>
+					{/if}
+				</div>
 
 				<div class="comment-actions">
 					{#if comment.status === 'pending'}
@@ -367,6 +369,11 @@
 
 	.post-chip:hover {
 		background: var(--blue-alpha-15);
+	}
+
+	.post-chip.muted {
+		color: var(--color-text-muted);
+		background: var(--color-divider);
 	}
 
 	.comment-actions {
