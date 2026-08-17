@@ -1,18 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { svgIcons } from '$lib/svg-icons';
   import { contentConfig } from '$lib/config';
 
   const scrollConfig = contentConfig.components.scrollProgress;
 
-  let barEl: HTMLElement | undefined = $state();
-  let btnEl: HTMLElement | undefined = $state();
-  let percentNode: HTMLElement | undefined = $state();
   let visible = $state(false);
+  let progress = $state(0);
+  let percent = $state(0);
 
   onMount(() => {
-    if (!barEl || !btnEl || !percentNode) return;
-
     let ticking = false;
 
     function updateProgress() {
@@ -20,20 +16,17 @@
       const docHeight = document.documentElement.scrollHeight - window.innerHeight;
 
       if (docHeight <= 0) {
-        barEl!.style.setProperty('--p', '0');
-        percentNode!.textContent = '0%';
+        progress = 0;
+        percent = 0;
         visible = false;
         ticking = false;
         return;
       }
 
-      const progress = Math.min(scrollTop / docHeight, 1);
-      const percent = Math.round(progress * 100);
-
-      barEl!.style.setProperty('--p', String(progress));
-      percentNode!.textContent = `${percent}%`;
+      const next = Math.min(scrollTop / docHeight, 1);
+      progress = next;
+      percent = Math.round(next * 100);
       visible = scrollTop > 200;
-
       ticking = false;
     }
 
@@ -44,34 +37,27 @@
       }
     };
 
-    const onClick = () => {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
     window.addEventListener('scroll', onScroll, { passive: true });
-    btnEl.addEventListener('click', onClick);
     updateProgress();
 
     return () => {
       window.removeEventListener('scroll', onScroll);
-      btnEl!.removeEventListener('click', onClick);
     };
   });
 </script>
 
-<!-- 顶部进度条 -->
-<div class="scroll-progress-bar" bind:this={barEl} aria-hidden="true"></div>
+<div class="scroll-progress-bar" style="--p: {progress}" aria-hidden="true"></div>
 
-<!-- 回到顶部按钮 -->
 <button
   class="back-to-top"
   class:visible
-  bind:this={btnEl}
+  style="--p: {progress}"
+  onclick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
   aria-label={scrollConfig.backToTop}
   title={scrollConfig.backToTop}
 >
-  <span class="btt-icon">{@html svgIcons.arrowUp}</span>
-  <span class="btt-percent" bind:this={percentNode}>0%</span>
+  <span class="btt-track" aria-hidden="true"></span>
+  <span class="btt-percent">{percent}%</span>
 </button>
 
 <style>
@@ -104,31 +90,28 @@
 
   .back-to-top {
     position: fixed;
-    bottom: var(--spacing-xl);
-    left: var(--spacing-xl);
+    right: var(--spacing-lg);
+    bottom: var(--spacing-lg);
     z-index: var(--z-modal);
 
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-
-    width: 48px;
-    height: 48px;
+    align-items: stretch;
+    width: 168px;
+    height: 36px;
     padding: 0;
+    overflow: hidden;
 
     background: var(--white-alpha-85);
     backdrop-filter: blur(12px);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
+    border-radius: 999px;
     box-shadow: var(--shadow-pink);
 
-    color: var(--color-text-light);
+    color: var(--color-text);
     cursor: pointer;
 
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(16px);
     pointer-events: none;
     transition:
       opacity 300ms var(--ease-gentle),
@@ -145,30 +128,55 @@
     &:hover {
       box-shadow: var(--shadow-pink-offset-hover);
       border-color: var(--color-pink);
-      color: var(--color-pink);
     }
 
     &:active {
-      transform: scale(0.95);
+      transform: scale(0.97);
     }
   }
 
-  .btt-icon {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 0;
+  .btt-track {
+    flex: 0 0 70%;
+    position: relative;
+    background: var(--color-bg);
 
-    :global(svg) {
-      width: 16px;
-      height: 16px;
+    &::after {
+      content: "";
+      position: absolute;
+      top: 6px;
+      bottom: 6px;
+      left: 8px;
+      right: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--color-blue), var(--color-pink));
+      transform: scaleX(var(--p, 0));
+      transform-origin: left center;
+      transition: transform 80ms linear;
     }
   }
 
   .btt-percent {
-    font-size: 10px;
-    font-weight: var(--font-weight-medium);
-    line-height: 1;
-    letter-spacing: -0.02em;
+    flex: 0 0 30%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: var(--font-weight-semibold);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    color: var(--color-text);
+  }
+
+  @media (max-width: 768px) {
+    .back-to-top {
+      right: var(--spacing-md);
+      bottom: var(--spacing-md);
+      width: 148px;
+      height: 32px;
+    }
+
+    .btt-percent {
+      font-size: 11px;
+    }
   }
 </style>

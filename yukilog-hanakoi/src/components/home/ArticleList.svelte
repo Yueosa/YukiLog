@@ -86,7 +86,7 @@
   }
 
   .article-list-header {
-    max-width: 900px;
+    width: 100%;
     margin: 0 auto;
     padding: calc(8rem - 30px) var(--spacing-md) 0;
     display: flex;
@@ -136,7 +136,7 @@
   }
 
   .article-list-container {
-    max-width: 900px;
+    width: 100%;
     margin: 0 auto;
     padding: var(--spacing-lg) var(--spacing-md) 0;
     display: flex;

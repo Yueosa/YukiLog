@@ -165,11 +165,11 @@
   }
 
   :root {
-    --sidebar-width: clamp(240px, 24vw, 280px);
-    --sidebar-offset: clamp(8px, 1.5vw, 20px);
-    --sidebar-gap: 24px;
+    --sidebar-width: clamp(240px, 18vw, 280px);
+    --sidebar-offset: clamp(12px, 1.5vw, 24px);
+    --sidebar-gap: 28px;
     --sidebar-total: calc(var(--sidebar-width) + var(--sidebar-offset) + var(--sidebar-gap));
-    --layout-max-width: 1668px;
+    --layout-max-width: 1920px;
   }
 
   .home-second-screen {
