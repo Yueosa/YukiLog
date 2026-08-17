@@ -47,9 +47,10 @@ const pinyinMap: Record<string, string> = {
 /**
  * 生成 URL 友好的 slug
  * @param text 原始文本（标题）
+ * @param fallbackPrefix 无法从文本生成时的前缀，默认 post
  * @returns slug 字符串
  */
-export function generateSlug(text: string): string {
+export function generateSlug(text: string, fallbackPrefix = 'post'): string {
   if (!text) return '';
 
   // 1. 尝试匹配中文关键词
@@ -79,7 +80,7 @@ export function generateSlug(text: string): string {
 
   // 7. 如果结果为空，生成时间戳 slug
   if (!slug) {
-    slug = `post-${Date.now()}`;
+    slug = `${fallbackPrefix}-${Date.now()}`;
   }
 
   return slug;

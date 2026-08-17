@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { adminApi, themesApi, tagsApi } from '$lib/api';
 	import { generateSlug, isValidSlug } from '$lib/slugify';
+	import PostTaxonomyFields from '$components/admin/PostTaxonomyFields.svelte';
 	import type { Theme, Tag } from '$types';
 
 	let title = $state('');
@@ -28,16 +29,6 @@
 
 	function handleSlugInput() {
 		slugManuallyEdited = true;
-	}
-
-	function toggleTag(tagSlug: string) {
-		const next = new Set(selectedTagSlugs);
-		if (next.has(tagSlug)) {
-			next.delete(tagSlug);
-		} else {
-			next.add(tagSlug);
-		}
-		selectedTagSlugs = next;
 	}
 
 	async function handleSubmit(status: 'draft' | 'published') {
@@ -173,46 +164,13 @@
 		</div>
 	</div>
 
-	<!-- 分类与标签 -->
-	<div class="form-section">
-		<h3 class="section-title">分类与标签</h3>
-		<div class="form-row">
-			<div class="form-group">
-				<label for="theme_slug">主题分类</label>
-				<select id="theme_slug" bind:value={themeSlug}>
-					<option value="">无主题</option>
-					{#each themes as theme}
-						<option value={theme.slug}>{theme.name}</option>
-					{/each}
-				</select>
-			</div>
-		</div>
-
-		<div class="form-group">
-			<fieldset class="tag-fieldset">
-				<legend>标签</legend>
-				<div class="tag-selector">
-					<div class="tag-checkboxes">
-						{#each tags as tag}
-							<label class="tag-checkbox-label" class:checked={selectedTagSlugs.has(tag.slug)}>
-								<input type="checkbox" checked={selectedTagSlugs.has(tag.slug)} onchange={() => toggleTag(tag.slug)} />
-								<span class="tag-name">#{tag.name}</span>
-							</label>
-						{/each}
-					</div>
-				</div>
-				<span class="form-hint">已选择 {selectedTagSlugs.size} 个标签</span>
-			</fieldset>
-		</div>
-
-		<div class="form-group">
-			<label class="featured-toggle">
-				<input type="checkbox" bind:checked={isFeatured} />
-				<span>设为精选文章</span>
-			</label>
-			<span class="form-hint">精选文章将显示在主页文章列表中</span>
-		</div>
-	</div>
+	<PostTaxonomyFields
+		bind:themes
+		bind:tags
+		bind:themeSlug
+		bind:selectedTagSlugs
+		bind:isFeatured
+	/>
 
 	<!-- 文章内容 -->
 	<div class="form-section">
@@ -234,7 +192,7 @@
 
 <style>
 	.post-form {
-		max-width: 1200px;
+		width: 100%;
 	}
 
 	.form-section {
@@ -321,76 +279,6 @@
 		color: var(--color-blue);
 		font-family: 'JetBrains Mono', 'Fira Code', monospace;
 		font-weight: 500;
-	}
-
-	/* 标签选择器 */
-	.tag-checkboxes {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.375rem;
-		padding: 0.625rem;
-		background: var(--color-bg);
-		border: 1px solid var(--color-border);
-		border-radius: 10px;
-		max-height: 200px;
-		overflow-y: auto;
-	}
-
-	.tag-checkbox-label {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 4px 10px;
-		background: var(--color-white);
-		border: 1px solid var(--color-border);
-		border-radius: 12px;
-		cursor: pointer;
-		transition: all 200ms;
-	}
-
-	.tag-checkbox-label:hover {
-		border-color: var(--color-blue);
-	}
-
-	.tag-checkbox-label.checked {
-		background: var(--pink-alpha-08);
-		border-color: var(--color-pink);
-	}
-
-	.tag-checkbox-label.checked .tag-name {
-		color: var(--color-pink);
-		font-weight: 500;
-	}
-
-	.tag-checkbox-label input[type="checkbox"] {
-		width: auto;
-		padding: 0;
-		margin: 0;
-		cursor: pointer;
-	}
-
-	.tag-name {
-		font-size: 0.75rem;
-		color: var(--color-text-light);
-		user-select: none;
-	}
-
-	/* 精选开关 */
-	.featured-toggle {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.5rem;
-		cursor: pointer;
-		font-size: 0.875rem;
-		font-weight: 500;
-		color: var(--color-text);
-	}
-
-	.featured-toggle input[type="checkbox"] {
-		width: 16px;
-		height: 16px;
-		cursor: pointer;
-		accent-color: var(--color-pink);
 	}
 
 	/* Vditor */
