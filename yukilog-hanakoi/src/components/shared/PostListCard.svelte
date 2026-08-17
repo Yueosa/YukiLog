@@ -109,7 +109,11 @@
       width: 116%;
       max-width: none;
       height: auto;
+      min-height: 220px;
+      max-height: 56vh;
       margin-left: -8%;
+      object-fit: cover;
+      object-position: center;
       transform-origin: center center;
       transition: transform 500ms cubic-bezier(0.4, 0, 0.2, 1);
     }
