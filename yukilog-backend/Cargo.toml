@@ -17,9 +17,6 @@ serde_json = "1.0"
 # 事件处理
 chrono = { version = "0.4", features = ["serde"] }
 
-# 校验
-validator = { version = "0.18", features = ["derive"] }
-
 # 随机数生成（用于盐值）
 rand = "0.8"
 
@@ -37,7 +34,7 @@ jsonwebtoken = "9.3"
 # 密码哈希 (用于 Users 表密码存储)
 argon2 = "0.5"
 
-# 跨域处理 (前端 Vue/Astro 需要)
+# 跨域处理
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors"] }
 

@@ -13,9 +13,7 @@ export {
   yukilogConfig,
 } from "../../yukilog.config";
 
-// API 基础 URL（运行时环境变量）
-// SSR 模式：使用内网地址（性能优化）
-// 浏览器模式：使用公网域名（通过 nginx 代理）
+// SSR：直连后端。浏览器：走当前站点相对路径，由 nginx 反代 /api。
 export const API_BASE_URL = import.meta.env.SSR
   ? (import.meta.env.PUBLIC_API_URL || "http://localhost:3639")
   : (import.meta.env.PUBLIC_SITE_URL || "");

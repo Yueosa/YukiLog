@@ -40,16 +40,11 @@ import type {
 } from '../types';
 
 import type { getMockResponse as GetMockResponseFn } from './mock-data';
+import { API_BASE_URL } from './config';
 
-// API 基础地址（区分 SSR 和浏览器环境）
-// SSR: 内网地址 http://localhost:3639（前端服务器 → 后端服务器）
-// 浏览器: 公网域名 https://blog.yeastar.xin（用户浏览器 → nginx → 后端）
-const API_BASE = import.meta.env.SSR
-  ? (import.meta.env.PUBLIC_API_URL || 'http://localhost:3639')
-  : (import.meta.env.PUBLIC_SITE_URL || 'https://blog.yeastar.xin');
+const API_BASE = API_BASE_URL;
 
-// 是否启用 mock 模式（后端不可用时自动 fallback）
-let useMock = false;
+let useMock = import.meta.env.PUBLIC_USE_MOCK === 'true';
 let _getMockResponse: typeof GetMockResponseFn | null = null;
 
 /** 按需加载 mock 模块 */

@@ -1,30 +1,40 @@
 /**
  * 生成评论头像 URL
- * 优先级：① website favicon → ② Gravatar → ③ 默认头像
+ * 优先级：① 后端 avatar_url → ② website favicon → ③ Gravatar → ④ 默认头像
  */
-
-import { getGravatarUrl } from './utils';
 
 const DEFAULT_AVATAR = 'https://www.gravatar.com/avatar/00000000000000000000000000000000?s=80&d=mp';
 
-/**
- * 根据 website 和 email 生成头像 URL
- * @param website - 网站 URL（可选）
- * @param email - 邮箱地址
- * @returns 头像 URL
- */
-export function getCommentAvatar(website: string | null, email: string): string {
-  // ① 优先使用 website favicon
+function getGravatarUrl(email: string, size: number = 80): string {
+  const hash = simpleHash(email.toLowerCase().trim());
+  return `https://www.gravatar.com/avatar/${hash}?s=${size}&d=identicon`;
+}
+
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(32, '0');
+}
+
+export function getCommentAvatar(
+  website: string | null | undefined,
+  email?: string | null,
+  avatarUrl?: string | null,
+): string {
+  if (avatarUrl) return avatarUrl;
+
   if (website) {
     const trimmedUrl = website.trim().replace(/\/+$/, '');
     return `${trimmedUrl}/favicon.ico`;
   }
-  
-  // ② 使用邮箱生成 Gravatar
-  if (email && email.trim()) {
+
+  if (email?.trim()) {
     return getGravatarUrl(email, 80);
   }
-  
-  // ③ 默认头像
+
   return DEFAULT_AVATAR;
 }
