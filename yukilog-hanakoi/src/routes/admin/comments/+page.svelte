@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { adminApi } from '$lib/api';
 	import { formatDate } from '$lib/date';
+	import { getCommentAvatar } from '$lib/avatar';
 	import type { Comment } from '$types';
 
 	let allComments: Comment[] = $state([]);
@@ -38,6 +39,10 @@
 	function getStatusText(status: string): string {
 		const map: Record<string, string> = { pending: '待审核', approved: '已通过', spam: '垃圾' };
 		return map[status] || status;
+	}
+
+	function hideBrokenAvatar(e: Event) {
+		(e.currentTarget as HTMLImageElement).style.display = 'none';
 	}
 
 	async function loadComments() {
@@ -168,7 +173,13 @@
 			<div class="comment-card">
 				<div class="comment-top">
 					<div class="comment-avatar">
-						{comment.guest_nick.charAt(0).toUpperCase()}
+						<span class="avatar-fallback">{comment.guest_nick.charAt(0).toUpperCase()}</span>
+						<img
+							src={getCommentAvatar(comment.guest_website, comment.guest_email, comment.avatar_url)}
+							alt={comment.guest_nick}
+							loading="lazy"
+							onerror={hideBrokenAvatar}
+						/>
 					</div>
 					<div class="comment-info">
 						<div class="comment-author">
@@ -303,6 +314,7 @@
 	}
 
 	.comment-avatar {
+		position: relative;
 		width: 42px;
 		height: 42px;
 		border-radius: 12px;
@@ -311,8 +323,18 @@
 		justify-content: center;
 		font-size: 1.125rem;
 		font-weight: 700;
-		color: white;
+		color: var(--color-on-primary);
+		background: linear-gradient(135deg, var(--color-blue) 0%, var(--color-pink) 100%);
 		flex-shrink: 0;
+		overflow: hidden;
+	}
+
+	.comment-avatar img {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
 	}
 
 	.comment-info {
