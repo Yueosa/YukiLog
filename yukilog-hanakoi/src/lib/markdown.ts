@@ -202,3 +202,14 @@ export async function renderMarkdown(source: string): Promise<MarkdownResult> {
 
   return { html, headings };
 }
+
+/** 列表预览：截断后做轻量 Markdown，不拉 Shiki / KaTeX */
+const previewParser = new Marked({
+  gfm: true,
+  breaks: true,
+});
+
+export function renderMarkdownPreview(source: string): string {
+  const truncated = source.length > 200 ? `${source.slice(0, 200)}…` : source;
+  return previewParser.parse(truncated, { async: false }) as string;
+}
