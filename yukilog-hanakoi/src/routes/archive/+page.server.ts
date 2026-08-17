@@ -1,6 +1,14 @@
 import type { PageServerLoad } from './$types';
 import { postsApi } from '$lib/api';
 
+type ArchivePost = {
+  title: string;
+  slug: string;
+  created_at: string;
+  month: number;
+  day: number;
+};
+
 export const load: PageServerLoad = async () => {
   try {
     const response = await postsApi.list({
@@ -8,14 +16,9 @@ export const load: PageServerLoad = async () => {
       status: 'published',
     });
 
-    const allPosts = (response.items || []).map((item: any) => ({
-      ...item.post,
-      theme: item.theme,
-      tags: item.tags,
-    }));
+    const allPosts = (response.items || []).map((item: any) => item.post);
 
-    // 按年份分组
-    const yearMap = new Map<number, Array<{ title: string; slug: string; created_at: string; month: number; day: number }>>();
+    const yearMap = new Map<number, ArchivePost[]>();
     for (const post of allPosts) {
       const d = new Date(post.created_at);
       const year = d.getFullYear();
@@ -31,12 +34,23 @@ export const load: PageServerLoad = async () => {
 
     const archiveData = Array.from(yearMap.entries())
       .sort((a, b) => b[0] - a[0])
-      .map(([year, posts]) => ({
-        year,
-        posts: posts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-      }));
+      .map(([year, posts]) => {
+        const sorted = posts.sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+        const monthMap = new Map<number, ArchivePost[]>();
+        for (const post of sorted) {
+          if (!monthMap.has(post.month)) monthMap.set(post.month, []);
+          monthMap.get(post.month)!.push(post);
+        }
+        const months = Array.from(monthMap.entries())
+          .sort((a, b) => b[0] - a[0])
+          .map(([month, monthPosts]) => ({ month, posts: monthPosts }));
 
-    const totalPosts = archiveData.reduce((sum, y) => sum + y.posts.length, 0);
+        return { year, count: sorted.length, months };
+      });
+
+    const totalPosts = archiveData.reduce((sum, y) => sum + y.count, 0);
 
     return { archiveData, totalPosts };
   } catch (err) {
