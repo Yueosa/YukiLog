@@ -28,42 +28,28 @@
       btn.addEventListener('click', handleClick);
     }
 
-    // 固定侧栏显隐 - 与导航栏 sticky 同步
-    const getThreshold = () => window.innerHeight;
+    const profileCard = document.getElementById('profile-card');
+    const hitokotoCard = document.getElementById('hitokoto-card');
+    const siteinfoCard = document.getElementById('siteinfo-card');
 
-    function updateSidebars() {
-      const mobileLayout = window.innerWidth <= 1400;
-      const threshold = getThreshold();
-      const shouldShow = window.scrollY >= threshold - 50;
+    const observer = target
+      ? new IntersectionObserver(
+          ([entry]) => {
+            if (!entry.isIntersecting) return;
+            profileCard?.classList.add('visible');
+            hitokotoCard?.classList.add('visible');
+            if (siteinfoCard && !siteinfoCard.classList.contains('visible')) {
+              setTimeout(() => siteinfoCard.classList.add('visible'), 400);
+            }
+          },
+          { threshold: 0.08 },
+        )
+      : null;
 
-      const profileCard = document.getElementById('profile-card');
-      const hitokotoCard = document.getElementById('hitokoto-card');
-      const siteinfoCard = document.getElementById('siteinfo-card');
-
-      if (mobileLayout || shouldShow) {
-        profileCard?.classList.add('visible');
-        if (!mobileLayout) {
-          hitokotoCard?.classList.add('visible');
-        } else {
-          hitokotoCard?.classList.remove('visible');
-        }
-        if (siteinfoCard && !siteinfoCard.classList.contains('visible')) {
-          setTimeout(() => siteinfoCard.classList.add('visible'), 400);
-        }
-      } else {
-        profileCard?.classList.remove('visible');
-        hitokotoCard?.classList.remove('visible');
-        siteinfoCard?.classList.remove('visible');
-      }
-    }
-
-    window.addEventListener('scroll', updateSidebars);
-    window.addEventListener('resize', updateSidebars);
-    updateSidebars();
+    if (target) observer?.observe(target);
 
     cleanup = () => {
-      window.removeEventListener('scroll', updateSidebars);
-      window.removeEventListener('resize', updateSidebars);
+      observer?.disconnect();
     };
   });
 
@@ -89,19 +75,20 @@
   </button>
 </div>
 
-<!-- 固定侧栏卡片（与导航栏同步显隐） -->
-<aside class="fixed-sidebar fixed-sidebar-left" id="fixed-sidebar-left">
-  <ProfileCard />
-</aside>
-
 <div class="home-second-screen" id="second-screen">
-  <ArticleList posts={data.recentPosts} currentSort={data.currentSort} />
-</div>
+  <aside class="home-rail home-rail-left">
+    <ProfileCard />
+  </aside>
 
-<aside class="fixed-sidebar fixed-sidebar-right" id="fixed-sidebar-right">
-  <HitokotoCard />
-  <SiteInfoCard stats={data.stats} />
-</aside>
+  <div class="home-main">
+    <ArticleList posts={data.recentPosts} currentSort={data.currentSort} />
+  </div>
+
+  <aside class="home-rail home-rail-right">
+    <HitokotoCard />
+    <SiteInfoCard stats={data.stats} />
+  </aside>
+</div>
 
 <style>
   .home-first-screen {
@@ -164,76 +151,61 @@
     50% { translate: 0 10px; }
   }
 
-  :root {
-    --sidebar-width: clamp(240px, 18vw, 280px);
-    --sidebar-offset: clamp(12px, 1.5vw, 24px);
-    --sidebar-gap: 28px;
-    --sidebar-total: calc(var(--sidebar-width) + var(--sidebar-offset) + var(--sidebar-gap));
-    --layout-max-width: 1920px;
-  }
-
   .home-second-screen {
+    --home-rail: clamp(240px, 16vw, 280px);
+    --home-gap: 28px;
+    --home-inset: clamp(16px, 2vw, 32px);
+
+    display: grid;
+    grid-template-columns: var(--home-rail) minmax(0, 1fr) var(--home-rail);
+    column-gap: var(--home-gap);
     width: 100%;
-    max-width: var(--layout-max-width);
     min-height: 100vh;
+    margin: 0;
+    padding: 70px var(--home-inset) 0;
     background: var(--color-bg);
-    margin: 0 auto;
-    padding-left: var(--sidebar-total);
-    padding-right: var(--sidebar-total);
   }
 
-  .fixed-sidebar {
-    position: fixed;
+  .home-rail {
+    position: sticky;
     top: 70px;
-    width: var(--sidebar-width);
+    align-self: start;
     display: flex;
     flex-direction: column;
     gap: var(--spacing-lg);
-    z-index: 99;
-    pointer-events: none;
-
-    :global(> *) {
-      pointer-events: auto;
-    }
+    min-width: 0;
   }
 
-  .fixed-sidebar-left {
-    left: max(var(--sidebar-offset), calc((100vw - var(--layout-max-width)) / 2 + var(--sidebar-offset)));
+  .home-main {
+    min-width: 0;
   }
 
-  .fixed-sidebar-right {
-    right: max(var(--sidebar-offset), calc((100vw - var(--layout-max-width)) / 2 + var(--sidebar-offset)));
-  }
-
-  @media (max-width: 1400px) {
+  @media (max-width: 1200px) {
     .home-second-screen {
-      padding-left: 0;
-      padding-right: 0;
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: var(--spacing-lg);
+      padding: var(--spacing-lg) var(--spacing-md) var(--spacing-xl);
     }
 
-    .fixed-sidebar {
+    .home-rail {
       position: static;
-      top: auto;
-      left: auto;
-      right: auto;
       width: min(100%, 800px);
       margin: 0 auto;
-      padding: 0 var(--spacing-md);
-      z-index: auto;
-      pointer-events: auto;
     }
 
-    .fixed-sidebar-left {
-      margin-top: var(--spacing-lg);
-      margin-bottom: var(--spacing-lg);
+    .home-rail-left {
+      order: 0;
     }
 
-    .fixed-sidebar-right {
-      margin-top: 0;
-      margin-bottom: var(--spacing-xl);
+    .home-main {
+      order: 1;
     }
 
-    .fixed-sidebar-right :global(#hitokoto-card) {
+    .home-rail-right {
+      order: 2;
+    }
+
+    .home-rail-right :global(#hitokoto-card) {
       display: none;
     }
 

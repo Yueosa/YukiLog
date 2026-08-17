@@ -88,7 +88,7 @@
   .article-list-header {
     width: 100%;
     margin: 0 auto;
-    padding: calc(8rem - 30px) var(--spacing-md) 0;
+    padding: 0 0 var(--spacing-md);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -138,7 +138,7 @@
   .article-list-container {
     width: 100%;
     margin: 0 auto;
-    padding: var(--spacing-lg) var(--spacing-md) 0;
+    padding: var(--spacing-lg) 0 0;
     display: flex;
     flex-direction: column;
     gap: var(--spacing-xl);
@@ -158,14 +158,7 @@
 
   @media (max-width: 1024px) {
     .article-list-header {
-      max-width: 100%;
-      padding: var(--spacing-lg) var(--spacing-md) 0;
       flex-wrap: wrap;
-    }
-
-    .article-list-container {
-      max-width: 100%;
-      padding: var(--spacing-lg) var(--spacing-md) 0;
     }
   }
 </style>
