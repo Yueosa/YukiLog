@@ -19,9 +19,9 @@
 
 前后端分离，REST JSON 通信。
 
-* **后端：** Rust + Axum + SeaORM + PostgreSQL，Redis 做浏览/评论/友链限流。
-* **前端：** SvelteKit 2 + Svelte 5，公开页 SSR，管理后台走 JWT。样式是自定义 CSS 变量，没有 Tailwind，也没有暗色主题。
-* **数据库：** PostgreSQL。评论用 `parent_id` / `root_id` 做树。
+* **后端：** Rust + Axum + SeaORM + PostgreSQL，Redis 做浏览/评论/友链限流
+* **前端：** SvelteKit 2 + Svelte 5，公开页 SSR，管理后台走 JWT
+* **数据库：** PostgreSQL + Redis
 
 ---
 
