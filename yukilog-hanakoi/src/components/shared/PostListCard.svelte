@@ -106,12 +106,9 @@
 
     img {
       display: block;
-      width: 116%;
-      max-width: none;
+      width: 100%;
       height: auto;
       min-height: 220px;
-      max-height: 56vh;
-      margin-left: -8%;
       object-fit: cover;
       object-position: center;
       transform-origin: center center;

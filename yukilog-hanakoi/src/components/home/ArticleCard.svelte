@@ -102,19 +102,21 @@
     min-height: 240px;
 
     .cover-inner {
-      position: absolute;
-      inset: -8%;
-      transition: transform 500ms var(--ease-gentle);
+      width: 100%;
+      overflow: hidden;
     }
 
     img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
       display: block;
+      width: 100%;
+      height: auto;
+      min-height: 240px;
+      object-fit: cover;
+      object-position: center;
+      transition: transform 500ms var(--ease-gentle);
     }
 
-    &:hover .cover-inner {
+    &:hover img {
       transform: scale(1.06);
     }
   }
