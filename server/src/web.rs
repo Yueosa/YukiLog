@@ -3,9 +3,11 @@ use axum::{
     extract::{Path, Query, State},
     response::Html,
 };
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, TimeZone, Utc};
 use sea_orm::{
-    ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect, prelude::Uuid, sea_query::Expr,
+    ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect,
+    prelude::Uuid,
+    sea_query::{Expr, Query as SeaQuery},
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -23,6 +25,7 @@ use crate::{
 };
 
 const ARTICLE_LIMIT: u64 = 48;
+const ARTICLE_PAGE_SIZE: u64 = 12;
 const HOME_ARTICLE_LIMIT: u64 = 12;
 const HOME_DYNAMIC_LIMIT: u64 = 8;
 
@@ -57,11 +60,27 @@ struct ArticleCard {
     slug: String,
     summary: String,
     category: String,
-    tags: Vec<String>,
+    category_slug: String,
+    tags: Vec<TagCard>,
     cover_url: String,
     published: String,
+    published_year: i32,
     views: i64,
     likes: i64,
+}
+
+#[derive(Clone)]
+struct TagCard {
+    name: String,
+    slug: String,
+}
+
+#[derive(Default)]
+struct ArticleFilter {
+    category_id: Option<Uuid>,
+    tag_id: Option<Uuid>,
+    published_from: Option<DateTime<FixedOffset>>,
+    published_before: Option<DateTime<FixedOffset>>,
 }
 
 struct DynamicCard {
@@ -154,7 +173,7 @@ struct ProfileTemplate<'a> {
 
 #[derive(Template)]
 #[template(
-    source = r#"<section class="article-feed feed-{{ variant }}">{% for article in articles %}<article class="article">{% if show_cover && article.cover_url != "" %}<img class="article-cover" src="{{ article.cover_url }}" alt="">{% endif %}<div class="article-copy"><div class="meta">{% if show_date %}<time>{{ article.published }}</time>{% endif %}{% if show_category %}<span class="pill">{{ article.category }}</span>{% endif %}</div><h2><a href="/articles/{{ article.slug }}">{{ article.title }}</a></h2>{% if show_summary %}<p>{{ article.summary }}</p>{% endif %}<div class="meta">{% if show_tags %}{% for tag in article.tags %}<span>#{{ tag }}</span>{% endfor %}{% endif %}{% if show_views %}<span>{{ article.views }} 阅读</span>{% endif %}{% if show_likes %}<span>{{ article.likes }} 喜欢</span>{% endif %}</div></div></article>{% endfor %}{% if articles.is_empty() %}<p class="empty">这里还没有公开文章。</p>{% endif %}</section>"#,
+    source = r#"<section class="article-feed feed-{{ variant }}">{% for article in articles %}<article class="article">{% if show_cover && article.cover_url != "" %}<img class="article-cover" src="{{ article.cover_url }}" alt="">{% endif %}<div class="article-copy"><div class="meta">{% if show_date %}<a href="/articles?year={{ article.published_year }}"><time>{{ article.published }}</time></a>{% endif %}{% if show_category %}<a class="pill" href="/articles?category={{ article.category_slug }}">{{ article.category }}</a>{% endif %}</div><h2><a href="/articles/{{ article.slug }}">{{ article.title }}</a></h2>{% if show_summary %}<p>{{ article.summary }}</p>{% endif %}<div class="meta">{% if show_tags %}{% for tag in article.tags %}<a href="/articles?tag={{ tag.slug }}">#{{ tag.name }}</a>{% endfor %}{% endif %}{% if show_views %}<span>{{ article.views }} 阅读</span>{% endif %}{% if show_likes %}<span>{{ article.likes }} 喜欢</span>{% endif %}</div></div></article>{% endfor %}{% if articles.is_empty() %}<p class="empty">这里还没有公开文章。</p>{% endif %}</section>"#,
     ext = "html"
 )]
 struct ArticleFeedTemplate<'a> {
@@ -206,7 +225,14 @@ struct FriendListTemplate<'a> {
 pub async fn home(State(state): State<AppState>) -> Result<Html<String>, AppError> {
     let site = load_site(&state).await?;
     let layout = load_layout(&state, "home").await?;
-    let articles = load_articles(&state, HOME_ARTICLE_LIMIT, None).await?;
+    let articles = load_articles(
+        &state,
+        HOME_ARTICLE_LIMIT,
+        0,
+        None,
+        &ArticleFilter::default(),
+    )
+    .await?;
     let dynamics = load_dynamics(&state, HOME_DYNAMIC_LIMIT).await?;
     let content = render_node(
         &layout.root,
@@ -219,9 +245,32 @@ pub async fn home(State(state): State<AppState>) -> Result<Html<String>, AppErro
     page(&site, "首页", &content)
 }
 
-pub async fn article_list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+#[derive(Debug, Default, Deserialize)]
+pub struct ArticleListQuery {
+    tag: Option<String>,
+    category: Option<String>,
+    year: Option<i32>,
+    #[serde(default = "first_page")]
+    page: u64,
+}
+
+pub async fn article_list(
+    State(state): State<AppState>,
+    Query(query): Query<ArticleListQuery>,
+) -> Result<Html<String>, AppError> {
     let site = load_site(&state).await?;
-    let articles = load_articles(&state, ARTICLE_LIMIT, None).await?;
+    let page_number = query.page.clamp(1, 10_000);
+    let filter = resolve_article_filter(&state, &query).await?;
+    let mut articles = load_articles(
+        &state,
+        ARTICLE_PAGE_SIZE + 1,
+        (page_number - 1) * ARTICLE_PAGE_SIZE,
+        None,
+        &filter,
+    )
+    .await?;
+    let has_next = articles.len() as u64 > ARTICLE_PAGE_SIZE;
+    articles.truncate(ARTICLE_PAGE_SIZE as usize);
     let content = ArticleFeedTemplate {
         articles: &articles,
         variant: "editorial",
@@ -235,7 +284,8 @@ pub async fn article_list(State(state): State<AppState>) -> Result<Html<String>,
     }
     .render()
     .map_err(|_| AppError::Internal("render article list"))?;
-    page(&site, "文章", &content)
+    let pagination = pagination_html(&query, page_number, has_next);
+    page(&site, "文章", &format!("{content}{pagination}"))
 }
 
 pub async fn article_detail(
@@ -344,7 +394,14 @@ pub async fn search(
     let articles = if term.is_empty() {
         Vec::new()
     } else {
-        load_articles(&state, ARTICLE_LIMIT, Some(term)).await?
+        load_articles(
+            &state,
+            ARTICLE_LIMIT,
+            0,
+            Some(term),
+            &ArticleFilter::default(),
+        )
+        .await?
     };
     let title = if term.is_empty() {
         "搜索".to_owned()
@@ -547,16 +604,154 @@ async fn load_layout(state: &AppState, key: &str) -> Result<PageLayoutDocument, 
     Ok(layout)
 }
 
+fn first_page() -> u64 {
+    1
+}
+
+async fn resolve_article_filter(
+    state: &AppState,
+    query: &ArticleListQuery,
+) -> Result<ArticleFilter, AppError> {
+    let category_id = if let Some(slug) = query.category.as_deref() {
+        validate_filter_slug(slug)?;
+        Some(
+            categories::Entity::find()
+                .filter(categories::Column::Slug.eq(slug))
+                .one(&state.database)
+                .await?
+                .map(|category| category.id)
+                .unwrap_or(Uuid::nil()),
+        )
+    } else {
+        None
+    };
+    let tag_id = if let Some(slug) = query.tag.as_deref() {
+        validate_filter_slug(slug)?;
+        Some(
+            tags::Entity::find()
+                .filter(tags::Column::Slug.eq(slug))
+                .one(&state.database)
+                .await?
+                .map(|tag| tag.id)
+                .unwrap_or(Uuid::nil()),
+        )
+    } else {
+        None
+    };
+    let (published_from, published_before) = if let Some(year) = query.year {
+        if !(1970..=9998).contains(&year) {
+            return Err(AppError::InvalidRequest("归档年份无效"));
+        }
+        (
+            Some(
+                Utc.with_ymd_and_hms(year, 1, 1, 0, 0, 0)
+                    .single()
+                    .ok_or(AppError::InvalidRequest("归档年份无效"))?
+                    .fixed_offset(),
+            ),
+            Some(
+                Utc.with_ymd_and_hms(year + 1, 1, 1, 0, 0, 0)
+                    .single()
+                    .ok_or(AppError::InvalidRequest("归档年份无效"))?
+                    .fixed_offset(),
+            ),
+        )
+    } else {
+        (None, None)
+    };
+    Ok(ArticleFilter {
+        category_id,
+        tag_id,
+        published_from,
+        published_before,
+    })
+}
+
+fn validate_filter_slug(value: &str) -> Result<(), AppError> {
+    let valid = !value.is_empty()
+        && value.len() <= 80
+        && value
+            .split('-')
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_alphanumeric()));
+    if valid && value.bytes().all(|byte| !byte.is_ascii_uppercase()) {
+        Ok(())
+    } else {
+        Err(AppError::InvalidRequest("筛选 slug 无效"))
+    }
+}
+
+fn pagination_html(query: &ArticleListQuery, page: u64, has_next: bool) -> String {
+    if page == 1 && !has_next {
+        return String::new();
+    }
+    let mut links = String::from(r#"<nav class="meta" aria-label="文章分页">"#);
+    if page > 1 {
+        links.push_str(&format!(
+            r#"<a href="{}">← 上一页</a>"#,
+            escape_html(&article_list_url(query, page - 1))
+        ));
+    }
+    if has_next {
+        links.push_str(&format!(
+            r#"<a href="{}">下一页 →</a>"#,
+            escape_html(&article_list_url(query, page + 1))
+        ));
+    }
+    links.push_str("</nav>");
+    links
+}
+
+fn article_list_url(query: &ArticleListQuery, page: u64) -> String {
+    let mut parameters = Vec::new();
+    if let Some(tag) = &query.tag {
+        parameters.push(format!("tag={tag}"));
+    }
+    if let Some(category) = &query.category {
+        parameters.push(format!("category={category}"));
+    }
+    if let Some(year) = query.year {
+        parameters.push(format!("year={year}"));
+    }
+    if page > 1 {
+        parameters.push(format!("page={page}"));
+    }
+    if parameters.is_empty() {
+        "/articles".to_owned()
+    } else {
+        format!("/articles?{}", parameters.join("&"))
+    }
+}
+
 async fn load_articles(
     state: &AppState,
     limit: u64,
+    offset: u64,
     search: Option<&str>,
+    filter: &ArticleFilter,
 ) -> Result<Vec<ArticleCard>, AppError> {
     let mut query = articles::Entity::find()
         .filter(articles::Column::Status.eq("published"))
         .filter(articles::Column::PublishedAt.lte(Utc::now().fixed_offset()))
         .order_by_desc(articles::Column::PublishedAt)
+        .offset(offset)
         .limit(limit);
+    if let Some(category_id) = filter.category_id {
+        query = query.filter(articles::Column::CategoryId.eq(category_id));
+    }
+    if let Some(tag_id) = filter.tag_id {
+        let tag_articles = SeaQuery::select()
+            .column(article_tags::Column::ArticleId)
+            .from(article_tags::Entity)
+            .and_where(Expr::col(article_tags::Column::TagId).eq(tag_id))
+            .to_owned();
+        query = query.filter(articles::Column::Id.in_subquery(tag_articles));
+    }
+    if let Some(from) = filter.published_from {
+        query = query.filter(articles::Column::PublishedAt.gte(from));
+    }
+    if let Some(before) = filter.published_before {
+        query = query.filter(articles::Column::PublishedAt.lt(before));
+    }
     if let Some(search) = search {
         let pattern = format!("%{}%", search.replace('%', "\\%").replace('_', "\\_"));
         query = query.filter(
@@ -587,28 +782,32 @@ async fn article_card(state: &AppState, article: articles::Model) -> Result<Arti
         .filter(article_tags::Column::ArticleId.eq(article.id))
         .all(&state.database)
         .await?;
-    let mut tag_names = Vec::with_capacity(tag_links.len());
+    let mut tag_cards = Vec::with_capacity(tag_links.len());
     for link in tag_links {
         if let Some(tag) = tags::Entity::find_by_id(link.tag_id)
             .one(&state.database)
             .await?
         {
-            tag_names.push(tag.name);
+            tag_cards.push(TagCard {
+                name: tag.name,
+                slug: tag.slug,
+            });
         }
     }
     let cover_url = media_url(state, article.cover_media_id).await?;
+    let published_at = article
+        .published_at
+        .expect("published article has timestamp");
     Ok(ArticleCard {
         title: article.title,
         slug: article.slug,
         summary: article.summary.unwrap_or_default(),
         category: category.name,
-        tags: tag_names,
+        category_slug: category.slug,
+        tags: tag_cards,
         cover_url,
-        published: date(
-            article
-                .published_at
-                .expect("published article has timestamp"),
-        ),
+        published: date(published_at),
+        published_year: published_at.year(),
         views: metrics.view_count,
         likes: metrics.like_count,
     })
@@ -728,6 +927,28 @@ mod tests {
         assert_eq!(
             escape_html(r#"<script x="1">&"#),
             "&lt;script x=&quot;1&quot;&gt;&amp;"
+        );
+    }
+
+    #[test]
+    fn validates_filter_slugs() {
+        assert!(validate_filter_slug("rust-notes").is_ok());
+        assert!(validate_filter_slug("Rust").is_err());
+        assert!(validate_filter_slug("rust--notes").is_err());
+        assert!(validate_filter_slug("rust?next=evil").is_err());
+    }
+
+    #[test]
+    fn pagination_preserves_filters() {
+        let query = ArticleListQuery {
+            tag: Some("rust".to_owned()),
+            category: Some("technology".to_owned()),
+            year: Some(2026),
+            page: 1,
+        };
+        assert_eq!(
+            article_list_url(&query, 3),
+            "/articles?tag=rust&category=technology&year=2026&page=3"
         );
     }
 }
