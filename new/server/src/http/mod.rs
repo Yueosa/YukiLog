@@ -4,7 +4,7 @@ use axum::{
     Router,
     extract::DefaultBodyLimit,
     http::{HeaderName, HeaderValue},
-    routing::get,
+    routing::{get, post, put},
 };
 use tower_http::{
     compression::CompressionLayer, set_header::SetResponseHeaderLayer, trace::TraceLayer,
@@ -16,6 +16,13 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
+        .route("/api/admin/auth/login", post(crate::auth::login))
+        .route("/api/admin/auth/session", get(crate::auth::session))
+        .route("/api/admin/auth/logout", post(crate::auth::logout))
+        .route(
+            "/api/admin/auth/password",
+            put(crate::auth::change_password),
+        )
         .layer(DefaultBodyLimit::max(256 * 1024))
         .layer(CompressionLayer::new())
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -45,15 +52,12 @@ mod tests {
         http::{Request, StatusCode},
     };
     use http_body_util::BodyExt;
-    use sea_orm::DatabaseConnection;
     use tower::ServiceExt;
 
     use super::*;
 
     fn test_state() -> AppState {
-        AppState {
-            database: DatabaseConnection::Disconnected,
-        }
+        AppState::for_test()
     }
 
     #[tokio::test]
@@ -96,5 +100,20 @@ mod tests {
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["database"], "unavailable");
+    }
+
+    #[tokio::test]
+    async fn admin_session_requires_authentication() {
+        let response = router(test_state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/admin/auth/session")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 }

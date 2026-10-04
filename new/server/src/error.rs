@@ -11,6 +11,16 @@ use thiserror::Error;
 pub enum AppError {
     #[error("database operation failed")]
     Database(#[from] DbErr),
+    #[error("invalid request: {0}")]
+    InvalidRequest(&'static str),
+    #[error("authentication required")]
+    Unauthorized,
+    #[error("request origin or CSRF token is invalid")]
+    Forbidden,
+    #[error("too many authentication attempts")]
+    RateLimited,
+    #[error("internal operation failed: {0}")]
+    Internal(&'static str),
 }
 
 #[derive(Serialize)]
@@ -23,6 +33,27 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, code, message) = match &self {
             Self::Database(error) => classify_database_error(error),
+            Self::InvalidRequest(message) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "invalid_request",
+                *message,
+            ),
+            Self::Unauthorized => (
+                StatusCode::UNAUTHORIZED,
+                "invalid_credentials",
+                "登录信息无效",
+            ),
+            Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", "请求验证失败"),
+            Self::RateLimited => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "rate_limited",
+                "尝试次数过多，请稍后再试",
+            ),
+            Self::Internal(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "服务器内部错误",
+            ),
         };
 
         if status.is_server_error() {

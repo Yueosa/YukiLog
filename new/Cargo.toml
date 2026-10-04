@@ -8,16 +8,25 @@ license = "AGPL-3.0-only"
 rust-version = "1.85"
 
 [workspace.dependencies]
+argon2 = "0.5"
 async-trait = "0.1"
 axum = "0.8"
+axum-extra = { version = "0.12", features = ["cookie"] }
+base64 = "0.22"
+chrono = "0.4"
+cookie = "0.18"
 http-body-util = "0.1"
+rand = "0.8"
+rpassword = "7"
 sea-orm = { version = "1.1.20", default-features = false, features = ["macros", "runtime-tokio-rustls", "sqlx-postgres", "with-chrono", "with-json", "with-uuid"] }
 sea-orm-migration = { version = "1.1.20", features = ["runtime-tokio-rustls", "sqlx-postgres"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 sqlx = { version = "0.8.6", default-features = false }
+subtle = "2"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync"] }
 tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["compression-gzip", "set-header", "trace"] }
 tracing = "0.1"

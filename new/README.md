@@ -19,6 +19,10 @@ cargo run -p yukilog-server
 # 数据库迁移
 cargo run -p yukilog-migration -- up
 
+# 交互式创建管理员
+cargo run -p yukilog-server --bin yukilog-admin -- \
+  create-admin <username> <display-name>
+
 # Lit 开发服务器
 pnpm install
 pnpm dev

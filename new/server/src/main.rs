@@ -1,5 +1,7 @@
+use std::net::SocketAddr;
+
 use tracing_subscriber::EnvFilter;
-use yukilog_server::{app, config::AppConfig, database};
+use yukilog_server::{AppState, app, config::AppConfig, database};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,12 +14,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = AppConfig::from_env()?;
     let database = database::connect(&config.database_url).await?;
+    let state = AppState::new(database.clone(), config.public_origin).await?;
     let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
 
     tracing::info!(address = %config.listen_addr, "YukiLog server started");
-    axum::serve(listener, app(database.clone()))
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
     database.close().await?;
     Ok(())
 }
