@@ -24,6 +24,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '纵向堆叠',
     group: 'layout',
     acceptsChildren: true,
+    defaultProps: { gap: 'md', maxWidth: 'full', align: 'stretch', sticky: false },
     configurableFields: ['gap', 'maxWidth', 'align'],
     properties: {
       gap: { kind: 'string', values: spacing },
@@ -38,6 +39,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '自由网格',
     group: 'layout',
     acceptsChildren: true,
+    defaultProps: { columns: '1fr', gap: 'md', align: 'stretch', maxWidth: '1120px' },
     configurableFields: ['columns', 'gap', 'align'],
     properties: {
       columns: {
@@ -60,6 +62,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '主栏与侧栏',
     group: 'layout',
     acceptsChildren: true,
+    defaultProps: { sidebarWidth: '270px', side: 'left', gap: 'lg', sticky: false },
     configurableFields: ['sidebarWidth', 'side', 'gap', 'sticky'],
     properties: {
       sidebarWidth: { kind: 'string', values: ['240px', '270px', '320px'] },
@@ -75,6 +78,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: 'Bento 区域',
     group: 'layout',
     acceptsChildren: true,
+    defaultProps: { columns: 12, rowHeight: 'auto', gap: 'md', maxWidth: '1240px' },
     configurableFields: ['columns', 'rowHeight', 'gap'],
     properties: {
       columns: { kind: 'integer', minimum: 1, maximum: 12 },
@@ -89,6 +93,14 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '通用卡片',
     group: 'layout',
     acceptsChildren: true,
+    defaultProps: {
+      variant: 'plain',
+      padding: 'md',
+      radius: 'md',
+      shadow: 'soft',
+      align: 'stretch',
+      sticky: false,
+    },
     variants: ['plain', 'glass', 'outlined', 'paper'],
     configurableFields: ['variant', 'padding', 'radius', 'shadow', 'align', 'sticky'],
     properties: {
@@ -106,10 +118,33 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '沉浸式首屏',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: {
+      variant: 'cinematic',
+      title: '新的首屏',
+      lead: '在属性面板中继续配置。',
+      showSocials: true,
+      showEnter: true,
+      backgroundPosition: 'center',
+      overlay: 'medium',
+    },
     variants: ['cinematic', 'compact', 'split'],
-    configurableFields: ['variant', 'title', 'lead', 'showSocials', 'showEnter'],
+    configurableFields: [
+      'backgroundMediaId',
+      'backgroundPosition',
+      'overlay',
+      'title',
+      'lead',
+      'showSocials',
+      'showEnter',
+    ],
     properties: {
       variant: { kind: 'string', values: ['cinematic', 'compact', 'split'] },
+      backgroundMediaId: { kind: 'media-image' },
+      backgroundPosition: {
+        kind: 'string',
+        values: ['center', 'top', 'bottom', 'left', 'right'],
+      },
+      overlay: { kind: 'string', values: ['soft', 'medium', 'strong'] },
       title: { kind: 'string', maxLength: 120 },
       lead: { kind: 'string', maxLength: 500 },
       showSocials: { kind: 'boolean' },
@@ -122,6 +157,12 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '文字刊头',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: {
+      variant: 'minimal',
+      title: '新的刊头',
+      lead: '一段页面说明。',
+      alignment: 'left',
+    },
     variants: ['editorial', 'minimal'],
     configurableFields: ['title', 'lead', 'alignment'],
     properties: {
@@ -137,6 +178,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '头像',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: { source: 'site-owner', size: 'lg', shape: 'circle', label: '头像' },
     variants: ['circle', 'rounded', 'square'],
     configurableFields: ['source', 'size', 'shape', 'label'],
     properties: {
@@ -152,6 +194,12 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '文字块',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: {
+      source: 'literal',
+      variant: 'body',
+      text: '新的文字内容',
+      alignment: 'left',
+    },
     variants: ['eyebrow', 'heading', 'body', 'caption'],
     configurableFields: ['source', 'variant', 'text', 'alignment'],
     properties: {
@@ -170,6 +218,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '社交链接',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: { variant: 'labels', alignment: 'left' },
     variants: ['icons', 'labels', 'pills'],
     configurableFields: ['variant', 'alignment'],
     properties: {
@@ -183,6 +232,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '状态行',
     group: 'decoration',
     acceptsChildren: false,
+    defaultProps: { text: 'system.log · online', tone: 'online' },
     variants: ['neutral', 'online', 'accent'],
     configurableFields: ['text', 'tone'],
     properties: {
@@ -196,6 +246,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '双面个人卡',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: { variant: 'compact', flip: true, showSocials: true, showStatus: true },
     variants: ['portrait', 'letter', 'compact'],
     configurableFields: ['variant', 'flip', 'showSocials', 'showStatus'],
     properties: {
@@ -211,6 +262,13 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '文章列表',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: {
+      variant: 'compact',
+      fields: ['title', 'date', 'category'],
+      columns: 1,
+      limit: 5,
+      sort: 'latest',
+    },
     variants: ['alternating', 'editorial', 'cover-overlay', 'compact'],
     configurableFields: ['variant', 'fields', 'columns', 'limit', 'sort'],
     properties: {
@@ -234,6 +292,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '引语',
     group: 'decoration',
     acceptsChildren: false,
+    defaultProps: { text: '新加入的一段引语。', attribution: 'YukiLog', alignment: 'left' },
     configurableFields: ['text', 'attribution', 'alignment'],
     properties: {
       text: { kind: 'string', maxLength: 500 },
@@ -247,6 +306,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '站点数据',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: { fields: ['articles', 'dynamics', 'words'], compact: true },
     configurableFields: ['fields', 'compact'],
     properties: {
       fields: {
@@ -263,6 +323,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '最近动态',
     group: 'content',
     acceptsChildren: false,
+    defaultProps: { limit: 3, variant: 'timeline' },
     configurableFields: ['limit', 'variant'],
     properties: {
       limit: { kind: 'integer', minimum: 1, maximum: 12 },
@@ -274,7 +335,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
 
 export function validateLayout(document: LayoutDocument): string[] {
   const errors = validatePageLayout(document);
-  if (!['hanakoi', 'moonletter', 'orbit'].includes(document.theme)) {
+  if (document.theme !== 'hanakoi') {
     errors.push('未注册的主题');
   }
   if (document.shell.schemaVersion !== 1) errors.push('不支持的外壳 schemaVersion');
@@ -366,6 +427,15 @@ function validateProperties(
         (value as number) > schema.maximum
       ) {
         errors.push(`节点 ${nodeId} 的 ${name} 必须是有效整数`);
+      }
+    } else if (schema.kind === 'media-image') {
+      if (
+        typeof value !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          value,
+        )
+      ) {
+        errors.push(`节点 ${nodeId} 的 ${name} 必须引用有效图片`);
       }
     } else if (
       !Array.isArray(value) ||

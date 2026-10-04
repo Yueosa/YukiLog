@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use axum::{
     Json,
     extract::{Path, State},
@@ -6,11 +8,17 @@ use axum::{
 use axum_extra::extract::cookie::CookieJar;
 use chrono::{DateTime, FixedOffset};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, EntityTrait, IntoActiveModel, QueryOrder, Set,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter,
+    QueryOrder, Set, prelude::Uuid,
 };
 use serde::Serialize;
 
-use crate::{AppState, auth, entities::page_layouts, error::AppError, layout::PageLayoutDocument};
+use crate::{
+    AppState, auth,
+    entities::{media_assets, page_layouts},
+    error::AppError,
+    layout::PageLayoutDocument,
+};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +66,7 @@ pub async fn put_layout(
 ) -> Result<Json<LayoutResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
     layout.validate().map_err(AppError::InvalidRequest)?;
+    validate_layout_media(&state, &layout).await?;
     let value =
         serde_json::to_value(&layout).map_err(|_| AppError::Internal("serialize layout"))?;
 
@@ -78,6 +87,32 @@ pub async fn put_layout(
         .await?
     };
     Ok(Json(model.try_into()?))
+}
+
+async fn validate_layout_media(
+    state: &AppState,
+    layout: &PageLayoutDocument,
+) -> Result<(), AppError> {
+    let ids = layout
+        .media_ids()
+        .into_iter()
+        .filter_map(|id| Uuid::parse_str(id).ok())
+        .collect::<HashSet<_>>();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let media = media_assets::Entity::find()
+        .filter(media_assets::Column::Id.is_in(ids.iter().copied()))
+        .all(&state.database)
+        .await?;
+    if media.len() != ids.len()
+        || media
+            .iter()
+            .any(|item| !item.media_type.starts_with("image/"))
+    {
+        return Err(AppError::InvalidRequest("布局背景必须引用媒体库中的图片"));
+    }
+    Ok(())
 }
 
 impl TryFrom<page_layouts::Model> for LayoutResponse {

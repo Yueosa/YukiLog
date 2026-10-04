@@ -1,4 +1,5 @@
 export type NavigationVariant = 'topbar' | 'sidebar' | 'floating-dock';
+export type ThemeId = 'hanakoi' | 'yukikoi-moonletter';
 
 export type ComponentType =
   | 'stack'
@@ -61,7 +62,7 @@ export interface PageLayoutDocument {
 }
 
 export interface LayoutDocument extends PageLayoutDocument {
-  theme: 'hanakoi' | 'moonletter' | 'orbit';
+  theme: ThemeId;
   shell: ShellLayout;
 }
 
@@ -70,6 +71,7 @@ export interface ComponentDefinition {
   label: string;
   group: 'layout' | 'content' | 'decoration';
   acceptsChildren: boolean;
+  defaultProps: Readonly<Record<string, unknown>>;
   variants?: readonly string[];
   configurableFields?: readonly string[];
   properties: Readonly<Record<string, PropertySchema>>;
@@ -93,4 +95,7 @@ export type PropertySchema =
       kind: 'string-array';
       values: readonly string[];
       maxItems: number;
+    }
+  | {
+      kind: 'media-image';
     };

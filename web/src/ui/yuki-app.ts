@@ -1,19 +1,26 @@
 import { LitElement, css, html, nothing } from 'lit';
+import { styleMap } from 'lit/directives/style-map.js';
 import {
   componentRegistry,
   flattenLayout,
   toPageLayout,
   validateLayout,
 } from '../layout/registry.js';
+import {
+  LayoutCommandError,
+  indexLayout,
+  validDropPositions,
+  type DropPosition,
+} from '../layout/commands.js';
 import { layoutPresets } from '../layout/presets.js';
+import { LayoutStudioStore, type StudioMutation } from '../layout/studio-store.js';
 import type {
   ArticleField,
-  ArticleVariant,
   ComponentType,
   LayoutDocument,
   LayoutNode,
-  NavigationVariant,
   PageLayoutDocument,
+  PropertySchema,
 } from '../layout/types.js';
 
 const articles = [
@@ -87,20 +94,73 @@ const dynamics = [
   '今天的风很轻，适合慢一点做决定。',
 ];
 
-const navigationLabels: Record<NavigationVariant, string> = {
-  topbar: '顶部导航',
-  sidebar: '固定侧栏',
-  'floating-dock': '浮动 Dock',
+const propertyLabels: Record<string, string> = {
+  variant: '外观',
+  title: '标题',
+  lead: '说明',
+  text: '文字',
+  attribution: '署名',
+  source: '内容来源',
+  alignment: '对齐',
+  align: '子项对齐',
+  gap: '间距',
+  maxWidth: '最大宽度',
+  columns: '列',
+  sidebarWidth: '侧栏宽度',
+  side: '侧栏方向',
+  sticky: '滚动吸附',
+  rowHeight: '行高',
+  padding: '内边距',
+  radius: '圆角',
+  shadow: '阴影',
+  showSocials: '显示社交链接',
+  showEnter: '显示进入按钮',
+  backgroundMediaId: '首屏背景',
+  backgroundPosition: '背景焦点',
+  overlay: '背景遮罩',
+  showStatus: '显示状态',
+  flip: '允许翻转',
+  size: '尺寸',
+  shape: '形状',
+  label: '替代文字',
+  tone: '语气',
+  fields: '显示字段',
+  limit: '数量',
+  sort: '排序',
+  compact: '紧凑显示',
 };
 
+export interface StudioMedia {
+  id: string;
+  url: string;
+  mediaType: string;
+  name: string;
+}
+
 export class YukiApp extends LitElement {
-  private layout: LayoutDocument = structuredClone(layoutPresets[0]);
+  private readonly studioStore = new LayoutStudioStore<LayoutDocument>(layoutPresets[0]);
+  private readonly previewOnly = new URLSearchParams(window.location.search).get('preview') === '1';
   private studio = false;
-  private selectedNodeId = this.layout.root.id;
+  private previewSelectedNodeId: string | null = null;
   private flippedProfiles = new Set<string>();
   private draggingNodeId: string | null = null;
+  private draggingComponentType: ComponentType | null = null;
+  private dropTarget: { nodeId: string; position: DropPosition } | null = null;
+  private studioAnnouncement = '';
+  private moveTargetId: string | null = null;
+  private studioViewport: 'desktop' | 'tablet' | 'mobile' = 'desktop';
+  private mediaLibrary: StudioMedia[] = [];
+  private nodeSequence = 0;
   private navPastHero = false;
   private navRevealed = false;
+
+  private get layout(): LayoutDocument {
+    return this.studioStore.document;
+  }
+
+  private get selectedNodeId(): string {
+    return this.studioStore.selectedNodeId;
+  }
 
   private readonly handleViewportScroll = () => {
     const pastHero = window.scrollY >= window.innerHeight - 56;
@@ -120,28 +180,90 @@ export class YukiApp extends LitElement {
     }
   };
 
+  private readonly handleStudioKeydown = (event: KeyboardEvent) => {
+    if (!this.studio || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') {
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
+    event.preventDefault();
+    if (event.shiftKey) this.redoStudio();
+    else this.undoStudio();
+  };
+
+  private readonly handlePreviewMessage = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin || event.data?.source !== 'yukilog-studio') return;
+    if (this.previewOnly && event.data.type === 'render-layout') {
+      this.studioStore.reset(
+        event.data.layout as LayoutDocument,
+        typeof event.data.selectedNodeId === 'string'
+          ? event.data.selectedNodeId
+          : event.data.layout.root.id,
+      );
+      this.previewSelectedNodeId =
+        typeof event.data.selectedNodeId === 'string' ? event.data.selectedNodeId : null;
+      this.mediaLibrary = Array.isArray(event.data.mediaLibrary)
+        ? (event.data.mediaLibrary as StudioMedia[])
+        : [];
+      this.requestUpdate();
+      return;
+    }
+    if (!this.previewOnly && this.studio && event.data.type === 'select-node') {
+      if (this.studioStore.select(String(event.data.nodeId))) {
+        this.studioAnnouncement = `已选择 ${String(event.data.nodeId)}`;
+        this.requestUpdate();
+      }
+    }
+  };
+
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('scroll', this.handleViewportScroll, { passive: true });
     window.addEventListener('pointermove', this.handlePointerMove, { passive: true });
+    window.addEventListener('keydown', this.handleStudioKeydown);
+    window.addEventListener('message', this.handlePreviewMessage);
     this.handleViewportScroll();
   }
 
   disconnectedCallback() {
     window.removeEventListener('scroll', this.handleViewportScroll);
     window.removeEventListener('pointermove', this.handlePointerMove);
+    window.removeEventListener('keydown', this.handleStudioKeydown);
+    window.removeEventListener('message', this.handlePreviewMessage);
     super.disconnectedCallback();
   }
 
+  protected updated() {
+    if (this.studio && !this.previewOnly) this.syncStudioPreview();
+  }
+
   loadPageLayout(page: PageLayoutDocument) {
-    this.layout = { ...this.layout, ...structuredClone(page) };
-    this.selectedNodeId = this.layout.root.id;
+    this.studioStore.reset({ ...this.layout, ...structuredClone(page) });
     this.studio = true;
+    this.requestUpdate();
+  }
+
+  setMediaLibrary(media: StudioMedia[]) {
+    this.mediaLibrary = media.filter((item) => item.mediaType.startsWith('image/'));
     this.requestUpdate();
   }
 
   exportPageLayout(): PageLayoutDocument {
     return structuredClone(toPageLayout(this.layout));
+  }
+
+  private syncStudioPreview() {
+    const frame = this.renderRoot.querySelector<HTMLIFrameElement>('.studio-preview');
+    frame?.contentWindow?.postMessage(
+      {
+        source: 'yukilog-studio',
+        type: 'render-layout',
+        layout: this.layout,
+        selectedNodeId: this.selectedNodeId,
+        mediaLibrary: this.mediaLibrary,
+      },
+      window.location.origin,
+    );
   }
 
   static styles = css`
@@ -274,59 +396,81 @@ export class YukiApp extends LitElement {
 
     .nav-topbar {
       position: fixed;
-      top: 10px;
+      top: 0;
       left: 50%;
       display: flex;
-      width: auto;
-      max-width: calc(100% - 32px);
-      height: 54px;
+      width: 100%;
+      height: 50px;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      gap: 18px;
       padding: 0 20px;
       transform: translateX(-50%);
-      border: 1px solid var(--line);
-      border-radius: 22px;
-      background: color-mix(in srgb, var(--surface) 95%, transparent);
+      border: 0;
+      border-radius: 0;
+      background: var(--surface);
       color: var(--ink);
       opacity: 0;
       pointer-events: none;
-      box-shadow: 0 12px 38px rgb(25 40 58 / 12%);
-      backdrop-filter: blur(16px);
       transition:
-        opacity 220ms ease,
-        background 220ms ease,
-        transform 220ms ease;
+        opacity 400ms ease,
+        width 500ms cubic-bezier(0.22, 0.61, 0.36, 1),
+        border-radius 500ms cubic-bezier(0.22, 0.61, 0.36, 1),
+        top 500ms cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 500ms ease;
     }
 
-    .nav-topbar.revealed,
-    .nav-topbar.sticky {
+    .nav-topbar.nav-active,
+    .nav-topbar.nav-sticky {
       opacity: 1;
       pointer-events: auto;
     }
 
-    .nav-topbar:not(.sticky) .brand {
+    .nav-topbar.nav-sticky {
+      top: 10px;
+      width: auto;
+      max-width: calc(100% - 32px);
+      border-radius: 999px;
+      box-shadow:
+        -8px 10px 0 color-mix(in srgb, var(--primary) 16%, transparent),
+        0 4px 16px rgb(23 42 66 / 12%);
+    }
+
+    .nav-topbar:not(.nav-sticky) .brand {
       display: none;
     }
 
     .nav-corners {
       position: fixed;
-      z-index: 49;
+      z-index: 51;
       top: 0;
       right: 0;
       left: 0;
       display: flex;
-      height: 64px;
+      height: 50px;
       align-items: center;
       justify-content: space-between;
       padding: 0 30px;
       color: white;
       text-shadow: 0 2px 12px rgb(0 0 0 / 28%);
       pointer-events: none;
-      transition: opacity 180ms ease;
+      transition:
+        color 220ms ease,
+        opacity 400ms ease,
+        text-shadow 220ms ease;
     }
 
     .nav-corners.hidden {
       opacity: 0;
+    }
+
+    .nav-corners.active {
+      color: var(--ink);
+      text-shadow: none;
+    }
+
+    .nav-corners > * {
+      pointer-events: auto;
     }
 
     .nav-corner-actions {
@@ -362,6 +506,32 @@ export class YukiApp extends LitElement {
     .nav-topbar .nav-links a:hover {
       background: var(--surface-soft);
       color: var(--primary);
+    }
+
+    .nav-topbar .nav-links a {
+      opacity: 0;
+      transform: translateX(28px);
+    }
+
+    .nav-topbar.nav-active .nav-links a,
+    .nav-topbar.nav-sticky .nav-links a {
+      animation: nav-item-in 550ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    }
+
+    .nav-topbar .nav-links a:nth-child(2) {
+      animation-delay: 80ms;
+    }
+
+    .nav-topbar .nav-links a:nth-child(3) {
+      animation-delay: 160ms;
+    }
+
+    .nav-topbar .nav-links a:nth-child(4) {
+      animation-delay: 240ms;
+    }
+
+    .nav-topbar .nav-links a:nth-child(5) {
+      animation-delay: 320ms;
     }
 
     .nav-sidebar {
@@ -532,6 +702,19 @@ export class YukiApp extends LitElement {
       width: min(1420px, calc(100% - 48px));
       grid-template-columns: minmax(220px, 280px) minmax(0, 900px) minmax(220px, 280px);
       justify-content: center;
+    }
+
+    .theme-hanakoi .layout-grid.grid-three-rail {
+      width: 100%;
+      min-height: 100svh;
+      gap: 28px;
+      padding: 70px clamp(16px, 2vw, 32px) 96px;
+      background: var(--page);
+    }
+
+    .theme-hanakoi .layout-card {
+      border: 0;
+      background: var(--surface);
     }
 
     .max-full {
@@ -870,6 +1053,39 @@ export class YukiApp extends LitElement {
       inset: 0;
     }
 
+    .hero-background {
+      position: absolute;
+      z-index: -2;
+      inset: -2%;
+      background-repeat: no-repeat;
+      background-size: cover;
+      filter: brightness(0.3) blur(8px);
+      transform: scale(1.06);
+      animation: hero-media-reveal 1.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    }
+
+    .hero.has-media::before {
+      display: none;
+    }
+
+    .hero.overlay-soft {
+      --hero-brightness: 0.82;
+      --hero-shade-top: 0.06;
+      --hero-shade-bottom: 0.34;
+    }
+
+    .hero.overlay-medium {
+      --hero-brightness: 0.7;
+      --hero-shade-top: 0.12;
+      --hero-shade-bottom: 0.52;
+    }
+
+    .hero.overlay-strong {
+      --hero-brightness: 0.56;
+      --hero-shade-top: 0.2;
+      --hero-shade-bottom: 0.68;
+    }
+
     .theme-hanakoi .hero::before {
       background:
         radial-gradient(circle at 78% 18%, rgb(255 219 221 / 78%), transparent 13%),
@@ -884,12 +1100,16 @@ export class YukiApp extends LitElement {
       z-index: -1;
       background:
         linear-gradient(90deg, rgb(4 12 24 / 42%), transparent 58%),
-        linear-gradient(180deg, rgb(6 14 28 / 10%), rgb(6 14 28 / 58%));
+        linear-gradient(
+          180deg,
+          rgb(6 14 28 / var(--hero-shade-top, 0.12)),
+          rgb(6 14 28 / var(--hero-shade-bottom, 0.52))
+        );
     }
 
     .hero-inner {
-      width: min(720px, calc(100% - 36px));
-      padding: 150px 0 100px;
+      width: min(580px, 70vw);
+      padding: 100px 0 80px;
       text-align: center;
     }
 
@@ -901,12 +1121,7 @@ export class YukiApp extends LitElement {
     }
 
     .theme-hanakoi .hero-inner > .component-kicker {
-      padding: 8px 13px;
-      border: 1px solid rgb(255 255 255 / 22%);
-      border-radius: 999px;
-      background: rgb(8 17 30 / 18%);
-      color: rgb(255 255 255 / 74%);
-      backdrop-filter: blur(12px);
+      display: none;
     }
 
     .hero h1 {
@@ -918,35 +1133,37 @@ export class YukiApp extends LitElement {
     }
 
     .theme-hanakoi .hero h1 {
-      max-width: 850px;
-      font-family: var(--serif);
-      font-size: clamp(48px, 7vw, 86px);
-      font-weight: 700;
-      letter-spacing: 0.09em;
+      max-width: 100%;
+      font-family: inherit;
+      font-size: clamp(35px, 5vw, 48px);
+      font-weight: 900;
+      letter-spacing: 0.03em;
       text-wrap: balance;
+      text-shadow:
+        0 2px 16px rgb(0 0 0 / 50%),
+        0 0 4px rgb(0 0 0 / 30%);
     }
 
     .hero-character {
       display: inline-block;
       opacity: 0;
       transform: translateY(14px);
-      animation: character-in 520ms calc(180ms + var(--char-index) * 65ms)
+      animation: character-in 500ms calc(var(--char-index) * 80ms)
         cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
     }
 
     .hero-info {
       width: min(580px, 82vw);
-      margin-top: 22px;
-      padding: 18px 26px 14px;
-      border: 1px solid rgb(255 255 255 / 11%);
-      border-radius: 22px;
-      background: rgb(3 9 18 / 54%);
-      box-shadow: 0 22px 54px rgb(0 0 0 / 20%);
-      backdrop-filter: blur(14px);
+      margin-top: 12px;
+      padding: 8px 32px;
+      border: 0;
+      border-radius: 24px;
+      background: rgb(0 0 0 / 60%);
+      box-shadow: none;
     }
 
     .hero-info > p {
-      margin-top: 0;
+      margin: 12px auto 4px;
     }
 
     .hero p {
@@ -959,11 +1176,10 @@ export class YukiApp extends LitElement {
     .social-row {
       display: flex;
       justify-content: center;
-      gap: 8px;
-      margin-top: 22px;
+      gap: 16px;
+      margin-top: 4px;
     }
 
-    .social-row span,
     .enter-button {
       padding: 10px 15px;
       border: 1px solid rgb(255 255 255 / 22%);
@@ -973,15 +1189,25 @@ export class YukiApp extends LitElement {
       backdrop-filter: blur(12px);
     }
 
-    .social-row span {
-      min-width: 66px;
+    .social-row a {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: 50%;
+      color: rgb(255 255 255 / 82%);
+      font-size: 11px;
+      font-weight: 800;
+      text-decoration: none;
       transition:
         transform 180ms ease,
-        background 180ms ease;
+        background 180ms ease,
+        color 180ms ease;
     }
 
-    .social-row span:hover {
+    .social-row a:hover {
       background: rgb(255 255 255 / 16%);
+      color: white;
       transform: translateY(-4px);
     }
 
@@ -1608,17 +1834,17 @@ export class YukiApp extends LitElement {
     /* Layout studio */
     .studio-shell {
       display: grid;
-      min-height: 100dvh;
-      grid-template-columns: 220px minmax(520px, 1fr) 280px;
-      padding-top: 64px;
+      height: var(--studio-height, 100dvh);
+      min-height: 720px;
+      grid-template-columns: 250px minmax(0, 1fr) 320px;
       background: #0e131b;
       color: #e8edf5;
     }
 
     .studio-panel {
       position: sticky;
-      top: 64px;
-      height: calc(100dvh - 64px);
+      top: 0;
+      height: 100%;
       overflow: auto;
       padding: 20px 16px;
       border-right: 1px solid #27303d;
@@ -1661,7 +1887,16 @@ export class YukiApp extends LitElement {
       text-align: left;
     }
 
-    .tree-item[aria-pressed='true'] {
+    .palette-item {
+      cursor: grab;
+    }
+
+    .palette-item.dragging {
+      opacity: 0.38;
+      cursor: grabbing;
+    }
+
+    .tree-item.selected {
       border-color: #79c7d3;
       background: #21323e;
     }
@@ -1674,14 +1909,45 @@ export class YukiApp extends LitElement {
     }
 
     .tree-row {
+      position: relative;
       display: flex;
       align-items: center;
       gap: 4px;
       border-radius: 9px;
     }
 
+    .tree-node > .tree-node {
+      margin-left: 14px;
+    }
+
+    .tree-row.drop-inside {
+      outline: 2px solid #79c7d3;
+      outline-offset: 1px;
+      background: rgb(121 199 211 / 10%);
+    }
+
     .tree-row.dragging {
       opacity: 0.38;
+    }
+
+    .drag-handle {
+      display: grid;
+      width: 24px;
+      height: 28px;
+      flex: 0 0 24px;
+      place-items: center;
+      border-radius: 7px;
+      color: #8491a4;
+      cursor: grab;
+      user-select: none;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
+    .drag-handle:focus-visible {
+      outline: 2px solid #79c7d3;
     }
 
     .tree-row .tree-item {
@@ -1689,9 +1955,54 @@ export class YukiApp extends LitElement {
       flex: 1;
     }
 
-    .tree-depth {
-      color: #59677a;
-      font-family: ui-monospace, monospace;
+    .tree-drop-line {
+      position: relative;
+      height: 10px;
+      margin-left: 28px;
+    }
+
+    .tree-drop-line::before {
+      position: absolute;
+      top: 4px;
+      right: 2px;
+      left: 2px;
+      height: 2px;
+      content: '';
+      border-radius: 999px;
+      background: transparent;
+    }
+
+    .tree-drop-line span,
+    .inside-label {
+      position: absolute;
+      z-index: 2;
+      right: 8px;
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: #79c7d3;
+      color: #102027;
+      font-size: 9px;
+      font-weight: 700;
+      pointer-events: none;
+      opacity: 0;
+    }
+
+    .tree-drop-line span {
+      top: -4px;
+    }
+
+    .inside-label {
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    .tree-drop-line.active::before {
+      background: #79c7d3;
+    }
+
+    .tree-drop-line.active span,
+    .tree-row.drop-inside .inside-label {
+      opacity: 1;
     }
 
     .tree-actions {
@@ -1717,19 +2028,77 @@ export class YukiApp extends LitElement {
     }
 
     .studio-canvas {
+      display: grid;
+      height: 100%;
       min-width: 0;
-      padding: 28px;
+      grid-template-rows: auto minmax(0, 1fr);
+      overflow: hidden;
+      background: #0b1017;
+    }
+
+    .studio-canvas-toolbar {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      min-height: 54px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 18px;
+      border-bottom: 1px solid #27303d;
+      background: #151b24;
+      color: #dbe2ed;
+      font-size: 12px;
+    }
+
+    .viewport-switcher {
+      display: flex;
+      gap: 3px;
+      padding: 3px;
+      border: 1px solid #303b49;
+      border-radius: 9px;
+      background: #101721;
+    }
+
+    .viewport-switcher button {
+      padding: 5px 9px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: #8f9aac;
+      font-size: 11px;
+    }
+
+    .viewport-switcher button[aria-pressed='true'] {
+      background: #2a3544;
+      color: #fff;
+    }
+
+    .studio-canvas-stage {
+      min-width: 0;
       overflow: auto;
+      padding: 24px;
     }
 
     .studio-preview {
       position: relative;
-      min-height: calc(100dvh - 120px);
+      width: 1500px;
+      min-height: calc(100dvh - 102px);
+      margin: 0 auto;
       overflow: hidden;
       border: 1px solid #303a48;
-      border-radius: 14px;
+      border-radius: 10px;
       background: white;
       box-shadow: 0 24px 80px rgb(0 0 0 / 34%);
+      transition: width 180ms ease;
+    }
+
+    .studio-preview.viewport-tablet {
+      width: 768px;
+    }
+
+    .studio-preview.viewport-mobile {
+      width: 390px;
     }
 
     .studio-preview .site-nav {
@@ -1748,21 +2117,17 @@ export class YukiApp extends LitElement {
       min-height: 760px;
     }
 
-    .studio-preview .node:hover::after,
-    .studio-preview .node.selected::after {
+    .is-studio-preview .node.selected::after {
       position: absolute;
       z-index: 120;
       content: attr(data-label);
       inset: 0;
+      padding: 4px 6px;
       border: 2px solid #79c7d3;
       background: rgb(121 199 211 / 5%);
       color: #fff;
       font: 11px system-ui;
       pointer-events: none;
-    }
-
-    .studio-preview .node:hover::after {
-      border-style: dashed;
     }
 
     .inspector-section {
@@ -1796,6 +2161,117 @@ export class YukiApp extends LitElement {
       color: #9de5ec;
     }
 
+    .studio-history,
+    .move-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 18px;
+    }
+
+    .studio-history button,
+    .move-actions button {
+      flex: 1;
+      padding: 7px 9px;
+      border: 1px solid #303b49;
+      border-radius: 8px;
+      background: #1b2330;
+      color: #c8d0dd;
+    }
+
+    .studio-history button:disabled,
+    .inspector-button:disabled {
+      cursor: not-allowed;
+      opacity: 0.38;
+    }
+
+    .property-list {
+      display: grid;
+      gap: 13px;
+    }
+
+    .property-field {
+      display: grid !important;
+      gap: 6px;
+      margin: 0 !important;
+    }
+
+    .property-field input,
+    .property-field select,
+    .property-field textarea {
+      width: 100%;
+      min-height: 34px;
+      padding: 7px 9px;
+      border: 1px solid #303b49;
+      border-radius: 8px;
+      outline: 0;
+      background: #101721;
+      color: #e3e9f2;
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .property-field textarea {
+      min-height: 82px;
+      resize: vertical;
+    }
+
+    .property-field input:focus,
+    .property-field select:focus,
+    .property-field textarea:focus {
+      border-color: #79c7d3;
+    }
+
+    .property-help {
+      color: #69778b;
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .property-toggle {
+      display: flex !important;
+      align-items: center;
+      gap: 8px;
+      margin: 0 !important;
+    }
+
+    .property-toggle input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+    }
+
+    .property-options {
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .property-options legend {
+      margin-bottom: 7px;
+      color: #8d98aa;
+      font-size: 11px;
+    }
+
+    .inspector-button.danger {
+      border-color: #62313c;
+      background: #2c1a20;
+      color: #f0a5b5;
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
     .layout-json {
       max-height: 180px;
       overflow: auto;
@@ -1820,6 +2296,24 @@ export class YukiApp extends LitElement {
       to {
         filter: blur(0) brightness(1);
         transform: scale(1.04);
+      }
+    }
+
+    @keyframes nav-item-in {
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes hero-media-reveal {
+      from {
+        filter: brightness(0.3) blur(8px);
+        transform: scale(1.08);
+      }
+      to {
+        filter: brightness(var(--hero-brightness, 0.7)) blur(0);
+        transform: scale(1.02);
       }
     }
 
@@ -1867,6 +2361,22 @@ export class YukiApp extends LitElement {
         animation: card-in both;
         animation-range: entry 10% cover 28%;
         animation-timeline: view();
+      }
+    }
+
+    @media (max-width: 1400px) {
+      .theme-hanakoi .layout-grid.grid-three-rail {
+        width: min(100% - 32px, 900px);
+        grid-template-columns: minmax(0, 900px);
+        row-gap: 32px;
+        padding: 32px 0 80px;
+      }
+
+      .theme-hanakoi .layout-grid.grid-three-rail > .layout-card,
+      .theme-hanakoi .layout-grid.grid-three-rail > .layout-stack {
+        position: static;
+        width: min(100%, 800px);
+        margin-inline: auto;
       }
     }
 
@@ -2025,8 +2535,8 @@ export class YukiApp extends LitElement {
       }
 
       .theme-hanakoi .hero h1 {
-        font-size: clamp(40px, 13vw, 60px);
-        letter-spacing: 0.04em;
+        font-size: clamp(32px, 10vw, 40px);
+        letter-spacing: 0.03em;
       }
 
       .hero p {
@@ -2067,213 +2577,173 @@ export class YukiApp extends LitElement {
     }
   `;
 
-  private selectPreset(index: number) {
-    this.layout = structuredClone(layoutPresets[index]);
-    this.selectedNodeId = this.layout.root.id;
-    this.flippedProfiles.clear();
-    this.requestUpdate();
-  }
-
   private selectNode(id: string, event?: Event) {
     event?.stopPropagation();
+    if (this.previewOnly) {
+      window.parent.postMessage(
+        { source: 'yukilog-studio', type: 'select-node', nodeId: id },
+        window.location.origin,
+      );
+      return;
+    }
     if (!this.studio) return;
-    this.selectedNodeId = id;
+    if (this.studioStore.select(id)) this.requestUpdate();
+  }
+
+  private applyStudioMutation(mutation: StudioMutation) {
+    if (!mutation.changed) return;
+    this.studioAnnouncement = mutation.announcement;
     this.requestUpdate();
   }
 
-  private findNode(node: LayoutNode, id: string): LayoutNode | undefined {
-    if (node.id === id) return node;
-    for (const child of node.children ?? []) {
-      const found = this.findNode(child, id);
-      if (found) return found;
-    }
-    return undefined;
-  }
-
-  private moveNode(
-    draggedId: string,
-    targetId: string,
-    position: 'before' | 'inside' | 'after',
-  ) {
-    if (draggedId === this.layout.root.id || draggedId === targetId) return;
-    const dragged = this.findNode(this.layout.root, draggedId);
-    const target = this.findNode(this.layout.root, targetId);
-    if (!dragged || !target || this.findNode(dragged, targetId)) return;
-    if (position === 'inside' && !componentRegistry[target.type].acceptsChildren) {
-      position = 'after';
-    }
-    if (targetId === this.layout.root.id && position !== 'inside') return;
-
-    let detached: LayoutNode | undefined;
-    const detach = (node: LayoutNode): LayoutNode => {
-      const children: LayoutNode[] = [];
-      for (const child of node.children ?? []) {
-        if (child.id === draggedId) detached = child;
-        else children.push(detach(child));
-      }
-      return { ...node, children };
-    };
-    const withoutDragged = detach(this.layout.root);
-    if (!detached) return;
-
-    const moving = detached;
-    const insert = (node: LayoutNode): LayoutNode => {
-      if (node.id === targetId && position === 'inside') {
-        return { ...node, children: [...(node.children ?? []).map(insert), moving] };
-      }
-      const children: LayoutNode[] = [];
-      for (const child of node.children ?? []) {
-        if (child.id === targetId && position === 'before') children.push(moving);
-        children.push(insert(child));
-        if (child.id === targetId && position === 'after') children.push(moving);
-      }
-      return { ...node, children };
-    };
-
-    this.layout = { ...this.layout, root: insert(withoutDragged) };
-    this.selectedNodeId = draggedId;
-    this.draggingNodeId = null;
-    this.requestUpdate();
-  }
-
-  private dropNode(target: LayoutNode, event: DragEvent) {
-    event.preventDefault();
-    event.stopPropagation();
-    const draggedId = event.dataTransfer?.getData('text/yukilog-node') || this.draggingNodeId;
-    if (!draggedId) return;
-    const element = event.currentTarget as HTMLElement;
-    const ratio = (event.clientY - element.getBoundingClientRect().top) / element.offsetHeight;
-    const acceptsChildren = componentRegistry[target.type].acceptsChildren;
-    const position =
-      ratio < 0.28 ? 'before' : ratio > 0.72 ? 'after' : acceptsChildren ? 'inside' : 'after';
-    this.moveNode(draggedId, target.id, position);
-  }
-
-  private moveSibling(id: string, direction: -1 | 1) {
-    let changed = false;
-    const visit = (node: LayoutNode): LayoutNode => {
-      const children = [...(node.children ?? [])];
-      const index = children.findIndex((child) => child.id === id);
-      if (index >= 0) {
-        const target = index + direction;
-        if (target >= 0 && target < children.length) {
-          [children[index], children[target]] = [children[target], children[index]];
-          changed = true;
-        }
-        return { ...node, children };
-      }
-      return { ...node, children: children.map(visit) };
-    };
-    const root = visit(this.layout.root);
-    if (changed) {
-      this.layout = { ...this.layout, root };
-      this.selectedNodeId = id;
+  private runStudioCommand(action: () => StudioMutation) {
+    try {
+      this.applyStudioMutation(action());
+    } catch (error) {
+      this.studioAnnouncement =
+        error instanceof LayoutCommandError ? error.message : '布局修改失败';
       this.requestUpdate();
     }
   }
 
-  private updateNavigation(navigation: NavigationVariant) {
-    this.layout = { ...this.layout, shell: { ...this.layout.shell, navigation } };
+  private beginNodeDrag(nodeId: string, event: DragEvent) {
+    this.draggingNodeId = nodeId;
+    this.draggingComponentType = null;
+    this.dropTarget = null;
+    event.dataTransfer?.setData('text/yukilog-node', nodeId);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     this.requestUpdate();
   }
 
-  private mutateSelected(mutator: (node: LayoutNode) => void) {
-    const mutate = (node: LayoutNode): LayoutNode => {
-      const next = { ...node, props: { ...node.props } };
-      if (node.id === this.selectedNodeId) mutator(next);
-      if (node.children) next.children = node.children.map(mutate);
-      return next;
-    };
-    this.layout = { ...this.layout, root: mutate(this.layout.root) };
+  private beginComponentDrag(type: ComponentType, event: DragEvent) {
+    this.draggingNodeId = null;
+    this.draggingComponentType = type;
+    this.dropTarget = null;
+    event.dataTransfer?.setData('text/yukilog-component', type);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
     this.requestUpdate();
   }
 
-  private setArticleVariant(variant: ArticleVariant) {
-    this.mutateSelected((node) => {
-      if (node.type === 'article-feed') node.props.variant = variant;
-    });
+  private allowedDropPositions(targetId: string): DropPosition[] {
+    if (this.draggingNodeId) {
+      return validDropPositions(this.layout.root, this.draggingNodeId, targetId);
+    }
+    if (!this.draggingComponentType) return [];
+    const target = indexLayout(this.layout.root).get(targetId);
+    if (!target) return [];
+    const positions: DropPosition[] = [];
+    if (target.parentId !== null) positions.push('before', 'after');
+    if (componentRegistry[target.node.type].acceptsChildren) positions.splice(1, 0, 'inside');
+    return positions;
+  }
+
+  private activateDropTarget(
+    targetId: string,
+    position: DropPosition,
+    event: DragEvent,
+  ) {
+    if (!this.allowedDropPositions(targetId).includes(position)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = this.draggingComponentType ? 'copy' : 'move';
+    }
+    if (this.dropTarget?.nodeId === targetId && this.dropTarget.position === position) return;
+    this.dropTarget = { nodeId: targetId, position };
+    this.requestUpdate();
+  }
+
+  private dropNode(targetId: string, position: DropPosition, event: DragEvent) {
+    this.activateDropTarget(targetId, position, event);
+    const draggedId = event.dataTransfer?.getData('text/yukilog-node') || this.draggingNodeId;
+    const componentType =
+      (event.dataTransfer?.getData('text/yukilog-component') as ComponentType) ||
+      this.draggingComponentType;
+    if (draggedId) {
+      this.runStudioCommand(() => this.studioStore.moveTo(draggedId, targetId, position));
+    } else if (componentType && componentRegistry[componentType]) {
+      this.insertComponentAt(componentType, targetId, position);
+    }
+    this.endNodeDrag();
+  }
+
+  private endNodeDrag() {
+    this.draggingNodeId = null;
+    this.draggingComponentType = null;
+    this.dropTarget = null;
+    this.requestUpdate();
+  }
+
+  private moveSibling(id: string, direction: -1 | 1) {
+    this.runStudioCommand(() => this.studioStore.moveSibling(id, direction));
   }
 
   private setSelectedProperty(name: string, value: unknown) {
-    this.mutateSelected((node) => {
-      node.props[name] = value;
-    });
+    this.runStudioCommand(() =>
+      this.studioStore.execute({
+        type: 'set-prop',
+        nodeId: this.selectedNodeId,
+        name,
+        value,
+      }),
+    );
   }
 
-  private toggleArticleField(field: ArticleField) {
-    this.mutateSelected((node) => {
-      if (node.type !== 'article-feed') return;
-      const fields = new Set((node.props.fields as ArticleField[]) ?? []);
-      if (fields.has(field)) fields.delete(field);
-      else fields.add(field);
-      node.props.fields = [...fields];
-    });
+  private toggleArrayProperty(name: string, value: string) {
+    const selected = indexLayout(this.layout.root).get(this.selectedNodeId)?.node;
+    if (!selected) return;
+    const values = new Set(Array.isArray(selected.props[name]) ? (selected.props[name] as string[]) : []);
+    if (values.has(value)) values.delete(value);
+    else values.add(value);
+    this.setSelectedProperty(name, [...values]);
   }
 
   private addComponent(type: ComponentType) {
-    const defaults: Partial<Record<ComponentType, Record<string, unknown>>> = {
-      card: {
-        variant: 'plain',
-        padding: 'md',
-        radius: 'md',
-        shadow: 'soft',
-        align: 'stretch',
-      },
-      avatar: { source: 'site-owner', size: 'lg', shape: 'circle', label: '头像' },
-      'text-block': {
-        source: 'literal',
-        variant: 'body',
-        text: '新的文字内容',
-        alignment: 'left',
-      },
-      'social-links': { variant: 'labels', alignment: 'left' },
-      'status-line': { text: 'system.log · online', tone: 'online' },
-      quote: { text: '新加入的一段引语。', attribution: 'YukiLog' },
-      stats: { fields: ['articles', 'dynamics', 'words'], compact: true },
-      'dynamic-strip': { limit: 3, variant: 'timeline' },
-      'profile-card': { variant: 'compact', flip: true, showSocials: true },
-      'article-feed': {
-        variant: 'compact',
-        fields: ['title', 'date', 'category'],
-        columns: 1,
-        limit: 5,
-      },
-      hero: { variant: 'compact', title: '新的首屏', lead: '在属性面板中继续配置。' },
-      masthead: { title: '新的刊头', lead: '一段页面说明。', alignment: 'left' },
-    };
-    const node: LayoutNode = {
-      id: `${type}-${Date.now()}`,
-      type,
-      props: defaults[type] ?? {},
-    };
-    const selected = this.findNode(this.layout.root, this.selectedNodeId);
+    const selected = indexLayout(this.layout.root).get(this.selectedNodeId)?.node;
     const targetId =
       selected && componentRegistry[selected.type].acceptsChildren
         ? selected.id
         : this.layout.root.id;
-    const append = (current: LayoutNode): LayoutNode =>
-      current.id === targetId
-        ? { ...current, children: [...(current.children ?? []), node] }
-        : { ...current, children: current.children?.map(append) };
-    this.layout = {
-      ...this.layout,
-      root: append(this.layout.root),
+    const node = this.createComponentNode(type);
+    this.runStudioCommand(() =>
+      this.studioStore.execute({ type: 'insert-node', parentId: targetId, node }),
+    );
+  }
+
+  private createComponentNode(type: ComponentType): LayoutNode {
+    const definition = componentRegistry[type];
+    return {
+      id: `${type}-${Date.now().toString(36)}-${(this.nodeSequence += 1).toString(36)}`,
+      type,
+      props: structuredClone(definition.defaultProps),
     };
-    this.selectedNodeId = node.id;
-    this.requestUpdate();
+  }
+
+  private insertComponentAt(type: ComponentType, targetId: string, position: DropPosition) {
+    const target = indexLayout(this.layout.root).get(targetId);
+    if (!target) return;
+    const node = this.createComponentNode(type);
+    const parentId = position === 'inside' ? targetId : target.parentId;
+    if (!parentId) return;
+    const index =
+      position === 'inside' ? target.node.children?.length : target.index + (position === 'after' ? 1 : 0);
+    this.runStudioCommand(() =>
+      this.studioStore.execute({ type: 'insert-node', parentId, index, node }),
+    );
   }
 
   private removeSelected() {
-    if (this.selectedNodeId === this.layout.root.id) return;
-    const remove = (node: LayoutNode): LayoutNode => ({
-      ...node,
-      children: node.children
-        ?.filter((child) => child.id !== this.selectedNodeId)
-        .map(remove),
-    });
-    this.layout = { ...this.layout, root: remove(this.layout.root) };
-    this.selectedNodeId = this.layout.root.id;
-    this.requestUpdate();
+    this.runStudioCommand(() =>
+      this.studioStore.execute({ type: 'remove-node', nodeId: this.selectedNodeId }),
+    );
+  }
+
+  private undoStudio() {
+    this.applyStudioMutation(this.studioStore.undo());
+  }
+
+  private redoStudio() {
+    this.applyStudioMutation(this.studioStore.redo());
   }
 
   private renderNavigation() {
@@ -2299,13 +2769,17 @@ export class YukiApp extends LitElement {
       return html`<nav class="site-nav nav-dock"><div class="brand">Y</div>${links}</nav>`;
     }
     return html`
-      <div class="nav-corners${this.navPastHero ? ' hidden' : ''}">
+      <div
+        class="nav-corners${this.navPastHero ? ' hidden' : ''}${this.navRevealed
+          ? ' active'
+          : ''}"
+      >
         <div class="brand">YukiLog</div>
         <div class="nav-corner-actions"><span>⌕</span><span>☰</span></div>
       </div>
       <nav
-        class="site-nav nav-topbar${this.navPastHero ? ' sticky' : ''}${this.navRevealed
-          ? ' revealed'
+        class="site-nav nav-topbar${this.navPastHero ? ' nav-sticky' : ''}${this.navRevealed
+          ? ' nav-active'
           : ''}"
       >
         <div class="brand">YukiLog</div>
@@ -2316,7 +2790,9 @@ export class YukiApp extends LitElement {
 
   private renderNode(node: LayoutNode): unknown {
     const definition = componentRegistry[node.type];
-    const selected = this.studio && node.id === this.selectedNodeId;
+    const selected =
+      (this.studio && node.id === this.selectedNodeId) ||
+      (this.previewOnly && node.id === this.previewSelectedNodeId);
     const base = `node node-${node.type}${selected ? ' selected' : ''}`;
     const click = (event: Event) => this.selectNode(node.id, event);
 
@@ -2352,12 +2828,10 @@ export class YukiApp extends LitElement {
           data-label="${definition.label}"
           data-node-id="${node.id}"
           .draggable=${this.studio && node.id !== this.layout.root.id}
-          @dragstart=${(event: DragEvent) => {
-            this.draggingNodeId = node.id;
-            event.dataTransfer?.setData('text/yukilog-node', node.id);
-          }}
-          @dragover=${(event: DragEvent) => event.preventDefault()}
-          @drop=${(event: DragEvent) => this.dropNode(node, event)}
+          @dragstart=${(event: DragEvent) => this.beginNodeDrag(node.id, event)}
+          @dragend=${this.endNodeDrag}
+          @dragover=${(event: DragEvent) => this.activateDropTarget(node.id, 'inside', event)}
+          @drop=${(event: DragEvent) => this.dropNode(node.id, 'inside', event)}
           @click=${click}
         >
           ${node.children?.map((child) => this.renderNode(child))}
@@ -2469,19 +2943,43 @@ export class YukiApp extends LitElement {
   private renderHero(node: LayoutNode, base: string, click: (event: Event) => void) {
     const variant = String(node.props.variant ?? 'cinematic');
     const title = String(node.props.title ?? '');
+    const background = this.mediaLibrary.find(
+      (media) => media.id === String(node.props.backgroundMediaId ?? ''),
+    );
+    const backgroundPosition = String(node.props.backgroundPosition ?? 'center');
+    const overlay = String(node.props.overlay ?? 'medium');
     const details = html`
       <p>${String(node.props.lead ?? '')}</p>
       ${node.props.showSocials
-        ? html`<div class="social-row"><span>GitHub</span><span>Mail</span><span>RSS</span></div>`
+        ? html`
+            <nav class="social-row" aria-label="社交链接">
+              <a href="#github" aria-label="GitHub" title="GitHub">GH</a>
+              <a href="#mail" aria-label="邮件" title="邮件">@</a>
+              <a href="#rss" aria-label="RSS" title="RSS">◔</a>
+            </nav>
+          `
         : nothing}
     `;
     return html`
       <section
-        class="${base} hero hero-${variant}"
+        class="${base} hero hero-${variant} overlay-${overlay}${background ? ' has-media' : ''}"
         data-label="沉浸式首屏"
         data-node-id="${node.id}"
         @click=${click}
       >
+        ${background
+          ? html`
+              <div
+                class="hero-background"
+                role="img"
+                aria-label=${background.name}
+                style=${styleMap({
+                  backgroundImage: `url(${JSON.stringify(background.url)})`,
+                  backgroundPosition,
+                })}
+              ></div>
+            `
+          : nothing}
         <div class="hero-inner">
           <p class="component-kicker">YukiLog · 写给时间的长信</p>
           <h1>
@@ -2502,7 +3000,7 @@ export class YukiApp extends LitElement {
                 @click=${(event: Event) => {
                   event.stopPropagation();
                   this.renderRoot
-                    .querySelector('.layout-split')
+                    .querySelector('.hero + .layout-grid, .hero + .layout-split, .hero + .layout-stack')
                     ?.scrollIntoView({ behavior: 'smooth' });
                 }}
               >
@@ -2650,7 +3148,9 @@ export class YukiApp extends LitElement {
   private renderSite() {
     return html`
       <div
-        class="site theme-${this.layout.theme} shell-${this.layout.shell.navigation}"
+        class="site theme-${this.layout.theme} shell-${this.layout.shell.navigation}${
+          this.previewOnly ? ' is-studio-preview' : ''
+        }"
       >
         ${this.renderNavigation()}
         <div class="page-root">${this.renderNode(this.layout.root)}</div>
@@ -2672,11 +3172,17 @@ export class YukiApp extends LitElement {
                 .map(
                   (definition) => html`
                     <button
-                      class="palette-item"
+                      class="palette-item${this.draggingComponentType === definition.type
+                        ? ' dragging'
+                        : ''}"
+                      draggable="true"
+                      @dragstart=${(event: DragEvent) =>
+                        this.beginComponentDrag(definition.type, event)}
+                      @dragend=${this.endNodeDrag}
                       @click=${() => this.addComponent(definition.type)}
-                      title="加入当前页面根区域"
+                      title="拖入组件树，或点击加入当前容器"
                     >
-                      ＋ ${definition.label}
+                      <span aria-hidden="true">⠿</span> ${definition.label}
                     </button>
                   `,
                 )}
@@ -2690,174 +3196,298 @@ export class YukiApp extends LitElement {
   private renderTreeNode(node: LayoutNode, depth = 0): unknown {
     const selected = node.id === this.selectedNodeId;
     const movable = node.id !== this.layout.root.id;
+    const positions =
+      this.draggingNodeId || this.draggingComponentType
+        ? this.allowedDropPositions(node.id)
+        : [];
+    const isDropTarget = (position: DropPosition) =>
+      this.dropTarget?.nodeId === node.id && this.dropTarget.position === position;
+    const dropLine = (position: 'before' | 'after') =>
+      positions.includes(position)
+        ? html`
+            <div
+              class="tree-drop-line${isDropTarget(position) ? ' active' : ''}"
+              data-position=${position}
+              @dragover=${(event: DragEvent) =>
+                this.activateDropTarget(node.id, position, event)}
+              @drop=${(event: DragEvent) => this.dropNode(node.id, position, event)}
+            >
+              <span>${position === 'before' ? '插入之前' : '插入之后'}</span>
+            </div>
+          `
+        : nothing;
     return html`
-      <div
-        class="tree-row${this.draggingNodeId === node.id ? ' dragging' : ''}"
-        .draggable=${movable}
-        @dragstart=${(event: DragEvent) => {
-          if (!movable) return;
-          this.draggingNodeId = node.id;
-          event.dataTransfer?.setData('text/yukilog-node', node.id);
-          if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-        }}
-        @dragend=${() => {
-          this.draggingNodeId = null;
-          this.requestUpdate();
-        }}
-        @dragover=${(event: DragEvent) => {
-          event.preventDefault();
-          if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-        }}
-        @drop=${(event: DragEvent) => this.dropNode(node, event)}
-      >
-        <button
-          class="tree-item"
-          aria-pressed=${selected}
-          @click=${() => this.selectNode(node.id)}
+      <div class="tree-node" role="treeitem" aria-level=${depth + 1} aria-selected=${selected}>
+        ${dropLine('before')}
+        <div
+          class="tree-row${this.draggingNodeId === node.id ? ' dragging' : ''}${
+            isDropTarget('inside') ? ' drop-inside' : ''
+          }"
+          @dragover=${(event: DragEvent) => {
+            if (positions.includes('inside')) this.activateDropTarget(node.id, 'inside', event);
+          }}
+          @drop=${(event: DragEvent) => {
+            if (positions.includes('inside')) this.dropNode(node.id, 'inside', event);
+          }}
         >
-          <span class="tree-depth">${'· '.repeat(depth)}</span>${componentRegistry[node.type].label}
-        </button>
-        ${movable
-          ? html`<span class="tree-actions">
-              <button aria-label="上移组件" @click=${() => this.moveSibling(node.id, -1)}>↑</button>
-              <button aria-label="下移组件" @click=${() => this.moveSibling(node.id, 1)}>↓</button>
-            </span>`
-          : nothing}
+          ${movable
+            ? html`
+                <span
+                  class="drag-handle"
+                  draggable="true"
+                  role="button"
+                  tabindex="0"
+                  aria-label="拖动 ${componentRegistry[node.type].label}"
+                  @dragstart=${(event: DragEvent) => this.beginNodeDrag(node.id, event)}
+                  @dragend=${this.endNodeDrag}
+                >
+                  ⠿
+                </span>
+              `
+            : nothing}
+          <button
+            class="tree-item${selected ? ' selected' : ''}"
+            @click=${() => this.selectNode(node.id)}
+          >
+            ${componentRegistry[node.type].label}
+          </button>
+          ${movable
+            ? html`<span class="tree-actions">
+                <button aria-label="上移组件" @click=${() => this.moveSibling(node.id, -1)}>↑</button>
+                <button aria-label="下移组件" @click=${() => this.moveSibling(node.id, 1)}>↓</button>
+              </span>`
+            : nothing}
+          ${isDropTarget('inside') ? html`<span class="inside-label">放入容器</span>` : nothing}
+        </div>
+        ${node.children?.map((child) => this.renderTreeNode(child, depth + 1))}
+        ${dropLine('after')}
       </div>
-      ${node.children?.map((child) => this.renderTreeNode(child, depth + 1))}
     `;
   }
 
-  private renderInspector() {
-    const nodes = flattenLayout(this.layout.root);
-    const selected = nodes.find((node) => node.id === this.selectedNodeId) ?? this.layout.root;
-    const definition = componentRegistry[selected.type];
-    const errors = validateLayout(this.layout);
-    const fields = new Set((selected.props.fields as ArticleField[]) ?? []);
+  private renderPropertyEditor(node: LayoutNode, name: string, schema: PropertySchema) {
+    const value = node.props[name];
+    const label = propertyLabels[name] ?? name;
 
-    return html`
-      <aside class="studio-panel right">
-        <h2>页面结构</h2>
-        <div class="inspector-section">
-          <p class="tree-help">拖动节点：上部插入之前，中部放入容器，下部插入之后。</p>
-          ${this.renderTreeNode(this.layout.root)}
-        </div>
+    if (schema.kind === 'media-image') {
+      return html`
+        <label class="property-field">
+          <span>${label}</span>
+          <select
+            .value=${String(value ?? '')}
+            @change=${(event: Event) => {
+              const mediaId = (event.currentTarget as HTMLSelectElement).value;
+              this.setSelectedProperty(name, mediaId || undefined);
+            }}
+          >
+            <option value="">使用主题默认背景</option>
+            ${this.mediaLibrary.map(
+              (media) => html`<option value=${media.id}>${media.name}</option>`,
+            )}
+          </select>
+          ${this.mediaLibrary.length === 0
+            ? html`<small class="property-help">请先在后台媒体页面上传图片。</small>`
+            : nothing}
+        </label>
+      `;
+    }
 
-        <h2>属性 · ${definition.label}</h2>
-        <section class="inspector-section">
-          <label>全局导航组件</label>
+    if (schema.kind === 'boolean') {
+      return html`
+        <label class="property-toggle">
+          <input
+            type="checkbox"
+            .checked=${value === true}
+            @change=${(event: Event) =>
+              this.setSelectedProperty(name, (event.currentTarget as HTMLInputElement).checked)}
+          />
+          <span>${label}</span>
+        </label>
+      `;
+    }
+
+    if (schema.kind === 'integer') {
+      return html`
+        <label class="property-field">
+          <span>${label}</span>
+          <input
+            type="number"
+            min=${schema.minimum}
+            max=${schema.maximum}
+            .value=${String(value ?? schema.minimum)}
+            @change=${(event: Event) =>
+              this.setSelectedProperty(
+                name,
+                Number((event.currentTarget as HTMLInputElement).value),
+              )}
+          />
+        </label>
+      `;
+    }
+
+    if (schema.kind === 'string-array') {
+      const selected = new Set(Array.isArray(value) ? (value as string[]) : []);
+      return html`
+        <fieldset class="property-options">
+          <legend>${label}</legend>
           <div class="segmented">
-            ${(['topbar', 'sidebar', 'floating-dock'] as NavigationVariant[]).map(
-              (navigation) => html`
+            ${schema.values.map(
+              (option) => html`
                 <button
-                  aria-pressed=${this.layout.shell.navigation === navigation}
-                  @click=${() => this.updateNavigation(navigation)}
+                  type="button"
+                  aria-pressed=${selected.has(option)}
+                  @click=${() => this.toggleArrayProperty(name, option)}
                 >
-                  ${navigationLabels[navigation]}
+                  ${option}
                 </button>
               `,
             )}
           </div>
+        </fieldset>
+      `;
+    }
+
+    if (schema.values) {
+      return html`
+        <label class="property-field">
+          <span>${label}</span>
+          <select
+            .value=${String(value ?? schema.values[0] ?? '')}
+            @change=${(event: Event) =>
+              this.setSelectedProperty(name, (event.currentTarget as HTMLSelectElement).value)}
+          >
+            ${schema.values.map((option) => html`<option value=${option}>${option}</option>`)}
+          </select>
+        </label>
+      `;
+    }
+
+    const control =
+      (schema.maxLength ?? 0) > 160
+        ? html`
+            <textarea
+              maxlength=${schema.maxLength ?? 500}
+              .value=${String(value ?? '')}
+              @change=${(event: Event) =>
+                this.setSelectedProperty(name, (event.currentTarget as HTMLTextAreaElement).value)}
+            ></textarea>
+          `
+        : html`
+            <input
+              type="text"
+              maxlength=${schema.maxLength ?? 500}
+              .value=${String(value ?? '')}
+              @change=${(event: Event) =>
+                this.setSelectedProperty(name, (event.currentTarget as HTMLInputElement).value)}
+            />
+          `;
+    return html`<label class="property-field"><span>${label}</span>${control}</label>`;
+  }
+
+  private renderMoveControls(selected: LayoutNode) {
+    if (selected.id === this.layout.root.id) return nothing;
+    const targets = flattenLayout(this.layout.root).filter(
+      (node) => validDropPositions(this.layout.root, selected.id, node.id).length > 0,
+    );
+    if (targets.length === 0) return nothing;
+    const targetId = targets.some((node) => node.id === this.moveTargetId)
+      ? this.moveTargetId!
+      : targets[0].id;
+    const positions = validDropPositions(this.layout.root, selected.id, targetId);
+
+    return html`
+      <section class="inspector-section">
+        <label class="property-field">
+          <span>移动到</span>
+          <select
+            .value=${targetId}
+            @change=${(event: Event) => {
+              this.moveTargetId = (event.currentTarget as HTMLSelectElement).value;
+              this.requestUpdate();
+            }}
+          >
+            ${targets.map(
+              (target) =>
+                html`<option value=${target.id}>${componentRegistry[target.type].label} · ${target.id}</option>`,
+            )}
+          </select>
+        </label>
+        <div class="move-actions">
+          ${positions.map(
+            (position) => html`
+              <button
+                type="button"
+                @click=${() =>
+                  this.runStudioCommand(() =>
+                    this.studioStore.moveTo(selected.id, targetId, position),
+                  )}
+              >
+                ${position === 'before' ? '放在之前' : position === 'after' ? '放在之后' : '放入内部'}
+              </button>
+            `,
+          )}
+        </div>
+      </section>
+    `;
+  }
+
+  private renderInspector() {
+    const selected =
+      indexLayout(this.layout.root).get(this.selectedNodeId)?.node ?? this.layout.root;
+    const definition = componentRegistry[selected.type];
+    const errors = validateLayout(this.layout);
+    const fields = definition.configurableFields ?? [];
+
+    return html`
+      <aside class="studio-panel right">
+        <div class="studio-history">
+          <button
+            type="button"
+            ?disabled=${!this.studioStore.canUndo}
+            @click=${this.undoStudio}
+            title="撤销（Ctrl/⌘ Z）"
+          >
+            撤销
+          </button>
+          <button
+            type="button"
+            ?disabled=${!this.studioStore.canRedo}
+            @click=${this.redoStudio}
+            title="重做（Ctrl/⌘ Shift Z）"
+          >
+            重做
+          </button>
+        </div>
+        <p class="sr-only" aria-live="polite">${this.studioAnnouncement}</p>
+
+        <h2>属性 · ${definition.label}</h2>
+        <section class="inspector-section property-list">
+          ${fields.length > 0
+            ? fields.map((name) =>
+                this.renderPropertyEditor(selected, name, definition.properties[name]),
+              )
+            : html`<p class="tree-help">该组件没有可编辑属性。</p>`}
         </section>
 
-        ${selected.type === 'card'
-          ? html`
-              <section class="inspector-section">
-                <label>卡片外观</label>
-                <div class="segmented">
-                  ${(['plain', 'glass', 'outlined', 'paper'] as const).map(
-                    (variant) => html`
-                      <button
-                        aria-pressed=${selected.props.variant === variant}
-                        @click=${() => this.setSelectedProperty('variant', variant)}
-                      >
-                        ${variant}
-                      </button>
-                    `,
-                  )}
-                </div>
-              </section>
-              <section class="inspector-section">
-                <label>阴影</label>
-                <div class="segmented">
-                  ${(['none', 'soft', 'blue', 'pink'] as const).map(
-                    (shadow) => html`
-                      <button
-                        aria-pressed=${selected.props.shadow === shadow}
-                        @click=${() => this.setSelectedProperty('shadow', shadow)}
-                      >
-                        ${shadow}
-                      </button>
-                    `,
-                  )}
-                </div>
-              </section>
-              <section class="inspector-section">
-                <label>内边距</label>
-                <div class="segmented">
-                  ${(['none', 'sm', 'md', 'lg', 'xl'] as const).map(
-                    (padding) => html`
-                      <button
-                        aria-pressed=${selected.props.padding === padding}
-                        @click=${() => this.setSelectedProperty('padding', padding)}
-                      >
-                        ${padding}
-                      </button>
-                    `,
-                  )}
-                </div>
-              </section>
-            `
-          : nothing}
-
-        ${selected.type === 'article-feed'
-          ? html`
-              <section class="inspector-section">
-                <label>卡片排版</label>
-                <div class="segmented">
-                  ${(['alternating', 'editorial', 'cover-overlay', 'compact'] as ArticleVariant[]).map(
-                    (variant) => html`
-                      <button
-                        aria-pressed=${selected.props.variant === variant}
-                        @click=${() => this.setArticleVariant(variant)}
-                      >
-                        ${variant}
-                      </button>
-                    `,
-                  )}
-                </div>
-              </section>
-              <section class="inspector-section">
-                <label>卡片显示字段</label>
-                <div class="segmented">
-                  ${(
-                    [
-                      'cover',
-                      'summary',
-                      'date',
-                      'category',
-                      'tags',
-                      'views',
-                      'likes',
-                    ] as ArticleField[]
-                  ).map(
-                    (field) => html`
-                      <button
-                        aria-pressed=${fields.has(field)}
-                        @click=${() => this.toggleArticleField(field)}
-                      >
-                        ${field}
-                      </button>
-                    `,
-                  )}
-                </div>
-              </section>
-            `
-          : nothing}
-
+        ${this.renderMoveControls(selected)}
         <section class="inspector-section">
-          <button class="inspector-button" @click=${this.removeSelected}>删除所选组件</button>
+          <button
+            class="inspector-button danger"
+            ?disabled=${selected.id === this.layout.root.id}
+            @click=${this.removeSelected}
+          >
+            删除所选组件
+          </button>
         </section>
+
+        <h2>页面结构</h2>
+        <div class="inspector-section">
+          <p class="tree-help">
+            从 ⠿ 拖动组件；蓝色横线是插入位置，蓝色边框表示放入容器。也可在上方使用移动按钮。
+          </p>
+          <div role="tree" aria-label="页面组件树">${this.renderTreeNode(this.layout.root)}</div>
+        </div>
+
         <section class="inspector-section">
           <div class="validation-ok">
             ${errors.length === 0 ? '布局 schema 校验通过' : errors.join('；')}
@@ -2876,7 +3506,33 @@ export class YukiApp extends LitElement {
       <div class="studio-shell">
         ${this.renderPalette()}
         <main class="studio-canvas">
-          <div class="studio-preview">${this.renderSite()}</div>
+          <header class="studio-canvas-toolbar">
+            <strong>实时画布</strong>
+            <div class="viewport-switcher" aria-label="预览宽度">
+              ${(['desktop', 'tablet', 'mobile'] as const).map(
+                (viewport) => html`
+                  <button
+                    type="button"
+                    aria-pressed=${this.studioViewport === viewport}
+                    @click=${() => {
+                      this.studioViewport = viewport;
+                      this.requestUpdate();
+                    }}
+                  >
+                    ${viewport === 'desktop' ? '桌面' : viewport === 'tablet' ? '平板' : '手机'}
+                  </button>
+                `,
+              )}
+            </div>
+          </header>
+          <div class="studio-canvas-stage">
+            <iframe
+              class="studio-preview viewport-${this.studioViewport}"
+              title="公开页面实时预览"
+              src="/?preview=1"
+              @load=${this.syncStudioPreview}
+            ></iframe>
+          </div>
         </main>
         ${this.renderInspector()}
       </div>
@@ -2884,19 +3540,10 @@ export class YukiApp extends LitElement {
   }
 
   protected render() {
+    if (this.previewOnly) return this.renderSite();
     return html`
       <nav class="lab-bar" aria-label="布局实验室">
-        <span class="lab-title">布局实验室</span>
-        ${layoutPresets.map(
-          (preset, index) => html`
-            <button
-              aria-pressed=${this.layout.id === preset.id}
-              @click=${() => this.selectPreset(index)}
-            >
-              ${preset.label}
-            </button>
-          `,
-        )}
+        <span class="lab-title">花恋主题预览</span>
         <span class="lab-spacer"></span>
         <button
           class="mode-button"

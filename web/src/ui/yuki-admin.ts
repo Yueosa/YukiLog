@@ -19,7 +19,7 @@ import type {
 import { layoutPresets } from '../layout/presets.js';
 import { toPageLayout, validatePageLayout } from '../layout/registry.js';
 import type { PageLayoutDocument } from '../layout/types.js';
-import type { YukiApp } from './yuki-app.js';
+import type { StudioMedia, YukiApp } from './yuki-app.js';
 import './yuki-app.js';
 
 type View =
@@ -144,14 +144,26 @@ export class YukiAdmin extends LitElement {
     .media-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:1rem; }
     .media-item img,.media-placeholder { width:100%; aspect-ratio:1.5; object-fit:cover; border-radius:10px; background:#edf0f5; }
     .status { display:inline-block; padding:.15rem .45rem; border-radius:999px; background:#e8edf5; font-size:.78rem; }
-    .layout-studio { height:900px; overflow:auto; border:1px solid #dfe3ea; border-radius:16px; background:white; }
-    .layout-studio yuki-app { zoom:.8; }
+    .layout-studio { height:max(720px,calc(100dvh - 190px)); overflow:hidden; border:1px solid #dfe3ea; border-radius:16px; background:white; }
+    .layout-studio yuki-app { display:block; height:100%; --studio-height:100%; }
     @media(max-width:900px){.shell{grid-template-columns:1fr}aside{position:static;height:auto}.split,.form-grid{grid-template-columns:1fr}main{padding:1rem}}
   `;
 
   connectedCallback() {
     super.connectedCallback();
     void this.restoreSession();
+  }
+
+  protected updated() {
+    if (this.view !== 'layouts') return;
+    const studio = this.renderRoot.querySelector<YukiApp>('#layout-studio');
+    const media: StudioMedia[] = this.media.map((item) => ({
+      id: item.id,
+      url: item.url,
+      mediaType: item.media_type,
+      name: item.original_name,
+    }));
+    studio?.setMediaLibrary(media);
   }
 
   private async restoreSession() {
@@ -482,7 +494,7 @@ export class YukiAdmin extends LitElement {
       <label>正文字体<select name="bodyFont">${['system','serif','rounded','mono'].map((font)=>html`<option value=${font} ?selected=${font===value.theme.typography.body}>${font}</option>`)}</select></label>
       <label>字号比例<input name="scale" type="number" min=".8" max="1.4" step=".05" .value=${String(value.theme.typography.scale)}></label>
       <label>圆角<input name="radius" type="number" min="0" max="32" .value=${String(value.theme.shape.radius)}></label>
-      <label>导航<select name="navigation">${['topbar','sidebar','floating-dock'].map((item)=>html`<option value=${item} ?selected=${item===value.shellLayout.navigation}>${item}</option>`)}</select></label>
+      <label>导航<input type="hidden" name="navigation" value="topbar"><input value="花恋双态导航" disabled></label>
       <label>页宽<select name="maxWidth">${['content','wide','full'].map((item)=>html`<option value=${item} ?selected=${item===value.shellLayout.maxWidth}>${item}</option>`)}</select></label>
       <div class="full checks"><label><input name="showSearch" type="checkbox" ?checked=${value.shellLayout.showSearch}>搜索入口</label><label><input name="translucent" type="checkbox" ?checked=${value.shellLayout.translucent}>半透明导航</label></div>
       <button class="full">保存站点设置</button>

@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use askama::Template;
 use axum::{
     extract::{Path, Query, State},
@@ -110,6 +112,8 @@ struct RenderContext<'a> {
     site: &'a SiteView,
     articles: &'a [ArticleCard],
     dynamics: &'a [DynamicCard],
+    media_urls: &'a HashMap<String, String>,
+    home_content_id: &'a str,
 }
 
 #[derive(Template)]
@@ -142,13 +146,41 @@ struct RenderContext<'a> {
     .primitive-socials{display:flex;width:100%;flex-wrap:wrap;gap:.5rem}.primitive-socials a{color:var(--primary);font-size:.8rem}.socials-labels{flex-direction:column}.socials-labels a{padding:.5rem .65rem;border-radius:9px;background:var(--muted-surface)}.socials-pills a,.socials-icons a{padding:.45rem .7rem;border:1px solid var(--border);border-radius:999px}
     .primitive-status{width:100%;padding:.65rem .75rem;border-radius:9px;background:var(--muted-surface);color:var(--muted);font:.7rem/1.5 ui-monospace,monospace}.status-online{color:#35835c}.status-accent{color:var(--secondary)}
     .layout-card>.quote,.layout-card>.stats{padding:0;border:0;background:transparent}
-    @media(max-width:1100px){.layout-grid.grid-three-rail{grid-template-columns:1fr;max-width:760px}.is-sticky{position:static}}
+    .nav-corners{position:fixed;z-index:21;top:0;right:0;left:0;display:flex;height:50px;align-items:center;justify-content:space-between;padding:0 clamp(1rem,3vw,3rem);pointer-events:none;transition:opacity .4s ease}.nav-corners>*{pointer-events:auto}.nav-corners.hidden{opacity:0;pointer-events:none}.nav-actions{display:flex;gap:.55rem}.nav-action{display:grid;width:32px;height:32px;place-items:center;border:0;border-radius:8px;background:transparent;color:var(--text);font:inherit;cursor:pointer}.nav-action:hover{background:rgb(255 255 255/.28);color:var(--primary)}
+    .site-nav.nav-topbar{position:fixed;z-index:20;top:0;left:50%;display:flex;width:100%;height:50px;align-items:center;justify-content:center;gap:1rem;padding:0 1.5rem;transform:translateX(-50%);border:0;background:var(--surface);opacity:0;pointer-events:none;transition:opacity .4s ease,width .5s cubic-bezier(.22,.61,.36,1),border-radius .5s cubic-bezier(.22,.61,.36,1),top .5s cubic-bezier(.22,.61,.36,1),box-shadow .5s ease}.site-nav.nav-topbar.nav-active{opacity:1;pointer-events:auto}.site-nav.nav-topbar.nav-sticky{top:10px;width:auto;border-radius:999px;opacity:1;pointer-events:auto;box-shadow:-8px 10px 0 color-mix(in srgb,var(--primary) 16%,transparent),0 4px 16px rgb(23 42 66/.12)}.immersive-home .nav-topbar:not(.nav-sticky) .brand{display:none}.site-nav.nav-topbar .nav-links{flex-wrap:nowrap}.site-nav.nav-topbar .nav-links a{padding:.42rem .7rem;border-radius:8px;opacity:0;transform:translateX(28px)}.site-nav.nav-topbar.nav-active .nav-links a,.site-nav.nav-topbar.nav-sticky .nav-links a{animation:nav-item-in .55s cubic-bezier(.22,.61,.36,1) forwards}.site-nav.nav-topbar .nav-links a:nth-child(2){animation-delay:.08s}.site-nav.nav-topbar .nav-links a:nth-child(3){animation-delay:.16s}.site-nav.nav-topbar .nav-links a:nth-child(4){animation-delay:.24s}.site-nav.nav-topbar .nav-links a:nth-child(5){animation-delay:.32s}.site-nav.nav-topbar .nav-links a:nth-child(6){animation-delay:.4s}.site-nav.nav-topbar .nav-links a:hover{background:var(--muted-surface);color:var(--primary)}
+    .immersive-home .page{width:100%;max-width:none;padding:0}.immersive-home .hero{position:relative;display:grid;width:100%;min-height:100svh;place-items:center;overflow:hidden;isolation:isolate;border-radius:0;background:#15283e;color:#fff}.immersive-home .hero::before,.immersive-home .hero::after{position:absolute;z-index:-2;content:"";inset:0}.immersive-home .hero::before{background:radial-gradient(circle at 78% 18%,rgb(255 219 221/.78),transparent 13%),radial-gradient(ellipse at 16% 95%,rgb(23 49 77/.92),transparent 38%),linear-gradient(162deg,transparent 52%,rgb(239 179 194/.42) 53% 58%,transparent 59%),linear-gradient(155deg,#15283e 0%,#456884 42%,#9db5c3 68%,#dca9b6 100%);animation:hero-fallback-in 1.2s cubic-bezier(.22,.61,.36,1) both}.immersive-home .hero.has-media::before{display:none}.immersive-home .hero::after{z-index:-1;background:linear-gradient(90deg,rgb(4 12 24/.32),transparent 58%),linear-gradient(180deg,rgb(6 14 28/var(--hero-shade-top,.12)),rgb(6 14 28/var(--hero-shade-bottom,.52)))}.hero-background{position:absolute;z-index:-2;inset:-2%;background-repeat:no-repeat;background-size:cover;filter:brightness(.3) blur(8px);transform:scale(1.06);animation:hero-media-in 1.2s cubic-bezier(.22,.61,.36,1) forwards}.overlay-soft{--hero-brightness:.82;--hero-shade-top:.06;--hero-shade-bottom:.34}.overlay-medium{--hero-brightness:.7;--hero-shade-top:.12;--hero-shade-bottom:.52}.overlay-strong{--hero-brightness:.56;--hero-shade-top:.2;--hero-shade-bottom:.68}
+    .hero-inner{display:flex;width:min(580px,70vw);align-items:center;flex-direction:column;padding:7rem 0 5rem;text-align:center}.hero-kicker{margin:0 0 .5rem;padding:.35rem .7rem;border:1px solid rgb(255 255 255/.22);border-radius:999px;background:rgb(0 0 0/.14);color:rgb(255 255 255/.76);font-size:.68rem;font-weight:700;letter-spacing:.12em}.immersive-home .hero h1{display:flex;flex-wrap:wrap;justify-content:center;margin:0;padding:1rem 0;font-size:clamp(2.2rem,5vw,3.2rem);font-weight:900;line-height:1.15;letter-spacing:.03em;text-shadow:0 2px 16px rgb(0 0 0/.5)}.hero-character{display:inline-block;opacity:0;transform:translateY(12px);animation:hero-char-in .5s calc(var(--char-index) * .08s) cubic-bezier(.22,.61,.36,1) forwards}.hero-info{width:100%;margin-top:.75rem;padding:.75rem 1.5rem;border-radius:20px;background:rgb(0 0 0/.6)}.hero-info p{margin:.6rem 0;color:rgb(255 255 255/.86);font-weight:600}.hero-socials{display:flex;justify-content:center;gap:1rem}.hero-socials a{padding:.45rem .7rem;border-radius:999px;color:rgb(255 255 255/.78);font-size:.82rem}.hero-socials a:hover{background:rgb(255 255 255/.12);color:#fff}.scroll-arrow{position:absolute;bottom:34px;left:50%;display:grid;width:40px;height:40px;place-items:center;transform:translateX(-50%);border:1px solid rgb(255 255 255/.2);border-radius:50%;background:rgb(0 0 0/.16);color:rgb(255 255 255/.76);font-size:1.8rem;animation:hero-arrow 2.5s ease-in-out infinite}
+    .immersive-home .layout-grid.grid-three-rail{width:100%;min-height:100vh;padding:70px clamp(1rem,2vw,2rem) 6rem;background:var(--bg);column-gap:28px}.immersive-home .layout-card{border:0}.immersive-home .layout-card.shadow-pink{box-shadow:8px 10px 0 color-mix(in srgb,var(--secondary) 18%,transparent),0 18px 48px rgb(38 57 78/.08)}.immersive-home .layout-card.shadow-blue{box-shadow:-8px 10px 0 color-mix(in srgb,var(--primary) 18%,transparent),0 18px 48px rgb(38 57 78/.08)}
+    @keyframes nav-item-in{to{opacity:1;transform:translateX(0)}}@keyframes hero-char-in{to{opacity:1;transform:translateY(0)}}@keyframes hero-arrow{0%,100%{translate:0 0}50%{translate:0 9px}}@keyframes hero-media-in{from{filter:brightness(.3) blur(8px);transform:scale(1.08)}to{filter:brightness(var(--hero-brightness,.7)) blur(0);transform:scale(1.02)}}@keyframes hero-fallback-in{from{filter:brightness(.45) blur(8px);transform:scale(1.08)}to{filter:brightness(.85) blur(0);transform:scale(1.02)}}
+    @media(max-width:1400px){.layout-grid.grid-three-rail{grid-template-columns:1fr;max-width:900px}.is-sticky{position:static}}
+    @media(max-width:700px){.site-nav.nav-topbar{max-width:calc(100% - 16px)}.site-nav.nav-topbar .brand{display:none}.site-nav.nav-topbar .nav-links{max-width:100%;overflow:auto}.hero-inner{width:min(88vw,580px)}.immersive-home .hero h1{font-size:clamp(2rem,10vw,2.6rem)}.hero-info{padding:.65rem 1rem}.nav-corners{padding:0 1rem}}
+    @media(prefers-reduced-motion:reduce){.hero-background,.hero::before,.hero-character,.scroll-arrow,.site-nav.nav-topbar .nav-links a{animation:none!important;opacity:1;transform:none}}
   </style>
 </head>
-<body class="{{ site.font_class }} shell-{{ site.navigation_class }}">
-  <nav class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}" aria-label="主导航"><strong class="brand">{{ site.title }}</strong><div class="nav-links"><a href="/">首页</a><a href="/articles">文章</a><a href="/dynamics">动态</a><a href="/friends">友链</a>{% if site.show_search %}<a href="/search">搜索</a>{% endif %}<a href="/feed.xml">RSS</a></div></nav>
+<body class="{{ site.font_class }} shell-{{ site.navigation_class }}{% if immersive_home %} immersive-home{% endif %}">
+  {% if immersive_home %}<div class="nav-corners" id="nav-corners"><a class="brand" href="/">{{ site.title }}</a><div class="nav-actions">{% if site.show_search %}<a class="nav-action" href="/search" aria-label="搜索">⌕</a>{% endif %}<button class="nav-action" type="button" aria-label="菜单">☰</button></div></div>{% endif %}
+  <nav id="site-nav" class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}{% if immersive_home %}{% else %} nav-sticky{% endif %}" aria-label="主导航"><a class="brand" href="/">{{ site.title }}</a><div class="nav-links"><a href="/">首页</a><a href="/articles">文章</a><a href="/dynamics">动态</a><a href="/friends">友链</a>{% if site.show_search %}<a href="/search">搜索</a>{% endif %}<a href="/feed.xml">RSS</a></div></nav>
   <main><div class="page {{ site.page_width_class }}">{{ content|safe }}</div></main>
   <footer>{% if site.mail_enabled %}<form method="post" action="/subscriptions"><strong>订阅更新</strong> <input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="you@example.com"> <label><input type="checkbox" name="articles" checked>文章</label><label><input type="checkbox" name="dynamics">动态</label><button>订阅</button></form>{% endif %}<p>© {{ site.owner_name }} · YukiLog</p></footer>
+  <script>
+    (() => {
+      const nav = document.getElementById('site-nav');
+      const corners = document.getElementById('nav-corners');
+      if (!nav || !document.body.classList.contains('immersive-home')) return;
+      const sync = () => {
+        const pastHero = window.scrollY >= window.innerHeight - 50;
+        nav.classList.toggle('nav-sticky', pastHero);
+        if (pastHero) nav.classList.remove('nav-active');
+        corners?.classList.toggle('hidden', pastHero);
+      };
+      document.addEventListener('pointermove', (event) => {
+        if (window.scrollY >= window.innerHeight - 50) return;
+        nav.classList.toggle('nav-active', event.clientY < 80);
+      }, { passive: true });
+      window.addEventListener('scroll', sync, { passive: true });
+      sync();
+    })();
+  </script>
 </body>
 </html>"#,
     ext = "html"
@@ -157,17 +189,7 @@ struct PageTemplate<'a> {
     site: &'a SiteView,
     page_title: &'a str,
     content: &'a str,
-}
-
-#[derive(Template)]
-#[template(
-    source = r#"<section class="hero"><div><p>YukiLog</p><h1>{{ title }}</h1><p>{{ lead }}</p>{% if show_enter %}<p><a class="pill" href="/articles">进入主页 ↓</a></p>{% endif %}</div></section>"#,
-    ext = "html"
-)]
-struct HeroTemplate<'a> {
-    title: &'a str,
-    lead: &'a str,
-    show_enter: bool,
+    immersive_home: bool,
 }
 
 #[derive(Template)]
@@ -254,12 +276,22 @@ pub async fn home(State(state): State<AppState>) -> Result<Html<String>, AppErro
     )
     .await?;
     let dynamics = load_dynamics(&state, HOME_DYNAMIC_LIMIT).await?;
+    let media_urls = load_layout_media(&state, &layout.root).await?;
+    let home_content_id = layout
+        .root
+        .children
+        .iter()
+        .find(|node| !matches!(node.component_type, ComponentType::Hero))
+        .map(|node| node.id.as_str())
+        .unwrap_or(layout.root.id.as_str());
     let content = render_node(
         &layout.root,
         &RenderContext {
             site: &site,
             articles: &articles,
             dynamics: &dynamics,
+            media_urls: &media_urls,
+            home_content_id,
         },
     )?;
     page(&site, "首页", &content)
@@ -455,10 +487,76 @@ fn page(site: &SiteView, title: &str, content: &str) -> Result<Html<String>, App
         site,
         page_title: title,
         content,
+        immersive_home: title == "首页",
     }
     .render()
     .map(Html)
     .map_err(|_| AppError::Internal("render page"))
+}
+
+fn render_hero(node: &LayoutNode, context: &RenderContext<'_>) -> String {
+    let title = text_prop(node, "title");
+    let title_characters = title
+        .chars()
+        .enumerate()
+        .map(|(index, character)| {
+            format!(
+                r#"<span class="hero-character" style="--char-index:{index}">{}</span>"#,
+                escape_html(&character.to_string())
+            )
+        })
+        .collect::<String>();
+    let background_url = node
+        .props
+        .get("backgroundMediaId")
+        .and_then(Value::as_str)
+        .and_then(|id| context.media_urls.get(id))
+        .map(String::as_str)
+        .unwrap_or_default();
+    let background = if background_url.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<div class="hero-background" role="img" aria-label="首页背景" style="background-image:url(&quot;{}&quot;);background-position:{}"></div>"#,
+            escape_html(background_url),
+            escape_html(text_prop_or(node, "backgroundPosition", "center"))
+        )
+    };
+    let mut socials = String::new();
+    if bool_prop(node, "showSocials") {
+        for link in &context.site.social_links {
+            socials.push_str(&format!(
+                r#"<a href="{}" rel="me noopener">{}</a>"#,
+                escape_html(&link.url),
+                escape_html(&link.label)
+            ));
+        }
+        if !socials.is_empty() {
+            socials = format!(r#"<nav class="hero-socials">{socials}</nav>"#);
+        }
+    }
+    let enter = if bool_prop(node, "showEnter") {
+        format!(
+            r##"<a class="scroll-arrow" href="#{}" aria-label="进入文章区域">⌄</a>"##,
+            escape_html(context.home_content_id)
+        )
+    } else {
+        String::new()
+    };
+    let media_class = if background_url.is_empty() {
+        ""
+    } else {
+        " has-media"
+    };
+
+    format!(
+        r#"<section id="{}" class="hero hero-{} overlay-{}{}">{background}<div class="hero-inner"><p class="hero-kicker">YukiLog · 写给时间的长信</p><h1>{title_characters}</h1><div class="hero-info"><p>{}</p>{socials}</div>{enter}</div></section>"#,
+        escape_html(&node.id),
+        escape_html(text_prop_or(node, "variant", "cinematic")),
+        escape_html(text_prop_or(node, "overlay", "medium")),
+        media_class,
+        escape_html(text_prop(node, "lead")),
+    )
 }
 
 fn render_node(node: &LayoutNode, context: &RenderContext<'_>) -> Result<String, AppError> {
@@ -477,17 +575,13 @@ fn render_node(node: &LayoutNode, context: &RenderContext<'_>) -> Result<String,
         };
         let classes = layout_classes(node, base);
         return Ok(format!(
-            r#"<section class="{classes}">{children}</section>"#
+            r#"<section id="{}" class="{classes}">{children}</section>"#,
+            escape_html(&node.id)
         ));
     }
 
     let rendered = match node.component_type {
-        ComponentType::Hero => HeroTemplate {
-            title: text_prop(node, "title"),
-            lead: text_prop(node, "lead"),
-            show_enter: bool_prop(node, "showEnter"),
-        }
-        .render(),
+        ComponentType::Hero => Ok(render_hero(node, context)),
         ComponentType::Masthead => MastheadTemplate {
             title: text_prop(node, "title"),
             lead: text_prop(node, "lead"),
@@ -681,6 +775,39 @@ async fn load_layout(state: &AppState, key: &str) -> Result<PageLayoutDocument, 
         .validate()
         .map_err(|_| AppError::Internal("stored page layout failed validation"))?;
     Ok(layout)
+}
+
+async fn load_layout_media(
+    state: &AppState,
+    root: &LayoutNode,
+) -> Result<HashMap<String, String>, AppError> {
+    let mut ids = HashSet::new();
+    collect_layout_media_ids(root, &mut ids);
+    if ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let parsed = ids
+        .iter()
+        .filter_map(|id| Uuid::parse_str(id).ok())
+        .collect::<Vec<_>>();
+    let media = media_assets::Entity::find()
+        .filter(media_assets::Column::Id.is_in(parsed))
+        .all(&state.database)
+        .await?;
+    Ok(media
+        .into_iter()
+        .filter(|item| item.media_type.starts_with("image/"))
+        .map(|item| (item.id.to_string(), format!("/media/{}", item.storage_key)))
+        .collect())
+}
+
+fn collect_layout_media_ids(node: &LayoutNode, ids: &mut HashSet<String>) {
+    if let Some(id) = node.props.get("backgroundMediaId").and_then(Value::as_str) {
+        ids.insert(id.to_owned());
+    }
+    for child in &node.children {
+        collect_layout_media_ids(child, ids);
+    }
 }
 
 fn first_page() -> u64 {

@@ -69,6 +69,21 @@ impl PageLayoutDocument {
         let mut count = 0;
         validate_node(&self.root, 1, &mut count, &mut ids)
     }
+
+    pub fn media_ids(&self) -> Vec<&str> {
+        let mut ids = Vec::new();
+        collect_media_ids(&self.root, &mut ids);
+        ids
+    }
+}
+
+fn collect_media_ids<'a>(node: &'a LayoutNode, ids: &mut Vec<&'a str>) {
+    if let Some(id) = node.props.get("backgroundMediaId").and_then(Value::as_str) {
+        ids.push(id);
+    }
+    for child in &node.children {
+        collect_media_ids(child, ids);
+    }
 }
 
 fn validate_node(
@@ -169,6 +184,11 @@ fn validate_properties(
             (ComponentType::Hero, "lead") | (ComponentType::Masthead, "lead") => {
                 short_string(value, 500)
             }
+            (ComponentType::Hero, "backgroundMediaId") => uuid_string(value),
+            (ComponentType::Hero, "backgroundPosition") => {
+                string_in(value, &["center", "top", "bottom", "left", "right"])
+            }
+            (ComponentType::Hero, "overlay") => string_in(value, &["soft", "medium", "strong"]),
             (ComponentType::Hero, "showSocials")
             | (ComponentType::Hero, "showEnter")
             | (ComponentType::ProfileCard, "flip")
@@ -270,6 +290,19 @@ fn string_in(value: &Value, allowed: &[&str]) -> bool {
     value.as_str().is_some_and(|value| allowed.contains(&value))
 }
 
+fn uuid_string(value: &Value) -> bool {
+    value.as_str().is_some_and(|value| {
+        value.len() == 36
+            && value
+                .chars()
+                .enumerate()
+                .all(|(index, character)| match index {
+                    8 | 13 | 18 | 23 => character == '-',
+                    _ => character.is_ascii_hexdigit(),
+                })
+    })
+}
+
 fn spacing(value: &Value) -> bool {
     string_in(value, &["none", "sm", "md", "lg", "xl"])
 }
@@ -327,6 +360,36 @@ mod tests {
     #[test]
     fn accepts_registered_component_tree() {
         assert!(valid_layout().validate().is_ok());
+    }
+
+    #[test]
+    fn accepts_validated_hero_media_reference() {
+        let mut layout = valid_layout();
+        layout.root.children.insert(
+            0,
+            serde_json::from_value(serde_json::json!({
+                "id": "home-hero",
+                "type": "hero",
+                "props": {
+                    "variant": "cinematic",
+                    "title": "欢迎",
+                    "lead": "一段说明",
+                    "backgroundMediaId": "67e55044-10b1-426f-9247-bb680e5fe0c8",
+                    "backgroundPosition": "center",
+                    "overlay": "medium",
+                    "showSocials": true,
+                    "showEnter": true
+                }
+            }))
+            .unwrap(),
+        );
+        assert!(layout.validate().is_ok());
+
+        layout.root.children[0].props.insert(
+            "backgroundMediaId".into(),
+            Value::String("../../secret".into()),
+        );
+        assert!(layout.validate().is_err());
     }
 
     #[test]
