@@ -50,14 +50,39 @@ tar -C "$MEDIA_STAGE" -xzf "$BACKUP/media.tar.gz"
 [[ -d "$MEDIA_STAGE/media" ]] || { echo "媒体备份结构无效" >&2; exit 1; }
 
 systemctl stop yukilog-mailer.service yukilog-server.service
-runuser -u postgres -- psql --dbname=postgres --set=ON_ERROR_STOP=1 <<SQL
+runuser -u postgres -- psql --dbname=postgres --set=ON_ERROR_STOP=1 \
+    --set=restore_db="$RESTORE_DB" <<'SQL'
 SELECT pg_terminate_backend(pid)
   FROM pg_stat_activity
- WHERE datname IN ('yukilog', '$RESTORE_DB')
+ WHERE datname IN ('yukilog', :'restore_db')
    AND pid <> pg_backend_pid();
-ALTER DATABASE yukilog RENAME TO $OLD_DB;
-ALTER DATABASE $RESTORE_DB RENAME TO yukilog;
 SQL
+
+runuser -u postgres -- psql --dbname=postgres --set=ON_ERROR_STOP=1 \
+    --set=old_db="$OLD_DB" <<'SQL'
+ALTER DATABASE yukilog RENAME TO :"old_db";
+SQL
+if ! runuser -u postgres -- psql --dbname=postgres --set=ON_ERROR_STOP=1 \
+    --set=restore_db="$RESTORE_DB" <<'SQL'
+ALTER DATABASE :"restore_db" RENAME TO yukilog;
+SQL
+then
+    warn="临时数据库切换失败"
+    if runuser -u postgres -- psql --dbname=postgres --set=ON_ERROR_STOP=1 \
+        --set=old_db="$OLD_DB" <<'SQL'
+ALTER DATABASE :"old_db" RENAME TO yukilog;
+SQL
+    then
+        systemctl start yukilog-server.service
+        if [[ "${YUKILOG_MAIL_ENABLED:-false}" == "true" ]]; then
+            systemctl start yukilog-mailer.service
+        fi
+        echo "$warn；已恢复原数据库" >&2
+    else
+        echo "$warn，且原数据库自动复原失败；请立即人工处理" >&2
+    fi
+    exit 1
+fi
 
 mv -- "$DATA_ROOT/media" "$MEDIA_OLD"
 mv -- "$MEDIA_STAGE/media" "$DATA_ROOT/media"

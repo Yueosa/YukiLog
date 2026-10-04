@@ -64,6 +64,10 @@ capture_host_invariants >"$RUN/host-before.txt"
 
 cp -a --reflink=auto "$STATE/base" "$ROOTFS"
 install -d -m 700 "$ROOTFS/root/rehearsal-input"
+# The rehearsal intentionally has no external network. Mask only the copied
+# image's wait-online unit so nginx does not wait two minutes for connectivity.
+ln -sfn /dev/null \
+    "$ROOTFS/etc/systemd/system/systemd-networkd-wait-online.service"
 cp -a "$ROOT/ops" "$ROOTFS/root/rehearsal-input/"
 install -m 644 "$ARCHIVE" "$ARCHIVE.sha256" "$ROOTFS/root/rehearsal-input/"
 install -m 755 "$SCRIPT_DIR/inside.sh" "$ROOTFS/root/rehearsal-input/inside.sh"
