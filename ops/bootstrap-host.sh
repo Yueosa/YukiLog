@@ -53,6 +53,7 @@ YUKILOG_LISTEN_ADDR=127.0.0.1:3000
 YUKILOG_PUBLIC_ORIGIN=https://blog.yeastar.xin
 YUKILOG_MEDIA_DIR=/var/lib/yukilog/media
 YUKILOG_SUBSCRIPTION_SECRET=$SUBSCRIPTION_SECRET
+YUKILOG_MAIL_ENABLED=false
 YUKILOG_SMTP_HOST=
 YUKILOG_SMTP_PORT=587
 YUKILOG_SMTP_USERNAME=
@@ -98,5 +99,6 @@ cat <<'EOF'
    sudo bash -c 'set -a; source /etc/yukilog/yukilog.env; set +a; \
      exec /var/www/yukilog/current/bin/yukilog-admin create-admin <username> <display-name>'
 4. HTTP 验证正常后运行 sudo yukilog-enable-https <证书通知邮箱>。
-5. 配置 SMTP 后执行 systemctl enable --now yukilog-mailer。
+5. 完成 SMTP 故障注入和灰度验证后，将 YUKILOG_MAIL_ENABLED 改为 true，
+   再执行 systemctl enable --now yukilog-mailer。
 EOF

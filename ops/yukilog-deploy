@@ -76,14 +76,16 @@ rollback_release() {
         ln -s "$PREVIOUS" "$BASE/.rollback-current"
         mv -Tf "$BASE/.rollback-current" "$CURRENT"
         systemctl restart yukilog-server.service
-        [[ -z "${YUKILOG_SMTP_HOST:-}" ]] || systemctl restart yukilog-mailer.service
+        [[ "${YUKILOG_MAIL_ENABLED:-false}" != "true" ]] \
+            || systemctl restart yukilog-mailer.service
         echo "应用切换失败，已恢复上一版本：$PREVIOUS" >&2
     fi
 }
 
 systemctl enable yukilog-server.service
 systemctl restart yukilog-server.service
-if [[ -n "${YUKILOG_SMTP_HOST:-}" ]]; then
+if [[ "${YUKILOG_MAIL_ENABLED:-false}" == "true" ]]; then
+    : "${YUKILOG_SMTP_HOST:?邮件已启用但 YUKILOG_SMTP_HOST 未配置}"
     systemctl enable yukilog-mailer.service
     systemctl restart yukilog-mailer.service
 else

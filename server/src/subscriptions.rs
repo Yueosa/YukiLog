@@ -229,6 +229,22 @@ async fn subscribe_inner(
             transaction.commit().await?;
             return Ok(());
         }
+        let confirmation = email_deliveries::Entity::find()
+            .filter(email_deliveries::Column::SubscriberId.eq(model.id))
+            .filter(email_deliveries::Column::Kind.eq("confirm_subscription"))
+            .lock_exclusive()
+            .one(&transaction)
+            .await?;
+        if confirmation_requeue_blocked(
+            confirmation
+                .as_ref()
+                .map(|delivery| delivery.status.as_str()),
+            model.confirmation_sent_at,
+            Utc::now().fixed_offset(),
+        ) {
+            transaction.commit().await?;
+            return Ok(());
+        }
         let mut active = model.into_active_model();
         active.subscribe_articles = Set(input.subscribe_articles);
         active.subscribe_dynamics = Set(input.subscribe_dynamics);
@@ -352,12 +368,17 @@ pub async fn admin_retry_delivery(
     jar: CookieJar,
 ) -> Result<Json<AdminDeliveryResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
+    let transaction = state.database.begin().await?;
     let model = email_deliveries::Entity::find_by_id(id)
-        .one(&state.database)
+        .lock_exclusive()
+        .one(&transaction)
         .await?
         .ok_or(AppError::NotFound)?;
     if model.status == "sent" {
         return Err(AppError::InvalidRequest("已发送的邮件不能重试"));
+    }
+    if model.status == "sending" {
+        return Err(AppError::InvalidRequest("正在发送的邮件不能重试"));
     }
     let mut active = model.into_active_model();
     active.status = Set("pending".to_owned());
@@ -366,7 +387,9 @@ pub async fn admin_retry_delivery(
     active.locked_at = Set(None);
     active.last_error = Set(None);
     active.sent_at = Set(None);
-    Ok(Json(active.update(&state.database).await?.into()))
+    let model = active.update(&transaction).await?;
+    transaction.commit().await?;
+    Ok(Json(model.into()))
 }
 
 pub async fn admin_cancel_delivery(
@@ -376,8 +399,10 @@ pub async fn admin_cancel_delivery(
     jar: CookieJar,
 ) -> Result<Json<AdminDeliveryResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
+    let transaction = state.database.begin().await?;
     let model = email_deliveries::Entity::find_by_id(id)
-        .one(&state.database)
+        .lock_exclusive()
+        .one(&transaction)
         .await?
         .ok_or(AppError::NotFound)?;
     if model.status == "sent" {
@@ -387,7 +412,9 @@ pub async fn admin_cancel_delivery(
     active.status = Set("cancelled".to_owned());
     active.locked_at = Set(None);
     active.sent_at = Set(None);
-    Ok(Json(active.update(&state.database).await?.into()))
+    let model = active.update(&transaction).await?;
+    transaction.commit().await?;
+    Ok(Json(model.into()))
 }
 
 async fn unsubscribe_with_token(state: &AppState, token: &str) -> Result<(), AppError> {
@@ -443,6 +470,7 @@ DO UPDATE SET status = 'pending',
               locked_at = NULL,
               last_error = NULL,
               sent_at = NULL
+WHERE email_deliveries.status IN ('sent', 'cancelled')
 "#,
             [subscriber_id.into()],
         ))
@@ -468,6 +496,17 @@ fn email_rate_key(email: &str) -> Uuid {
     let mut bytes = [0_u8; 16];
     bytes.copy_from_slice(&digest[..16]);
     Uuid::from_bytes(bytes)
+}
+
+fn confirmation_requeue_blocked(
+    delivery_status: Option<&str>,
+    last_sent_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    now: chrono::DateTime<chrono::FixedOffset>,
+) -> bool {
+    matches!(
+        delivery_status,
+        Some("pending" | "sending" | "failed" | "uncertain")
+    ) || last_sent_at.is_some_and(|sent_at| sent_at > now - chrono::Duration::minutes(10))
 }
 
 impl From<subscribers::Model> for AdminSubscriberResponse {
@@ -542,5 +581,24 @@ mod tests {
             email_rate_key("reader@example.com"),
             email_rate_key("other@example.com")
         );
+    }
+
+    #[test]
+    fn confirmation_requeue_blocks_inflight_uncertain_and_recent_mail() {
+        let now = Utc::now().fixed_offset();
+        for status in ["pending", "sending", "failed", "uncertain"] {
+            assert!(confirmation_requeue_blocked(Some(status), None, now));
+        }
+        assert!(confirmation_requeue_blocked(
+            Some("sent"),
+            Some(now - chrono::Duration::minutes(5)),
+            now,
+        ));
+        assert!(!confirmation_requeue_blocked(
+            Some("sent"),
+            Some(now - chrono::Duration::minutes(11)),
+            now,
+        ));
+        assert!(!confirmation_requeue_blocked(Some("cancelled"), None, now));
     }
 }

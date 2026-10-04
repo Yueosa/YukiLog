@@ -40,8 +40,9 @@ sudo yukilog-enable-https you@example.com
 用户、数据库、随机数据库密码和订阅签名密钥。若 `/etc/yukilog/yukilog.env`
 已经存在，脚本会拒绝覆盖。
 
-SMTP 环境变量留空时 mailer 不会启用。填入 `/etc/yukilog/yukilog.env` 后，再次
-部署或手动执行：
+mailer 默认由 `YUKILOG_MAIL_ENABLED=false` 强制关闭。只有完成假 SMTP 故障注入
+和管理员邮箱灰度验证后，才可填入 SMTP 配置并把该值精确改为 `true`，随后再次部署
+或手动执行：
 
 ```bash
 sudo systemctl enable --now yukilog-mailer.service

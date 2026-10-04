@@ -1,12 +1,13 @@
 use std::{env, error::Error, time::Duration};
 
 use lettre::{
-    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor, message::Mailbox,
-    transport::smtp::authentication::Credentials,
+    AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+    message::Mailbox,
+    transport::smtp::{Error as SmtpError, authentication::Credentials},
 };
 use sea_orm::{
-    ActiveModelTrait, DatabaseBackend, DatabaseConnection, EntityTrait, FromQueryResult,
-    IntoActiveModel, Set, Statement,
+    ActiveModelTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
+    FromQueryResult, IntoActiveModel, QuerySelect, Set, Statement, TransactionTrait,
 };
 
 use crate::{
@@ -14,10 +15,18 @@ use crate::{
     subscriptions::{SubscriptionState, TokenPurpose},
 };
 
-const BATCH_SIZE: u32 = 10;
+const BATCH_SIZE: u32 = 1;
 const MAX_ATTEMPTS: i16 = 10;
+const STALE_AFTER_MINUTES: i16 = 15;
 
 type WorkerError = Box<dyn Error + Send + Sync>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SmtpFailureDisposition {
+    Retry,
+    Permanent,
+    Uncertain,
+}
 
 pub struct MailWorker {
     database: DatabaseConnection,
@@ -29,6 +38,11 @@ pub struct MailWorker {
 
 impl MailWorker {
     pub fn from_env(database: DatabaseConnection) -> Result<Self, WorkerError> {
+        if env::var("YUKILOG_MAIL_ENABLED").as_deref() != Ok("true") {
+            return Err(
+                "mail delivery is disabled; set YUKILOG_MAIL_ENABLED=true explicitly".into(),
+            );
+        }
         let public_origin = required_env("YUKILOG_PUBLIC_ORIGIN")?;
         let signer = SubscriptionState::new(required_env("YUKILOG_SUBSCRIPTION_SECRET")?)?;
         let smtp_host = required_env("YUKILOG_SMTP_HOST")?;
@@ -52,6 +66,7 @@ impl MailWorker {
     }
 
     pub async fn run_batch(&self) -> Result<usize, WorkerError> {
+        self.quarantine_stale_deliveries().await?;
         let deliveries = email_deliveries::Model::find_by_statement(Statement::from_string(
             DatabaseBackend::Postgres,
             format!(
@@ -63,10 +78,6 @@ WITH selected AS (
                status IN ('pending', 'failed')
                AND attempt_count < {MAX_ATTEMPTS}
                AND next_attempt_at <= now()
-           )
-        OR (
-               status = 'sending'
-               AND locked_at < now() - interval '15 minutes'
            )
      ORDER BY next_attempt_at, created_at
      FOR UPDATE SKIP LOCKED
@@ -88,19 +99,64 @@ RETURNING delivery.*
         let count = deliveries.len();
         for delivery in deliveries {
             if let Err(error) = self.send_delivery(&delivery).await {
-                tracing::warn!(delivery_id = %delivery.id, %error, "email delivery failed");
-                self.mark_failed(&delivery, &error.to_string()).await?;
+                tracing::error!(
+                    delivery_id = %delivery.id,
+                    %error,
+                    "email delivery state could not be finalized"
+                );
             }
         }
         Ok(count)
     }
 
+    async fn quarantine_stale_deliveries(&self) -> Result<(), sea_orm::DbErr> {
+        self.database
+            .execute(Statement::from_string(
+                DatabaseBackend::Postgres,
+                format!(
+                    r#"
+UPDATE email_deliveries
+   SET status = 'uncertain',
+       locked_at = NULL,
+       last_error = '投递结果未知：worker 在 SMTP 完成前后中断；为避免重复邮件，必须人工核对后重试'
+ WHERE status = 'sending'
+   AND locked_at < now() - interval '{STALE_AFTER_MINUTES} minutes'
+"#
+                ),
+            ))
+            .await?;
+        Ok(())
+    }
+
     async fn send_delivery(&self, delivery: &email_deliveries::Model) -> Result<(), WorkerError> {
+        let transaction = self.database.begin().await?;
         let subscriber = subscribers::Entity::find_by_id(delivery.subscriber_id)
-            .one(&self.database)
+            .lock_shared()
+            .one(&transaction)
             .await?
             .ok_or("subscriber no longer exists")?;
-        let (subject, body) = match delivery.kind.as_str() {
+        let current = email_deliveries::Entity::find_by_id(delivery.id)
+            .lock_exclusive()
+            .one(&transaction)
+            .await?;
+        let Some(current) = current else {
+            transaction.rollback().await?;
+            return Ok(());
+        };
+        if current.status != "sending" {
+            transaction.rollback().await?;
+            return Ok(());
+        }
+        if !delivery_is_allowed(&current, &subscriber) {
+            let mut active = current.into_active_model();
+            active.status = Set("cancelled".to_owned());
+            active.locked_at = Set(None);
+            active.update(&transaction).await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
+
+        let (subject, body) = match current.kind.as_str() {
             "confirm_subscription" if subscriber.status == "pending" => {
                 let token = self.signer.token(
                     subscriber.id,
@@ -117,11 +173,9 @@ RETURNING delivery.*
             }
             "article_published" if subscriber.status == "active" => {
                 let article = articles::Entity::find_by_id(
-                    delivery
-                        .article_id
-                        .ok_or("article delivery has no target")?,
+                    current.article_id.ok_or("article delivery has no target")?,
                 )
-                .one(&self.database)
+                .one(&transaction)
                 .await?
                 .ok_or("article no longer exists")?;
                 (
@@ -136,11 +190,9 @@ RETURNING delivery.*
             }
             "dynamic_published" if subscriber.status == "active" => {
                 let dynamic = dynamics::Entity::find_by_id(
-                    delivery
-                        .dynamic_id
-                        .ok_or("dynamic delivery has no target")?,
+                    current.dynamic_id.ok_or("dynamic delivery has no target")?,
                 )
-                .one(&self.database)
+                .one(&transaction)
                 .await?
                 .ok_or("dynamic no longer exists")?;
                 let link = format!("{}/dynamics#dynamic-{}", self.public_origin, dynamic.id);
@@ -155,7 +207,11 @@ RETURNING delivery.*
                 )
             }
             _ => {
-                self.mark_cancelled(delivery).await?;
+                let mut active = current.into_active_model();
+                active.status = Set("cancelled".to_owned());
+                active.locked_at = Set(None);
+                active.update(&transaction).await?;
+                transaction.commit().await?;
                 return Ok(());
             }
         };
@@ -164,12 +220,51 @@ RETURNING delivery.*
             .to(subscriber.email.parse::<Mailbox>()?)
             .subject(subject)
             .body(body)?;
-        self.transport.send(message).await?;
-        self.mark_sent(delivery).await?;
-        if delivery.kind == "confirm_subscription" {
-            let mut active = subscriber.into_active_model();
-            active.confirmation_sent_at = Set(Some(chrono::Utc::now().fixed_offset()));
-            active.update(&self.database).await?;
+        match self.transport.send(message).await {
+            Ok(_) => {
+                let is_confirmation = current.kind == "confirm_subscription";
+                let mut active = current.into_active_model();
+                active.status = Set("sent".to_owned());
+                active.sent_at = Set(Some(chrono::Utc::now().fixed_offset()));
+                active.locked_at = Set(None);
+                active.last_error = Set(None);
+                active.update(&transaction).await?;
+                if is_confirmation {
+                    let mut subscriber = subscriber.into_active_model();
+                    subscriber.confirmation_sent_at = Set(Some(chrono::Utc::now().fixed_offset()));
+                    subscriber.update(&transaction).await?;
+                }
+                transaction.commit().await?;
+            }
+            Err(error) => {
+                let disposition = smtp_failure_disposition(&error);
+                let detail = excerpt(&error.to_string(), 2000);
+                let mut active = current.into_active_model();
+                active.locked_at = Set(None);
+                active.last_error = Set(Some(detail));
+                match disposition {
+                    SmtpFailureDisposition::Retry => {
+                        active.status = Set("failed".to_owned());
+                        active.next_attempt_at = Set(chrono::Utc::now().fixed_offset()
+                            + chrono::Duration::seconds(retry_delay(delivery.attempt_count) as i64));
+                    }
+                    SmtpFailureDisposition::Permanent => {
+                        active.status = Set("failed".to_owned());
+                        active.attempt_count = Set(MAX_ATTEMPTS);
+                    }
+                    SmtpFailureDisposition::Uncertain => {
+                        active.status = Set("uncertain".to_owned());
+                    }
+                }
+                active.update(&transaction).await?;
+                transaction.commit().await?;
+                tracing::warn!(
+                    delivery_id = %delivery.id,
+                    ?disposition,
+                    smtp_status = ?error.status(),
+                    "SMTP delivery did not complete normally"
+                );
+            }
         }
         Ok(())
     }
@@ -189,43 +284,31 @@ RETURNING delivery.*
             self.public_origin, token
         ))
     }
+}
 
-    async fn mark_sent(&self, delivery: &email_deliveries::Model) -> Result<(), sea_orm::DbErr> {
-        let mut active = delivery.clone().into_active_model();
-        active.status = Set("sent".to_owned());
-        active.sent_at = Set(Some(chrono::Utc::now().fixed_offset()));
-        active.locked_at = Set(None);
-        active.last_error = Set(None);
-        active.update(&self.database).await?;
-        Ok(())
+fn delivery_is_allowed(
+    delivery: &email_deliveries::Model,
+    subscriber: &subscribers::Model,
+) -> bool {
+    match delivery.kind.as_str() {
+        "confirm_subscription" => subscriber.status == "pending",
+        "article_published" => subscriber.status == "active" && subscriber.subscribe_articles,
+        "dynamic_published" => subscriber.status == "active" && subscriber.subscribe_dynamics,
+        _ => false,
     }
+}
 
-    async fn mark_cancelled(
-        &self,
-        delivery: &email_deliveries::Model,
-    ) -> Result<(), sea_orm::DbErr> {
-        let mut active = delivery.clone().into_active_model();
-        active.status = Set("cancelled".to_owned());
-        active.locked_at = Set(None);
-        active.update(&self.database).await?;
-        Ok(())
-    }
+fn smtp_failure_disposition(error: &SmtpError) -> SmtpFailureDisposition {
+    smtp_failure_policy(error.is_transient(), error.is_permanent())
+}
 
-    async fn mark_failed(
-        &self,
-        delivery: &email_deliveries::Model,
-        error: &str,
-    ) -> Result<(), sea_orm::DbErr> {
-        let delay = retry_delay(delivery.attempt_count);
-        let next_attempt_at =
-            chrono::Utc::now().fixed_offset() + chrono::Duration::seconds(delay as i64);
-        let mut active = delivery.clone().into_active_model();
-        active.status = Set("failed".to_owned());
-        active.locked_at = Set(None);
-        active.next_attempt_at = Set(next_attempt_at);
-        active.last_error = Set(Some(excerpt(error, 2000)));
-        active.update(&self.database).await?;
-        Ok(())
+fn smtp_failure_policy(is_transient: bool, is_permanent: bool) -> SmtpFailureDisposition {
+    if is_transient {
+        SmtpFailureDisposition::Retry
+    } else if is_permanent {
+        SmtpFailureDisposition::Permanent
+    } else {
+        SmtpFailureDisposition::Uncertain
     }
 }
 
@@ -271,6 +354,94 @@ fn excerpt(value: &str, maximum: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::{
+        io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+        net::TcpListener,
+    };
+
+    #[test]
+    fn retries_only_explicit_transient_smtp_rejections() {
+        assert_eq!(
+            smtp_failure_policy(true, false),
+            SmtpFailureDisposition::Retry
+        );
+        assert_eq!(
+            smtp_failure_policy(false, true),
+            SmtpFailureDisposition::Permanent
+        );
+        assert_eq!(
+            smtp_failure_policy(false, false),
+            SmtpFailureDisposition::Uncertain
+        );
+    }
+
+    #[tokio::test]
+    async fn fake_smtp_accepts_one_message() {
+        let (port, server) = fake_smtp("250 2.0.0 queued\r\n").await;
+        let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
+            .port(port)
+            .build();
+        transport.send(test_message()).await.unwrap();
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fake_smtp_transient_rejection_is_retryable() {
+        let (port, server) = fake_smtp("451 4.3.0 try later\r\n").await;
+        let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
+            .port(port)
+            .build();
+        let error = transport.send(test_message()).await.unwrap_err();
+        assert_eq!(
+            smtp_failure_disposition(&error),
+            SmtpFailureDisposition::Retry
+        );
+        server.await.unwrap();
+    }
+
+    fn test_message() -> Message {
+        Message::builder()
+            .from("YukiLog <sender@example.com>".parse().unwrap())
+            .to("reader@example.com".parse().unwrap())
+            .subject("test")
+            .body("test body".to_owned())
+            .unwrap()
+    }
+
+    async fn fake_smtp(final_response: &'static str) -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let task = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (reader, mut writer) = stream.into_split();
+            let mut lines = BufReader::new(reader).lines();
+            writer.write_all(b"220 localhost ESMTP\r\n").await.unwrap();
+            while let Some(line) = lines.next_line().await.unwrap() {
+                if line.starts_with("EHLO ") {
+                    writer
+                        .write_all(b"250-localhost\r\n250 PIPELINING\r\n")
+                        .await
+                        .unwrap();
+                } else if line.starts_with("MAIL FROM:") || line.starts_with("RCPT TO:") {
+                    writer.write_all(b"250 2.1.0 ok\r\n").await.unwrap();
+                } else if line == "DATA" {
+                    writer
+                        .write_all(b"354 end with <CRLF>.<CRLF>\r\n")
+                        .await
+                        .unwrap();
+                    while lines.next_line().await.unwrap().as_deref() != Some(".") {}
+                    writer.write_all(final_response.as_bytes()).await.unwrap();
+                    if final_response.starts_with('4') || final_response.starts_with('5') {
+                        break;
+                    }
+                } else if line == "QUIT" {
+                    writer.write_all(b"221 2.0.0 bye\r\n").await.unwrap();
+                    break;
+                }
+            }
+        });
+        (port, task)
+    }
 
     #[test]
     fn retry_delay_uses_bounded_exponential_backoff() {

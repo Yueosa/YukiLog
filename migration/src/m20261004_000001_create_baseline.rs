@@ -443,7 +443,7 @@ CREATE TABLE email_deliveries (
             OR (kind = 'dynamic_published' AND article_id IS NULL AND dynamic_id IS NOT NULL)
         ),
     CONSTRAINT email_deliveries_status_valid
-        CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'cancelled')),
+        CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'cancelled', 'uncertain')),
     CONSTRAINT email_deliveries_attempt_count_valid
         CHECK (attempt_count BETWEEN 0 AND 20),
     CONSTRAINT email_deliveries_last_error_length
@@ -452,7 +452,7 @@ CREATE TABLE email_deliveries (
         CHECK (
             (status = 'sending' AND locked_at IS NOT NULL AND sent_at IS NULL)
             OR (status = 'sent' AND sent_at IS NOT NULL)
-            OR (status IN ('pending', 'failed', 'cancelled') AND sent_at IS NULL)
+            OR (status IN ('pending', 'failed', 'cancelled', 'uncertain') AND sent_at IS NULL)
         )
 );
 CREATE UNIQUE INDEX email_deliveries_subscriber_article_uidx

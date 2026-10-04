@@ -23,15 +23,22 @@ Web 实例同时首次创建同一地址时竞争。
 ## SMTP worker
 
 `yukilog-mailer` 是独立进程，不阻塞 Web 请求。它通过单条 PostgreSQL
-`UPDATE ... FOR UPDATE SKIP LOCKED` 每批领取 10 个任务，并把状态改为
-`sending` 后提交。发送成功标记为 `sent`；失败使用从 60 秒开始的指数退避，最多
-尝试 10 次。锁定超过 15 分钟的 `sending` 任务会被其他 worker 回收。
+`UPDATE ... FOR UPDATE SKIP LOCKED` 每次只领取一个任务，并把状态改为
+`sending` 后提交。SMTP 明确返回临时拒绝时使用从 60 秒开始的指数退避，最多尝试
+10 次；永久拒绝不自动重试。
+
+网络中断、超时或 worker 在 SMTP 成功后、数据库提交前退出时，系统无法判断收件
+服务器是否已经接受邮件。锁定超过 15 分钟的 `sending` 任务因此改为
+`uncertain`，绝不自动重发；管理员核对后才能手工重试。重试 `uncertain` 任务时
+后台必须显示重复投递警告。发送期间会锁定订阅者和投递行，退订、撤回或管理员取消
+会与发送串行化。
 
 所需环境变量：
 
 - `DATABASE_URL`
 - `YUKILOG_PUBLIC_ORIGIN`
 - `YUKILOG_SUBSCRIPTION_SECRET`
+- `YUKILOG_MAIL_ENABLED`（只有精确设置为 `true` 才允许启动 worker）
 - `YUKILOG_SMTP_HOST`
 - `YUKILOG_SMTP_PORT`（默认 `587`）
 - `YUKILOG_SMTP_USERNAME`
