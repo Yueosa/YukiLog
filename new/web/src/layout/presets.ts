@@ -8,10 +8,12 @@ export const layoutPresets: LayoutDocument[] = [
     description: '全屏壁纸、透明顶栏、双面个人卡与旧站式交错文章卡。',
     theme: 'hanakoi',
     shell: {
+      schemaVersion: 1,
       navigation: 'topbar',
       brandPosition: 'start',
       showSearch: true,
       translucent: true,
+      maxWidth: 'wide',
     },
     root: {
       id: 'hanakoi-root',
@@ -63,10 +65,12 @@ export const layoutPresets: LayoutDocument[] = [
     description: '固定左侧导航、没有全屏首屏，以文字刊头和杂志式排版直接进入阅读。',
     theme: 'moonletter',
     shell: {
+      schemaVersion: 1,
       navigation: 'sidebar',
       brandPosition: 'start',
       showSearch: true,
       translucent: false,
+      maxWidth: 'content',
     },
     root: {
       id: 'letter-root',
@@ -137,10 +141,12 @@ export const layoutPresets: LayoutDocument[] = [
     description: '底部浮动 Dock、紧凑分屏首区与自由 Bento 内容版面。',
     theme: 'orbit',
     shell: {
+      schemaVersion: 1,
       navigation: 'floating-dock',
       brandPosition: 'center',
       showSearch: true,
       translucent: true,
+      maxWidth: 'full',
     },
     root: {
       id: 'orbit-root',

@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod design;
 pub mod public;
+pub mod settings;
 
 use std::{
     collections::HashMap,

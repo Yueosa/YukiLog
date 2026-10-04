@@ -39,10 +39,12 @@ export interface LayoutNode {
 }
 
 export interface ShellLayout {
+  schemaVersion: 1;
   navigation: NavigationVariant;
   brandPosition: 'start' | 'center';
   showSearch: boolean;
   translucent: boolean;
+  maxWidth: 'content' | 'wide' | 'full';
 }
 
 export interface PageLayoutDocument {

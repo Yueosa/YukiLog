@@ -196,8 +196,12 @@ export function validateLayout(document: LayoutDocument): string[] {
   if (!['hanakoi', 'moonletter', 'orbit'].includes(document.theme)) {
     errors.push('未注册的主题');
   }
+  if (document.shell.schemaVersion !== 1) errors.push('不支持的外壳 schemaVersion');
   if (!['topbar', 'sidebar', 'floating-dock'].includes(document.shell.navigation)) {
     errors.push('未注册的导航组件');
+  }
+  if (!['content', 'wide', 'full'].includes(document.shell.maxWidth)) {
+    errors.push('无效的页面宽度');
   }
   return errors;
 }

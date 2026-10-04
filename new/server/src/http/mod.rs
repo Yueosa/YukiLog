@@ -15,7 +15,7 @@ use tower_http::{
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
-    use crate::content::{admin, design, public};
+    use crate::content::{admin, design, public, settings};
 
     let media_files = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::overriding(
@@ -111,6 +111,10 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/layouts/{page_key}",
             get(design::get_layout).put(design::put_layout),
+        )
+        .route(
+            "/api/admin/settings",
+            get(settings::get_settings).put(settings::put_settings),
         )
         .route(
             "/api/articles/{id}/comments",
