@@ -5,7 +5,7 @@ export const layoutPresets: LayoutDocument[] = [
     schemaVersion: 1,
     id: 'hanakoi-continuum',
     label: 'A · 花恋延续',
-    description: '全屏壁纸、透明顶栏、双面个人卡与旧站式交错文章卡。',
+    description: '电影感首屏、透明顶栏、双面个人卡与旧站式交错文章流。',
     theme: 'hanakoi',
     shell: {
       schemaVersion: 1,
@@ -25,8 +25,8 @@ export const layoutPresets: LayoutDocument[] = [
           type: 'hero',
           props: {
             variant: 'cinematic',
-            title: '愿每一次相遇都有回声',
-            lead: '把风、未说完的话，以及偶尔降临的温柔，都留在这里。',
+            title: '风会记得，每一次认真生活',
+            lead: '写代码，也收藏长夜、晚风和那些没来得及说完的话。',
             showSocials: true,
             showEnter: true,
           },
@@ -43,15 +43,37 @@ export const layoutPresets: LayoutDocument[] = [
               props: { variant: 'portrait', flip: true, showSocials: true, showStatus: true },
             },
             {
-              id: 'hanakoi-feed',
-              type: 'article-feed',
-              props: {
-                variant: 'alternating',
-                fields: ['cover', 'title', 'summary', 'date', 'category', 'tags'],
-                columns: 1,
-                limit: 6,
-                sort: 'latest',
-              },
+              id: 'hanakoi-main',
+              type: 'stack',
+              props: { gap: 'lg', maxWidth: 'wide' },
+              children: [
+                {
+                  id: 'hanakoi-masthead',
+                  type: 'masthead',
+                  props: {
+                    variant: 'minimal',
+                    title: '最近写下',
+                    lead: '一些关于技术、生活，以及如何与时间相处的记录。',
+                    alignment: 'left',
+                  },
+                },
+                {
+                  id: 'hanakoi-feed',
+                  type: 'article-feed',
+                  props: {
+                    variant: 'alternating',
+                    fields: ['cover', 'title', 'summary', 'date', 'category', 'tags'],
+                    columns: 1,
+                    limit: 5,
+                    sort: 'latest',
+                  },
+                },
+                {
+                  id: 'hanakoi-dynamics',
+                  type: 'dynamic-strip',
+                  props: { limit: 3, variant: 'compact' },
+                },
+              ],
             },
           ],
         },
@@ -89,7 +111,7 @@ export const layoutPresets: LayoutDocument[] = [
               props: {
                 variant: 'editorial',
                 title: '写给时间的长信',
-                lead: '没有算法推送，也不急着抵达。请从任意一页开始读。',
+                lead: '没有算法推送，也不急着抵达。这里按自己的节奏出版。',
                 alignment: 'left',
               },
             },
@@ -159,8 +181,8 @@ export const layoutPresets: LayoutDocument[] = [
           type: 'hero',
           props: {
             variant: 'split',
-            title: '在自己的轨道上写作',
-            lead: '文章、动态与片刻灵感，像星体一样各自运行。',
+            title: '让内容拥有自己的轨道',
+            lead: '文章、动态与片刻灵感，在同一座编辑部里各自运行。',
             showSocials: false,
             showEnter: false,
             area: 'span 8 / span 5',

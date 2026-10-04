@@ -47,6 +47,44 @@ const articles = [
     likes: 12,
     cover: 'cover-three',
   },
+  {
+    title: '一套不替创作者做决定的博客系统',
+    summary: '组件、布局和设计语言应当可以被更换，而内容不必跟着重新搬家。',
+    date: '2026 · 08 · 11',
+    category: '开发手记',
+    tags: ['Rust', '组件引擎'],
+    views: 184,
+    likes: 28,
+    cover: 'cover-four',
+  },
+  {
+    title: '雨落在窗边的时候，适合整理旧照片',
+    summary: '我没有试图把每张照片都解释清楚，只给它们留下了时间和地点。',
+    date: '2026 · 07 · 26',
+    category: '日常',
+    tags: ['雨天', '照片'],
+    views: 61,
+    likes: 9,
+    cover: 'cover-five',
+  },
+  {
+    title: '从一张空白页面开始',
+    summary: '这一次不修补旧站。重新决定哪些东西值得存在，也允许一些东西永远离开。',
+    date: '2026 · 07 · 08',
+    category: '站务',
+    tags: ['重构', 'YukiLog'],
+    views: 142,
+    likes: 24,
+    cover: 'cover-six',
+  },
+];
+
+const dynamics = [
+  '雨停以后，窗沿留下了一小段很亮的晚霞。',
+  '重新整理了书桌，也重新整理了一些念头。',
+  '正在为新的 YukiLog 选择它应有的样子。',
+  '凌晨两点，终于把恢复演练完整跑通。',
+  '今天的风很轻，适合慢一点做决定。',
 ];
 
 const navigationLabels: Record<NavigationVariant, string> = {
@@ -84,6 +122,7 @@ export class YukiApp extends LitElement {
       background: var(--page);
       font-family: Inter, 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
       --serif: 'Noto Serif SC', 'Songti SC', Georgia, serif;
+      scroll-behavior: smooth;
     }
 
     button,
@@ -101,15 +140,15 @@ export class YukiApp extends LitElement {
       top: 12px;
       left: 50%;
       display: flex;
-      width: min(920px, calc(100% - 24px));
+      width: min(860px, calc(100% - 24px));
       align-items: center;
       gap: 6px;
       padding: 7px;
       transform: translateX(-50%);
       border: 1px solid rgb(255 255 255 / 15%);
-      border-radius: 17px;
-      background: rgb(12 17 25 / 88%);
-      box-shadow: 0 14px 40px rgb(0 0 0 / 24%);
+      border-radius: 20px;
+      background: rgb(12 17 25 / 82%);
+      box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
       color: #e9edf5;
       backdrop-filter: blur(18px);
     }
@@ -134,6 +173,7 @@ export class YukiApp extends LitElement {
     .lab-bar button[aria-pressed='true'] {
       background: #f5f7fb;
       color: #171c25;
+      box-shadow: 0 5px 18px rgb(0 0 0 / 18%);
     }
 
     .lab-spacer {
@@ -157,6 +197,7 @@ export class YukiApp extends LitElement {
       min-height: 100dvh;
       background: var(--page);
       color: var(--ink);
+      overflow: clip;
     }
 
     .theme-moonletter {
@@ -186,6 +227,10 @@ export class YukiApp extends LitElement {
       --primary: #79c7d3;
       --secondary: #e899a9;
       --radius: 16px;
+      background:
+        radial-gradient(circle at 12% 8%, rgb(75 114 145 / 18%), transparent 30%),
+        radial-gradient(circle at 88% 78%, rgb(125 73 105 / 16%), transparent 28%),
+        var(--page);
     }
 
     .site-nav {
@@ -208,6 +253,9 @@ export class YukiApp extends LitElement {
       background: rgb(18 26 40 / 34%);
       color: white;
       backdrop-filter: blur(16px);
+      transition:
+        background 220ms ease,
+        transform 220ms ease;
     }
 
     .brand {
@@ -231,6 +279,7 @@ export class YukiApp extends LitElement {
 
     .nav-links a:hover {
       background: rgb(255 255 255 / 12%);
+      transform: translateY(-1px);
     }
 
     .nav-sidebar {
@@ -241,9 +290,26 @@ export class YukiApp extends LitElement {
       display: flex;
       width: 238px;
       flex-direction: column;
-      padding: 94px 28px 34px;
+      padding: 100px 30px 36px;
       border-right: 1px solid var(--line);
       background: color-mix(in srgb, var(--surface) 94%, transparent);
+    }
+
+    .theme-moonletter .nav-sidebar::after {
+      position: absolute;
+      right: 18px;
+      bottom: 34px;
+      color: color-mix(in srgb, var(--muted) 38%, transparent);
+      content: '01';
+      font: 700 74px/1 var(--serif);
+    }
+
+    .theme-moonletter .nav-sidebar .brand {
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--line);
+      font-family: var(--serif);
+      font-size: 24px;
+      font-weight: 500;
     }
 
     .nav-sidebar .nav-links {
@@ -254,6 +320,15 @@ export class YukiApp extends LitElement {
 
     .nav-sidebar .nav-links a {
       border-radius: 4px;
+      transition:
+        padding 180ms ease,
+        color 180ms ease;
+    }
+
+    .nav-sidebar .nav-links a:hover {
+      padding-left: 18px;
+      background: transparent;
+      color: var(--secondary);
     }
 
     .nav-sidebar .nav-foot {
@@ -282,6 +357,7 @@ export class YukiApp extends LitElement {
       color: #eff3f8;
       box-shadow: 0 18px 50px rgb(0 0 0 / 34%);
       backdrop-filter: blur(18px);
+      transition: transform 200ms ease;
     }
 
     .nav-dock .brand {
@@ -296,10 +372,18 @@ export class YukiApp extends LitElement {
       place-items: center;
       padding: 0;
       font-size: 0;
+      transition:
+        background 160ms ease,
+        transform 160ms ease;
     }
 
     .nav-dock .nav-links a::first-letter {
       font-size: 14px;
+    }
+
+    .nav-dock .nav-links a:hover {
+      background: var(--surface-soft);
+      transform: translateY(-5px);
     }
 
     .page-root {
@@ -310,6 +394,43 @@ export class YukiApp extends LitElement {
       display: flex;
       flex-direction: column;
       gap: var(--node-gap, 0);
+    }
+
+    .gap-none {
+      --node-gap: 0;
+      gap: 0;
+    }
+
+    .gap-sm {
+      --node-gap: 10px;
+      gap: 10px;
+    }
+
+    .gap-md {
+      --node-gap: 18px;
+      gap: 18px;
+    }
+
+    .gap-lg {
+      --node-gap: 32px;
+      gap: 32px;
+    }
+
+    .gap-xl {
+      --node-gap: 54px;
+      gap: 54px;
+    }
+
+    .align-start {
+      align-items: start;
+    }
+
+    .align-center {
+      align-items: center;
+    }
+
+    .align-stretch {
+      align-items: stretch;
     }
 
     .layout-grid {
@@ -331,6 +452,23 @@ export class YukiApp extends LitElement {
       align-items: start;
     }
 
+    .theme-hanakoi .layout-split {
+      padding-top: 104px;
+      background:
+        radial-gradient(circle at 10% 2%, rgb(227 160 178 / 8%), transparent 24%),
+        radial-gradient(circle at 90% 16%, rgb(114 173 210 / 9%), transparent 28%);
+    }
+
+    .theme-hanakoi .layout-split > .layout-stack {
+      --node-gap: 34px;
+    }
+
+    .theme-moonletter .layout-grid {
+      align-items: start;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      padding-top: 118px;
+    }
+
     .layout-bento {
       display: grid;
       width: min(1240px, calc(100% - 40px));
@@ -340,6 +478,19 @@ export class YukiApp extends LitElement {
       gap: 18px;
       margin: 0 auto;
       padding: 106px 0 120px;
+    }
+
+    .theme-orbit .layout-bento::before {
+      position: fixed;
+      z-index: -1;
+      opacity: 0.13;
+      background-image:
+        linear-gradient(rgb(121 199 211 / 18%) 1px, transparent 1px),
+        linear-gradient(90deg, rgb(121 199 211 / 18%) 1px, transparent 1px);
+      background-size: 84px 84px;
+      content: '';
+      inset: 0;
+      mask-image: linear-gradient(to bottom, black, transparent 90%);
     }
 
     .theme-orbit .layout-bento > .node-hero {
@@ -387,13 +538,19 @@ export class YukiApp extends LitElement {
 
     .theme-hanakoi .hero::before {
       background:
-        radial-gradient(circle at 74% 24%, rgb(239 194 203 / 66%), transparent 18%),
-        linear-gradient(155deg, #192b43, #526f8d 44%, #a8bac6 68%, #d9aeb7);
+        radial-gradient(circle at 78% 18%, rgb(255 219 221 / 78%), transparent 13%),
+        radial-gradient(ellipse at 16% 95%, rgb(23 49 77 / 92%), transparent 38%),
+        linear-gradient(162deg, transparent 52%, rgb(239 179 194 / 42%) 53% 58%, transparent 59%),
+        linear-gradient(155deg, #15283e 0%, #456884 42%, #9db5c3 68%, #dca9b6 100%);
+      transform: scale(1.04);
+      animation: hero-reveal 1.4s cubic-bezier(0.22, 0.61, 0.36, 1) both;
     }
 
     .theme-hanakoi .hero::after {
       z-index: -1;
-      background: linear-gradient(180deg, rgb(6 14 28 / 12%), rgb(6 14 28 / 46%));
+      background:
+        linear-gradient(90deg, rgb(4 12 24 / 42%), transparent 58%),
+        linear-gradient(180deg, rgb(6 14 28 / 10%), rgb(6 14 28 / 58%));
     }
 
     .hero-inner {
@@ -402,12 +559,37 @@ export class YukiApp extends LitElement {
       text-align: center;
     }
 
+    .theme-hanakoi .hero-inner {
+      display: flex;
+      align-items: center;
+      flex-direction: column;
+      animation: hero-copy-in 900ms 180ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+
+    .theme-hanakoi .hero-inner > .component-kicker {
+      padding: 8px 13px;
+      border: 1px solid rgb(255 255 255 / 22%);
+      border-radius: 999px;
+      background: rgb(8 17 30 / 18%);
+      color: rgb(255 255 255 / 74%);
+      backdrop-filter: blur(12px);
+    }
+
     .hero h1 {
       margin: 0;
       font-size: clamp(44px, 8vw, 78px);
       line-height: 1.15;
       letter-spacing: 0.06em;
       text-shadow: 0 8px 30px rgb(0 0 0 / 24%);
+    }
+
+    .theme-hanakoi .hero h1 {
+      max-width: 850px;
+      font-family: var(--serif);
+      font-size: clamp(48px, 7vw, 86px);
+      font-weight: 700;
+      letter-spacing: 0.09em;
+      text-wrap: balance;
     }
 
     .hero p {
@@ -434,8 +616,36 @@ export class YukiApp extends LitElement {
       backdrop-filter: blur(12px);
     }
 
+    .social-row span {
+      min-width: 66px;
+      transition:
+        transform 180ms ease,
+        background 180ms ease;
+    }
+
+    .social-row span:hover {
+      background: rgb(255 255 255 / 16%);
+      transform: translateY(-4px);
+    }
+
     .enter-button {
-      margin-top: 26px;
+      position: absolute;
+      bottom: 28px;
+      left: 50%;
+      display: grid;
+      width: 54px;
+      height: 54px;
+      place-items: center;
+      margin: 0;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      font-size: 0;
+      animation: enter-float 2s ease-in-out infinite;
+    }
+
+    .enter-button::after {
+      content: '↓';
+      font-size: 22px;
     }
 
     .hero-split {
@@ -465,6 +675,21 @@ export class YukiApp extends LitElement {
 
     .hero-split .hero-inner p {
       margin-inline: 0;
+    }
+
+    .theme-orbit .hero-split h1 {
+      max-width: 680px;
+      font-size: clamp(42px, 5vw, 68px);
+      letter-spacing: -0.035em;
+    }
+
+    .theme-orbit .hero-split .component-kicker {
+      color: var(--primary);
+    }
+
+    .theme-orbit .hero-split::after {
+      z-index: -1;
+      background: linear-gradient(135deg, transparent 55%, rgb(232 153 169 / 12%));
     }
 
     .masthead {
@@ -498,6 +723,49 @@ export class YukiApp extends LitElement {
       line-height: 2;
     }
 
+    .masthead-minimal {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(240px, 0.7fr);
+      gap: 28px;
+      align-items: end;
+      padding: 4px 0 28px;
+    }
+
+    .masthead-minimal .kicker {
+      grid-column: 1 / -1;
+      margin-bottom: -12px;
+    }
+
+    .masthead-minimal h1 {
+      font-size: clamp(34px, 5vw, 58px);
+      font-weight: 700;
+    }
+
+    .masthead-minimal .lead {
+      margin: 0;
+      font-size: 15px;
+    }
+
+    .theme-moonletter .masthead {
+      position: relative;
+      padding-top: 38px;
+    }
+
+    .theme-moonletter .masthead::before {
+      position: absolute;
+      top: 0;
+      right: 0;
+      color: var(--secondary);
+      content: 'YUKILOG / JOURNAL';
+      font: 700 10px/1 system-ui, sans-serif;
+      letter-spacing: 0.22em;
+    }
+
+    .theme-moonletter .masthead h1 {
+      max-width: 760px;
+      letter-spacing: -0.04em;
+    }
+
     .profile-card {
       position: sticky;
       top: 88px;
@@ -515,6 +783,16 @@ export class YukiApp extends LitElement {
       background: transparent;
       color: inherit;
       transition: transform 500ms ease;
+    }
+
+    .profile-button:focus-visible {
+      border-radius: var(--radius);
+      outline: 3px solid color-mix(in srgb, var(--primary) 60%, transparent);
+      outline-offset: 4px;
+    }
+
+    .profile-button:disabled {
+      cursor: default;
     }
 
     .profile-button[aria-pressed='true'] {
@@ -553,6 +831,7 @@ export class YukiApp extends LitElement {
       color: white;
       font-family: var(--serif);
       font-size: 28px;
+      box-shadow: 0 10px 28px color-mix(in srgb, var(--secondary) 24%, transparent);
     }
 
     .profile-face h2 {
@@ -574,6 +853,42 @@ export class YukiApp extends LitElement {
       font-size: 12px;
     }
 
+    .profile-socials {
+      margin-top: 22px;
+      color: var(--primary);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+    }
+
+    .profile-status {
+      width: 100%;
+      margin-top: 16px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      font: 10px/1.5 ui-monospace, monospace;
+      text-align: left;
+    }
+
+    .profile-portrait .profile-face {
+      border-color: color-mix(in srgb, var(--secondary) 30%, var(--line));
+      box-shadow: -7px 9px 0 rgb(227 160 178 / 14%);
+    }
+
+    .profile-letter .profile-face {
+      align-items: flex-start;
+      border-radius: 3px;
+      box-shadow: 8px 8px 0 color-mix(in srgb, var(--primary) 9%, transparent);
+      text-align: left;
+    }
+
+    .profile-letter .avatar {
+      width: 70px;
+      height: 70px;
+      border-radius: 3px;
+    }
+
     .profile-compact {
       position: relative;
       top: auto;
@@ -583,6 +898,14 @@ export class YukiApp extends LitElement {
     .profile-compact .profile-button,
     .profile-compact .profile-face {
       min-height: 100%;
+    }
+
+    .theme-orbit .profile-compact .profile-face {
+      justify-content: center;
+      border-color: rgb(121 199 211 / 22%);
+      background:
+        linear-gradient(145deg, rgb(121 199 211 / 8%), transparent 38%),
+        var(--surface);
     }
 
     .article-feed {
@@ -596,11 +919,25 @@ export class YukiApp extends LitElement {
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: var(--surface);
+      transition:
+        border-color 220ms ease,
+        box-shadow 220ms ease,
+        transform 220ms ease;
+    }
+
+    .article:hover {
+      border-color: color-mix(in srgb, var(--primary) 34%, var(--line));
+      transform: translateY(-4px);
     }
 
     .article-cover {
       min-height: 210px;
       background: var(--cover);
+      transition: transform 600ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+
+    .article:hover .article-cover {
+      transform: scale(1.045);
     }
 
     .cover-one {
@@ -613,6 +950,25 @@ export class YukiApp extends LitElement {
 
     .cover-three {
       --cover: linear-gradient(145deg, #293b57, #747b9a 52%, #dfa3b2);
+    }
+
+    .cover-four {
+      --cover:
+        radial-gradient(circle at 70% 24%, #f2c9cf 0 8%, transparent 9%),
+        linear-gradient(135deg, #13243a, #456a7b 58%, #c995a7);
+    }
+
+    .cover-five {
+      --cover:
+        linear-gradient(115deg, transparent 45%, rgb(255 255 255 / 28%) 46% 48%, transparent 49%),
+        linear-gradient(150deg, #637888, #b7c5ca 56%, #e7d6cf);
+    }
+
+    .cover-six {
+      --cover:
+        radial-gradient(circle at 24% 72%, #df9caf 0 3%, transparent 4%),
+        radial-gradient(circle at 33% 66%, #78abc8 0 2%, transparent 3%),
+        linear-gradient(145deg, #f1ece6, #aab9c1 60%, #536b80);
     }
 
     .article-copy {
@@ -659,6 +1015,10 @@ export class YukiApp extends LitElement {
       box-shadow: -3px 4px 16px rgb(114 173 210 / 18%);
     }
 
+    .feed-alternating .article:hover {
+      box-shadow: -8px 11px 0 rgb(114 173 210 / 13%);
+    }
+
     .feed-alternating .article:nth-child(even) {
       grid-template-columns: 58% 42%;
     }
@@ -668,6 +1028,7 @@ export class YukiApp extends LitElement {
     }
 
     .feed-editorial {
+      counter-reset: article;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 0;
       border-top: 1px solid var(--line);
@@ -675,10 +1036,22 @@ export class YukiApp extends LitElement {
     }
 
     .feed-editorial .article {
+      position: relative;
       min-height: 290px;
       border-width: 0 1px 1px 0;
       border-radius: 0;
       background: color-mix(in srgb, var(--surface) 90%, transparent);
+      counter-increment: article;
+    }
+
+    .feed-editorial .article::before {
+      position: absolute;
+      top: 18px;
+      right: 20px;
+      color: color-mix(in srgb, var(--muted) 44%, transparent);
+      content: '0' counter(article);
+      font: 600 11px/1 system-ui, sans-serif;
+      letter-spacing: 0.12em;
     }
 
     .feed-editorial .article-copy {
@@ -688,6 +1061,12 @@ export class YukiApp extends LitElement {
     .feed-editorial .article h3 {
       font-family: var(--serif);
       font-size: 26px;
+    }
+
+    .feed-editorial .article:hover {
+      z-index: 1;
+      box-shadow: 14px 14px 0 color-mix(in srgb, var(--primary) 10%, transparent);
+      transform: translate(-4px, -4px);
     }
 
     .feed-cover-overlay {
@@ -700,6 +1079,11 @@ export class YukiApp extends LitElement {
       min-height: 360px;
       border-radius: 14px;
       color: white;
+    }
+
+    .feed-cover-overlay .article:hover {
+      box-shadow: 0 18px 42px rgb(0 0 0 / 34%);
+      transform: translateY(-7px);
     }
 
     .feed-cover-overlay .article-cover {
@@ -728,6 +1112,15 @@ export class YukiApp extends LitElement {
       display: none;
     }
 
+    .theme-orbit .feed-cover-overlay .article h3 {
+      font-size: 19px;
+    }
+
+    .theme-orbit .feed-cover-overlay .article time,
+    .theme-orbit .feed-cover-overlay .article-metrics {
+      color: rgb(255 255 255 / 66%);
+    }
+
     .quote-card,
     .stats-card,
     .dynamic-strip {
@@ -735,6 +1128,14 @@ export class YukiApp extends LitElement {
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: var(--surface);
+    }
+
+    .theme-orbit .quote-card,
+    .theme-orbit .stats-card,
+    .theme-orbit .dynamic-strip {
+      border-color: rgb(121 199 211 / 16%);
+      background: rgb(23 29 39 / 80%);
+      box-shadow: inset 0 1px rgb(255 255 255 / 4%);
     }
 
     .quote-card {
@@ -770,6 +1171,9 @@ export class YukiApp extends LitElement {
     }
 
     .dynamic-item {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 8px;
       padding: 12px 0;
       border-bottom: 1px solid var(--line);
       color: var(--muted);
@@ -777,8 +1181,71 @@ export class YukiApp extends LitElement {
       line-height: 1.6;
     }
 
+    .dynamic-item time {
+      color: var(--secondary);
+      font: 10px/1.7 ui-monospace, monospace;
+    }
+
     .dynamic-item:last-child {
       border-bottom: 0;
+    }
+
+    .dynamics-handwritten {
+      position: relative;
+      padding: 32px;
+      border-radius: 2px;
+      background:
+        repeating-linear-gradient(
+          transparent 0 31px,
+          color-mix(in srgb, var(--primary) 10%, transparent) 32px
+        ),
+        var(--surface);
+      transform: rotate(-0.5deg);
+      box-shadow: 7px 9px 0 color-mix(in srgb, var(--secondary) 8%, transparent);
+      font-family: var(--serif);
+    }
+
+    .dynamics-timeline .dynamic-item {
+      position: relative;
+      margin-left: 6px;
+      padding-left: 16px;
+      border-bottom: 0;
+      border-left: 1px solid color-mix(in srgb, var(--primary) 40%, transparent);
+    }
+
+    .dynamics-timeline .dynamic-item::before {
+      position: absolute;
+      top: 18px;
+      left: -4px;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--primary);
+      content: '';
+      box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent);
+    }
+
+    .dynamics-compact {
+      display: grid;
+      grid-template-columns: minmax(150px, 0.45fr) repeat(3, 1fr);
+      gap: 0;
+      align-items: stretch;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .dynamics-compact .component-kicker,
+    .dynamics-compact .dynamic-item {
+      margin: 0;
+      padding: 22px;
+      border-right: 1px solid var(--line);
+      border-bottom: 0;
+    }
+
+    .dynamics-compact .component-kicker {
+      display: flex;
+      align-items: center;
+      background: var(--surface-soft);
     }
 
     /* Layout studio */
@@ -938,6 +1405,57 @@ export class YukiApp extends LitElement {
       font-size: 12px;
     }
 
+    @keyframes hero-reveal {
+      from {
+        filter: blur(9px) brightness(0.55);
+        transform: scale(1.1);
+      }
+      to {
+        filter: blur(0) brightness(1);
+        transform: scale(1.04);
+      }
+    }
+
+    @keyframes hero-copy-in {
+      from {
+        opacity: 0;
+        transform: translateY(26px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes enter-float {
+      0%,
+      100% {
+        transform: translate(-50%, 0);
+      }
+      50% {
+        transform: translate(-50%, 7px);
+      }
+    }
+
+    @keyframes card-in {
+      from {
+        opacity: 0;
+        transform: translateY(28px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @supports (animation-timeline: view()) {
+      .feed-alternating .article {
+        animation: card-in both;
+        animation-range: entry 10% cover 28%;
+        animation-timeline: view();
+      }
+    }
+
     @media (max-width: 900px) {
       .lab-title,
       .lab-spacer {
@@ -952,6 +1470,16 @@ export class YukiApp extends LitElement {
 
       .nav-topbar {
         top: 64px;
+        padding-inline: 12px;
+      }
+
+      .nav-topbar .brand {
+        display: none;
+      }
+
+      .nav-topbar .nav-links {
+        width: 100%;
+        justify-content: center;
       }
 
       .nav-sidebar {
@@ -986,6 +1514,14 @@ export class YukiApp extends LitElement {
         padding-top: 72px;
       }
 
+      .masthead-minimal {
+        grid-template-columns: 1fr;
+      }
+
+      .masthead-minimal .lead {
+        margin-top: -10px;
+      }
+
       .layout-bento {
         width: min(100% - 24px, 680px);
         grid-template-columns: 1fr;
@@ -1018,6 +1554,16 @@ export class YukiApp extends LitElement {
         grid-template-columns: 1fr;
       }
 
+      .dynamics-compact {
+        grid-template-columns: 1fr;
+      }
+
+      .dynamics-compact .component-kicker,
+      .dynamics-compact .dynamic-item {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+
       .studio-shell {
         display: block;
       }
@@ -1033,6 +1579,54 @@ export class YukiApp extends LitElement {
 
       .studio-canvas {
         padding: 12px;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .lab-bar {
+        top: 8px;
+        overflow-x: auto;
+        justify-content: flex-start;
+      }
+
+      .lab-bar button {
+        min-width: max-content;
+      }
+
+      .hero-inner {
+        padding-inline: 8px;
+      }
+
+      .theme-hanakoi .hero h1 {
+        font-size: clamp(40px, 13vw, 60px);
+        letter-spacing: 0.04em;
+      }
+
+      .hero p {
+        font-size: 14px;
+      }
+
+      .social-row span {
+        min-width: 0;
+        padding-inline: 12px;
+      }
+
+      .nav-links {
+        gap: 0;
+      }
+
+      .nav-links a {
+        padding-inline: 8px;
+        font-size: 12px;
+      }
+
+      .article-copy,
+      .feed-editorial .article-copy {
+        padding: 23px;
+      }
+
+      .layout-bento {
+        padding-top: 92px;
       }
     }
 
@@ -1168,10 +1762,13 @@ export class YukiApp extends LitElement {
     const click = (event: Event) => this.selectNode(node.id, event);
 
     if (definition.acceptsChildren) {
+      const gap = typeof node.props.gap === 'string' ? ` gap-${node.props.gap}` : '';
+      const align = typeof node.props.align === 'string' ? ` align-${node.props.align}` : '';
       return html`
         <section
-          class="${base} layout-${node.type}"
+          class="${base} layout-${node.type}${gap}${align}"
           data-label="${definition.label}"
+          data-node-id="${node.id}"
           @click=${click}
         >
           ${node.children?.map((child) => this.renderNode(child))}
@@ -1196,25 +1793,49 @@ export class YukiApp extends LitElement {
           </aside>
         `;
       case 'stats':
+        {
+          const fields = new Set((node.props.fields as string[]) ?? []);
+          const available = [
+            ['articles', '42', '文章'],
+            ['dynamics', '128', '动态'],
+            ['words', '19万', '字'],
+          ] as const;
         return html`
           <section class="${base} stats-card" data-label="站点数据" @click=${click}>
             <p class="component-kicker">Site archive</p>
             <div class="stats-grid">
-              <div class="stat"><strong>42</strong><span>文章</span></div>
-              <div class="stat"><strong>128</strong><span>动态</span></div>
-              <div class="stat"><strong>19万</strong><span>字</span></div>
+                ${available
+                  .filter(([field]) => fields.size === 0 || fields.has(field))
+                  .map(
+                    ([, value, label]) =>
+                      html`<div class="stat"><strong>${value}</strong><span>${label}</span></div>`,
+                  )}
             </div>
           </section>
         `;
+        }
       case 'dynamic-strip':
+        {
+          const limit = Number(node.props.limit ?? 3);
+          const variant = String(node.props.variant ?? 'compact');
         return html`
-          <section class="${base} dynamic-strip" data-label="最近动态" @click=${click}>
+            <section
+              class="${base} dynamic-strip dynamics-${variant}"
+              data-label="最近动态"
+              @click=${click}
+            >
             <p class="component-kicker">Recent moments</p>
-            <div class="dynamic-item">雨停以后，窗沿留下了一小段很亮的晚霞。</div>
-            <div class="dynamic-item">重新整理了书桌，也重新整理了一些念头。</div>
-            <div class="dynamic-item">正在为新的 YukiLog 选择它应有的样子。</div>
+              ${dynamics
+                .slice(0, Math.max(1, limit))
+                .map(
+                  (item, index) =>
+                    html`<div class="dynamic-item">
+                      <time>${String(index + 1).padStart(2, '0')}</time><span>${item}</span>
+                    </div>`,
+                )}
           </section>
         `;
+        }
       default:
         return nothing;
     }
@@ -1226,6 +1847,7 @@ export class YukiApp extends LitElement {
       <section
         class="${base} hero hero-${variant}"
         data-label="沉浸式首屏"
+        data-node-id="${node.id}"
         @click=${click}
       >
         <div class="hero-inner">
@@ -1238,6 +1860,7 @@ export class YukiApp extends LitElement {
           ${node.props.showEnter
             ? html`<button
                 class="enter-button"
+                aria-label="进入文章区域"
                 @click=${(event: Event) => {
                   event.stopPropagation();
                   this.renderRoot
@@ -1254,8 +1877,14 @@ export class YukiApp extends LitElement {
   }
 
   private renderMasthead(node: LayoutNode, base: string, click: (event: Event) => void) {
+    const variant = String(node.props.variant ?? 'editorial');
     return html`
-      <header class="${base} masthead" data-label="文字刊头" @click=${click}>
+      <header
+        class="${base} masthead masthead-${variant}"
+        data-label="文字刊头"
+        data-node-id="${node.id}"
+        @click=${click}
+      >
         <p class="kicker">YukiLog · Vol. 01</p>
         <h1>${String(node.props.title ?? '')}</h1>
         <p class="lead">${String(node.props.lead ?? '')}</p>
@@ -1265,15 +1894,23 @@ export class YukiApp extends LitElement {
 
   private renderProfile(node: LayoutNode, base: string, click: (event: Event) => void) {
     const flipped = this.flippedProfiles.has(node.id);
-    const compact = node.props.variant === 'compact' ? ' profile-compact' : '';
+    const variant = String(node.props.variant ?? 'portrait');
+    const canFlip = node.props.flip !== false;
     return html`
-      <section class="${base} profile-card${compact}" data-label="双面个人卡" @click=${click}>
+      <section
+        class="${base} profile-card profile-${variant}"
+        data-label="双面个人卡"
+        data-node-id="${node.id}"
+        @click=${click}
+      >
         <button
           class="profile-button"
           aria-label="翻转个人卡片"
           aria-pressed=${flipped}
+          ?disabled=${!canFlip}
           @click=${(event: Event) => {
             event.stopPropagation();
+            if (!canFlip) return;
             if (flipped) this.flippedProfiles.delete(node.id);
             else this.flippedProfiles.add(node.id);
             this.requestUpdate();
@@ -1283,7 +1920,13 @@ export class YukiApp extends LitElement {
             <span class="avatar" aria-hidden="true">雪</span>
             <h2>Sakurine</h2>
             <p>写代码，也收集深夜、长风和那些不肯消失的心动。</p>
-            <span class="profile-hint">轻触卡片，读另一面</span>
+            ${node.props.showSocials
+              ? html`<span class="profile-socials">GitHub · RSS · Mail</span>`
+              : nothing}
+            ${node.props.showStatus
+              ? html`<span class="profile-status">● system.log · rebuilding</span>`
+              : nothing}
+            ${canFlip ? html`<span class="profile-hint">轻触卡片，读另一面</span>` : nothing}
           </span>
           <span class="profile-face profile-back">
             <p class="component-kicker">About this person</p>
@@ -1299,13 +1942,19 @@ export class YukiApp extends LitElement {
   private renderArticleFeed(node: LayoutNode, base: string, click: (event: Event) => void) {
     const variant = String(node.props.variant ?? 'compact');
     const fields = new Set((node.props.fields as ArticleField[]) ?? []);
+    const limit = Number(node.props.limit ?? articles.length);
+    const sortedArticles =
+      node.props.sort === 'popular'
+        ? [...articles].sort((left, right) => right.likes - left.likes)
+        : articles;
     return html`
       <section
         class="${base} article-feed feed-${variant}"
         data-label="文章列表 · ${variant}"
+        data-node-id="${node.id}"
         @click=${click}
       >
-        ${articles.map(
+        ${sortedArticles.slice(0, Math.max(1, limit)).map(
           (article) => html`
             <article class="article">
               ${fields.has('cover')
