@@ -1,0 +1,13 @@
+/target/
+node_modules/
+/.pnpm-store/
+/web/dist/
+/.env
+/.env.*
+!/.env.example
+*.log
+
+# Runtime data belongs outside release directories in production.
+/data/
+/uploads/
+/backups/

@@ -1,0 +1,10 @@
+{
+  "name": "yukilog",
+  "private": true,
+  "packageManager": "pnpm@11.28.3",
+  "scripts": {
+    "build": "pnpm --filter @yukilog/web build",
+    "check": "pnpm --filter @yukilog/web check",
+    "dev": "pnpm --filter @yukilog/web dev"
+  }
+}
