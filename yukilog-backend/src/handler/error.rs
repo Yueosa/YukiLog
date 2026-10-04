@@ -20,22 +20,20 @@ impl IntoResponse for ServiceError {
 
             ServiceError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, msg),
 
+            ServiceError::Unavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
+
             ServiceError::Repo(repo_error) => match repo_error {
                 RepoError::Db(e) => {
                     // 数据库错误应该记录日志，不暴露具体错误给客户端
                     tracing::error!("Database error: {:?}", e);
-                    (
-                        StatusCode::INTERNAL_SERVER_ERROR,
-                        "数据库错误".to_string(),
-                    )
+                    (StatusCode::INTERNAL_SERVER_ERROR, "数据库错误".to_string())
                 }
 
                 RepoError::NotFound => (StatusCode::NOT_FOUND, "资源不存在".to_string()),
 
-                RepoError::InvalidStatus(status) => (
-                    StatusCode::BAD_REQUEST,
-                    format!("无效的状态值: {}", status),
-                ),
+                RepoError::InvalidStatus(status) => {
+                    (StatusCode::BAD_REQUEST, format!("无效的状态值: {}", status))
+                }
             },
         };
 
@@ -58,6 +56,10 @@ pub enum AuthError {
     MissingToken,
     /// 用户名或密码错误
     InvalidCredentials,
+    /// 登录尝试过于频繁
+    RateLimited,
+    /// 认证依赖暂时不可用
+    TemporarilyUnavailable,
 }
 
 impl IntoResponse for AuthError {
@@ -67,6 +69,11 @@ impl IntoResponse for AuthError {
             AuthError::TokenExpired => (StatusCode::UNAUTHORIZED, "令牌已过期"),
             AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "缺少认证令牌"),
             AuthError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "用户名或密码错误"),
+            AuthError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "登录尝试过于频繁"),
+            AuthError::TemporarilyUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "认证服务暂时不可用",
+            ),
         };
 
         (status, Json(ApiResponse::<()>::error(message))).into_response()
@@ -97,9 +104,8 @@ mod tests {
     #[test]
     fn test_auth_error_conversion() {
         // 测试 JWT 错误转换
-        let jwt_err = jsonwebtoken::errors::Error::from(
-            jsonwebtoken::errors::ErrorKind::ExpiredSignature,
-        );
+        let jwt_err =
+            jsonwebtoken::errors::Error::from(jsonwebtoken::errors::ErrorKind::ExpiredSignature);
         let auth_err = AuthError::from(jwt_err);
         matches!(auth_err, AuthError::TokenExpired);
     }

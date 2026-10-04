@@ -113,7 +113,7 @@ pub async fn submit_link(
     headers: HeaderMap,
     Json(req): Json<SubmitLinkRequest>,
 ) -> Result<Json<ApiResponse<SubmitLinkResponse>>, ServiceError> {
-    let ip = get_client_ip(&headers, addr);
+    let ip = get_client_ip(&headers, addr, state.config.trust_proxy_headers);
     let cache_key = format!("link:submit:{}", ip);
 
     // IP 限流检查（10 分钟）
@@ -121,7 +121,7 @@ pub async fn submit_link(
         .await
         .map_err(|e| {
             tracing::error!("Redis error in check_rate_limit: {:?}", e);
-            ServiceError::InvalidInput("限流检查失败".to_string())
+            ServiceError::Unavailable("限流服务暂时不可用".to_string())
         })?
     {
         return Err(ServiceError::InvalidInput(

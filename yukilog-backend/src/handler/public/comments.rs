@@ -173,9 +173,9 @@ pub async fn get_post_comments(
 /// ```
 pub async fn get_comment_replies(
     State(state): State<AppState>,
-    Path((_slug, id)): Path<(String, i64)>,
+    Path((slug, id)): Path<(String, i64)>,
 ) -> Result<Json<ApiResponse<Vec<PublicComment>>>, ServiceError> {
-    let replies = service::comments::list_comment_replies(&state.db, id).await?;
+    let replies = service::comments::list_comment_replies(&state.db, &slug, id).await?;
     Ok(ok(replies.iter().map(to_public_comment).collect()))
 }
 
@@ -222,7 +222,7 @@ pub async fn create_comment(
     Path(slug): Path<String>,
     Json(req): Json<CreateCommentRequest>,
 ) -> Result<Json<ApiResponse<CreateCommentResponse>>, ServiceError> {
-    let ip = get_client_ip(&headers, addr);
+    let ip = get_client_ip(&headers, addr, state.config.trust_proxy_headers);
     let cache_key = format!("comment:{}:{}", slug, ip);
 
     // IP 限流检查（10 秒）
@@ -230,7 +230,7 @@ pub async fn create_comment(
         .await
         .map_err(|e| {
             tracing::error!("Redis error in check_rate_limit: {:?}", e);
-            ServiceError::InvalidInput("限流检查失败".to_string())
+            ServiceError::Unavailable("限流服务暂时不可用".to_string())
         })?
     {
         return Err(ServiceError::InvalidInput(

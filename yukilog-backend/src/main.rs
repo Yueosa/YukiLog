@@ -11,8 +11,15 @@ mod service;
 
 use std::net::SocketAddr;
 
-use axum::http::{header::{AUTHORIZATION, CONTENT_TYPE}, Method};
-use tower_http::cors::CorsLayer;
+use axum::http::{
+    header::{AUTHORIZATION, CONTENT_TYPE},
+    HeaderName, HeaderValue, Method,
+};
+use tower_http::{
+    compression::CompressionLayer,
+    cors::CorsLayer,
+    set_header::SetResponseHeaderLayer,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 #[tokio::main]
@@ -63,33 +70,46 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         redis,
     };
 
-    // 6. 配置 CORS
-    let cors = if let Some(origins_vec) = &config.cors_allowed_origins {
+    // 6. 组装应用路由。未配置 CORS 时只接受浏览器同源请求；
+    // 开发环境若前后端不同端口，必须显式配置允许的源。
+    let app = handler::app_routes(state);
+    let app = if let Some(origins_vec) = &config.cors_allowed_origins {
         let origins: Vec<_> = origins_vec
             .iter()
             .map(|s| s.parse::<axum::http::HeaderValue>().expect("Invalid CORS origin"))
             .collect();
 
-        CorsLayer::new()
+        let cors = CorsLayer::new()
             .allow_origin(origins)
             .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
             .allow_headers([AUTHORIZATION, CONTENT_TYPE])
-            .allow_credentials(true)
-    } else {
-        // 如果未配置 CORS，则允许所有来源（仅开发环境）
-        CorsLayer::permissive()
-    };
+            .allow_credentials(true);
 
-    if let Some(origins) = &config.cors_allowed_origins {
-        tracing::info!("✅ CORS configured: {:?}", origins);
+        tracing::info!("✅ CORS configured: {:?}", origins_vec);
+        app.layer(cors)
     } else {
-        tracing::warn!("⚠️  CORS not configured, using permissive mode (not recommended for production)");
+        tracing::info!("✅ CORS disabled; browser API access is same-origin only");
+        app
     }
+    .layer(CompressionLayer::new())
+    .layer(SetResponseHeaderLayer::if_not_present(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    ))
+    .layer(SetResponseHeaderLayer::if_not_present(
+        HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("SAMEORIGIN"),
+    ))
+    .layer(SetResponseHeaderLayer::if_not_present(
+        HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("strict-origin-when-cross-origin"),
+    ))
+    .layer(SetResponseHeaderLayer::if_not_present(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+    ));
 
-    // 7. 组装应用路由
-    let app = handler::app_routes(state).layer(cors);
-
-    // 8. 启动服务器
+    // 7. 启动服务器
     let addr = format!("{}:{}", config.server_host, config.server_port);
     let listener = tokio::net::TcpListener::bind(&addr)
         .await

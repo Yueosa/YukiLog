@@ -194,7 +194,7 @@ pub async fn increment_post_view(
     headers: HeaderMap,
     Path(slug): Path<String>,
 ) -> Result<Json<ApiResponse<()>>, ServiceError> {
-    let ip = get_client_ip(&headers, addr);
+    let ip = get_client_ip(&headers, addr, state.config.trust_proxy_headers);
     let cache_key = format!("view:post:{}:{}", slug, ip);
 
     // IP 限流检查（10 分钟）
@@ -202,7 +202,7 @@ pub async fn increment_post_view(
         .await
         .map_err(|e| {
             tracing::error!("Redis error in check_rate_limit: {:?}", e);
-            ServiceError::InvalidInput("限流检查失败".to_string())
+            ServiceError::Unavailable("限流服务暂时不可用".to_string())
         })?
     {
         // 已访问过，静默返回成功

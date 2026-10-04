@@ -126,6 +126,8 @@ pub async fn create_comment(
     post_slug: &str,
     input: CreateCommentInput,
 ) -> ServiceResult<Comment> {
+    let input = validate_create_comment(input)?;
+
     // 1. 获取文章，验证存在且已发布
     let post = posts::get_published_post_by_slug(db, post_slug).await?;
 
@@ -137,6 +139,11 @@ pub async fn create_comment(
         if parent.post_id != Some(post.id) {
             return Err(ServiceError::InvalidInput(
                 "parent comment does not belong to this post".to_string(),
+            ));
+        }
+        if parent.status != Some(CommentStatus::Approved) {
+            return Err(ServiceError::InvalidInput(
+                "只能回复已公开的评论".to_string(),
             ));
         }
 
@@ -238,10 +245,7 @@ pub async fn list_all_comments(
     Ok(comments)
 }
 
-async fn attach_post_meta(
-    db: &DatabaseConnection,
-    comments: &mut [Comment],
-) -> ServiceResult<()> {
+async fn attach_post_meta(db: &DatabaseConnection, comments: &mut [Comment]) -> ServiceResult<()> {
     let mut post_ids: Vec<i64> = comments
         .iter()
         .map(|c| c.post_id)
@@ -318,8 +322,15 @@ pub async fn delete_comment(db: &DatabaseConnection, id: i64) -> ServiceResult<(
 /// 10. 获取评论的回复列表（用于懒加载）
 pub async fn list_comment_replies(
     db: &DatabaseConnection,
+    post_slug: &str,
     parent_id: i64,
 ) -> ServiceResult<Vec<Comment>> {
+    let post = posts::get_published_post_by_slug(db, post_slug).await?;
+    let parent = repo::comments::get_comment_by_id(db, parent_id).await?;
+    if parent.post_id != Some(post.id) || parent.status != Some(CommentStatus::Approved) {
+        return Err(ServiceError::NotFound);
+    }
+
     let dtos =
         repo::comments::list_comment_replies(db, parent_id, CommentStatus::Approved.as_str())
             .await?;
@@ -343,6 +354,74 @@ pub async fn count_all_comments(
 // 辅助函数
 // ================================
 
+fn validate_create_comment(mut input: CreateCommentInput) -> ServiceResult<CreateCommentInput> {
+    input.guest_nick = input.guest_nick.trim().to_string();
+    input.content = input.content.trim().to_string();
+    input.guest_email = input
+        .guest_email
+        .map(|email| email.trim().to_lowercase());
+    input.guest_website = input.guest_website.and_then(|website| {
+        let website = website.trim().to_string();
+        (!website.is_empty()).then_some(website)
+    });
+    input.ua = input
+        .ua
+        .map(|ua| ua.chars().take(255).collect::<String>());
+
+    let nick_len = input.guest_nick.chars().count();
+    if !(1..=50).contains(&nick_len) {
+        return Err(ServiceError::InvalidInput(
+            "昵称长度必须为 1 到 50 个字符".to_string(),
+        ));
+    }
+
+    let content_len = input.content.chars().count();
+    if !(1..=5000).contains(&content_len) {
+        return Err(ServiceError::InvalidInput(
+            "评论长度必须为 1 到 5000 个字符".to_string(),
+        ));
+    }
+
+    let email = input
+        .guest_email
+        .as_deref()
+        .ok_or_else(|| ServiceError::InvalidInput("邮箱不能为空".to_string()))?;
+    if email.len() > 100 || !is_valid_email(email) {
+        return Err(ServiceError::InvalidInput("邮箱格式无效".to_string()));
+    }
+
+    if let Some(website) = input.guest_website.as_deref() {
+        if website.len() > 200 || !is_safe_public_url(website) {
+            return Err(ServiceError::InvalidInput(
+                "个人网站必须是有效的 http 或 https URL".to_string(),
+            ));
+        }
+    }
+
+    Ok(input)
+}
+
+fn is_valid_email(email: &str) -> bool {
+    if email.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let Some((local, domain)) = email.split_once('@') else {
+        return false;
+    };
+    !local.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+}
+
+fn is_safe_public_url(value: &str) -> bool {
+    url::Url::parse(value)
+        .ok()
+        .filter(|url| matches!(url.scheme(), "http" | "https"))
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some()
+}
+
 /// 构建评论树（递归算法）
 fn build_comment_tree(comments: Vec<Comment>) -> Vec<CommentNode> {
     use std::collections::HashMap;
@@ -352,7 +431,7 @@ fn build_comment_tree(comments: Vec<Comment>) -> Vec<CommentNode> {
     for comment in comments {
         children_map
             .entry(comment.parent_id)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(comment);
     }
 
@@ -431,4 +510,48 @@ fn parse_visitor_info(ua: Option<&str>) -> Option<String> {
     };
 
     Some(format!("{} {} · {}", device_type, browser, os))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn valid_input() -> CreateCommentInput {
+        CreateCommentInput {
+            content: "  一条评论  ".to_string(),
+            guest_nick: "  访客  ".to_string(),
+            guest_email: Some(" Visitor@Example.COM ".to_string()),
+            guest_website: Some(" https://example.com/profile ".to_string()),
+            parent_id: None,
+            ip: Some("127.0.0.1".to_string()),
+            ua: Some("test-agent".to_string()),
+        }
+    }
+
+    #[test]
+    fn validates_and_normalizes_public_comment() {
+        let input = validate_create_comment(valid_input()).unwrap();
+        assert_eq!(input.guest_nick, "访客");
+        assert_eq!(input.content, "一条评论");
+        assert_eq!(input.guest_email.as_deref(), Some("visitor@example.com"));
+        assert_eq!(
+            input.guest_website.as_deref(),
+            Some("https://example.com/profile")
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_comment_fields() {
+        let mut input = valid_input();
+        input.guest_email = Some("not-an-email".to_string());
+        assert!(validate_create_comment(input).is_err());
+
+        let mut input = valid_input();
+        input.guest_website = Some("javascript:alert(1)".to_string());
+        assert!(validate_create_comment(input).is_err());
+
+        let mut input = valid_input();
+        input.content = " ".to_string();
+        assert!(validate_create_comment(input).is_err());
+    }
 }

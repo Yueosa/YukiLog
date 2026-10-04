@@ -1,13 +1,12 @@
 use axum::http::HeaderMap;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 
 /// 从请求中提取客户端真实 IP
 ///
 /// # 优先级
 ///
-/// 1. `X-Forwarded-For` header（Nginx/Cloudflare 反向代理）
-/// 2. `X-Real-IP` header（Nginx）
-/// 3. 连接 IP（直连）
+/// 只有显式信任代理头且直连地址是 loopback 时，才读取代理头。
+/// 其他情况始终使用连接 IP，避免客户端伪造请求头绕过限流。
 ///
 /// # 参数
 ///
@@ -21,28 +20,38 @@ use std::net::SocketAddr;
 /// # 示例
 ///
 /// ```rust
-/// let ip = get_client_ip(&headers, addr);  // "192.168.1.100"
+/// let ip = get_client_ip(&headers, addr, false);
 /// ```
-pub fn get_client_ip(headers: &HeaderMap, addr: SocketAddr) -> String {
-    // 1. 优先从 X-Forwarded-For 读取（标准反向代理头）
-    if let Some(forwarded) = headers.get("X-Forwarded-For") {
-        if let Ok(forwarded_str) = forwarded.to_str() {
-            // 取第一个 IP（客户端真实 IP）
-            if let Some(ip) = forwarded_str.split(',').next() {
-                return ip.trim().to_string();
+pub fn get_client_ip(
+    headers: &HeaderMap,
+    addr: SocketAddr,
+    trust_proxy_headers: bool,
+) -> IpAddr {
+    if trust_proxy_headers && addr.ip().is_loopback() {
+        // nginx 应使用 `proxy_set_header X-Real-IP $remote_addr` 覆盖客户端输入。
+        if let Some(real_ip) = headers.get("X-Real-IP") {
+            if let Some(ip) = real_ip
+                .to_str()
+                .ok()
+                .and_then(|value| value.trim().parse::<IpAddr>().ok())
+            {
+                return ip;
+            }
+        }
+
+        if let Some(forwarded) = headers.get("X-Forwarded-For") {
+            if let Some(ip) = forwarded
+                .to_str()
+                .ok()
+                .and_then(|value| value.split(',').next())
+                .and_then(|value| value.trim().parse::<IpAddr>().ok())
+            {
+                return ip;
             }
         }
     }
 
-    // 2. 尝试从 X-Real-IP 读取（Nginx 单独配置）
-    if let Some(real_ip) = headers.get("X-Real-IP") {
-        if let Ok(ip_str) = real_ip.to_str() {
-            return ip_str.trim().to_string();
-        }
-    }
-
-    // 3. 回退到连接 IP
-    addr.ip().to_string()
+    addr.ip()
 }
 
 /// 检查 IP限流（基于 Redis）
@@ -81,7 +90,7 @@ pub async fn check_rate_limit(
     cache_key: &str,
     ttl: u64,
 ) -> Result<bool, redis::RedisError> {
-    let mut conn = redis.get_async_connection().await?;
+    let mut conn = redis.get_multiplexed_tokio_connection().await?;
 
     // 原子命令：SET key value EX ttl NX
     // - NX: 仅当 key 不存在时设置
@@ -99,6 +108,31 @@ pub async fn check_rate_limit(
     // Some("OK") = 首次访问或已过期，允许访问
     // None = key 存在，限流中
     Ok(result.is_some())
+}
+
+/// 固定窗口计数限流。窗口内前 `limit` 次请求返回 true，之后返回 false。
+pub async fn check_rate_limit_window(
+    redis: &redis::Client,
+    cache_key: &str,
+    limit: u64,
+    ttl: u64,
+) -> Result<bool, redis::RedisError> {
+    let mut conn = redis.get_multiplexed_tokio_connection().await?;
+    let script = redis::Script::new(
+        r#"
+        local current = redis.call("INCR", KEYS[1])
+        if current == 1 then
+            redis.call("EXPIRE", KEYS[1], ARGV[1])
+        end
+        return current
+        "#,
+    );
+    let current: u64 = script
+        .key(cache_key)
+        .arg(ttl)
+        .invoke_async(&mut conn)
+        .await?;
+    Ok(current <= limit)
 }
 
 /// 生成 Gravatar 头像 URL
@@ -144,10 +178,7 @@ pub fn generate_gravatar_url(email: &str) -> String {
     // 3. 生成 URL
     // s=80: 图片大小 80x80 像素
     // d=identicon: 默认使用几何图案
-    format!(
-        "https://www.gravatar.com/avatar/{}?s=80&d=identicon",
-        hash
-    )
+    format!("https://www.gravatar.com/avatar/{}?s=80&d=identicon", hash)
 }
 
 /// 从 headers 中提取 User-Agent
@@ -181,10 +212,10 @@ mod tests {
         );
 
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let ip = get_client_ip(&headers, addr);
+        let ip = get_client_ip(&headers, addr, true);
 
         // 应该取第一个 IP（客户端真实 IP）
-        assert_eq!(ip, "203.0.113.1");
+        assert_eq!(ip.to_string(), "203.0.113.1");
     }
 
     #[test]
@@ -193,18 +224,40 @@ mod tests {
         headers.insert("X-Real-IP", HeaderValue::from_static("203.0.113.1"));
 
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
-        let ip = get_client_ip(&headers, addr);
+        let ip = get_client_ip(&headers, addr, true);
 
-        assert_eq!(ip, "203.0.113.1");
+        assert_eq!(ip.to_string(), "203.0.113.1");
     }
 
     #[test]
     fn test_get_client_ip_fallback_to_connection() {
         let headers = HeaderMap::new();
         let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 8080);
-        let ip = get_client_ip(&headers, addr);
+        let ip = get_client_ip(&headers, addr, false);
 
-        assert_eq!(ip, "192.168.1.100");
+        assert_eq!(ip.to_string(), "192.168.1.100");
+    }
+
+    #[test]
+    fn test_get_client_ip_ignores_untrusted_proxy_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Real-IP", HeaderValue::from_static("203.0.113.1"));
+
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100)), 8080);
+        let ip = get_client_ip(&headers, addr, true);
+
+        assert_eq!(ip.to_string(), "192.168.1.100");
+    }
+
+    #[test]
+    fn test_get_client_ip_ignores_invalid_proxy_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-Real-IP", HeaderValue::from_static("not-an-ip"));
+
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 8080);
+        let ip = get_client_ip(&headers, addr, true);
+
+        assert_eq!(ip, IpAddr::V4(Ipv4Addr::LOCALHOST));
     }
 
     #[test]

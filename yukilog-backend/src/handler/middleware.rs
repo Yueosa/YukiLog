@@ -1,55 +1,14 @@
 use axum::{
     body::Body,
     extract::State,
-    http::{header::AUTHORIZATION, Request, StatusCode},
+    http::{header::AUTHORIZATION, Request},
     middleware::Next,
-    response::{IntoResponse, Response},
-    Json,
+    response::Response,
 };
-use serde_json::json;
 
 use crate::handler::auth::validate_token;
+use crate::handler::error::AuthError;
 use crate::handler::state::AppState;
-
-/// JWT 认证错误类型
-#[derive(Debug)]
-pub enum AuthError {
-    /// 缺少 Authorization header 或令牌格式错误
-    MissingToken,
-    /// 令牌签名无效或格式错误
-    InvalidToken,
-    /// 令牌已过期
-    ExpiredToken,
-}
-
-impl IntoResponse for AuthError {
-    fn into_response(self) -> Response {
-        let (message, log_msg) = match self {
-            AuthError::MissingToken => (
-                "缺少认证令牌或格式错误",
-                "Missing or malformed Authorization header",
-            ),
-            AuthError::InvalidToken => (
-                "认证令牌无效",
-                "Invalid token signature or format",
-            ),
-            AuthError::ExpiredToken => (
-                "认证令牌已过期",
-                "Token has expired",
-            ),
-        };
-
-        tracing::warn!("JWT auth failed: {}", log_msg);
-
-        let body = json!({
-            "success": false,
-            "data": null,
-            "message": message
-        });
-
-        (StatusCode::UNAUTHORIZED, Json(body)).into_response()
-    }
-}
 
 /// JWT 认证中间件
 ///
@@ -110,11 +69,18 @@ pub async fn jwt_auth(
     let token = extract_bearer_token(&req)?;
 
     // 2. 验证 token 并解析 Claims
-    let claims = validate_token(token, &state.config.jwt_secret).map_err(|e| {
+    let claims = validate_token(
+        token,
+        &state.config.jwt_secret,
+        &state.config.jwt_issuer,
+        &state.config.jwt_audience,
+        &state.config.admin_username,
+    )
+    .map_err(|e| {
         // 区分过期 vs 其他错误
         use jsonwebtoken::errors::ErrorKind;
         match e.kind() {
-            ErrorKind::ExpiredSignature => AuthError::ExpiredToken,
+            ErrorKind::ExpiredSignature => AuthError::TokenExpired,
             _ => AuthError::InvalidToken,
         }
     })?;
@@ -194,8 +160,10 @@ mod tests {
     #[test]
     fn test_extract_bearer_token_wrong_format() {
         let mut req = Request::builder().body(()).unwrap();
-        req.headers_mut()
-            .insert(AUTHORIZATION, HeaderValue::from_static("Basic username:password"));
+        req.headers_mut().insert(
+            AUTHORIZATION,
+            HeaderValue::from_static("Basic username:password"),
+        );
 
         let result = extract_bearer_token(&req);
         assert!(result.is_err());

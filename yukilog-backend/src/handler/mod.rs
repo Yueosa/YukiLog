@@ -1,4 +1,5 @@
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{delete, get, post, put},
     Router,
 };
@@ -23,6 +24,9 @@ pub mod utils;
 /// 应用程序状态（数据库连接和 Redis 客户端）
 pub mod state;
 
+/// 存活与就绪检查
+pub mod health;
+
 /// 公开接口（前台）
 pub mod public;
 
@@ -37,6 +41,7 @@ pub mod admin;
 pub fn auth_routes() -> Router<AppState> {
     Router::new()
         .route("/api/admin/login", post(auth::login))
+        .layer(DefaultBodyLimit::max(16 * 1024))
 }
 
 /// 公开路由（前台，无需认证）
@@ -68,6 +73,7 @@ pub fn public_routes() -> Router<AppState> {
         // Notes (2个)
         .route("/api/public/notes", get(public::notes::list_notes))
         .route("/api/public/notes/:id", get(public::notes::get_note))
+        .layer(DefaultBodyLimit::max(256 * 1024))
 }
 
 /// 管理路由（后台，需要 JWT 认证）
@@ -107,6 +113,7 @@ pub fn admin_routes() -> Router<AppState> {
         .route("/api/admin/notes", post(admin::notes::create_note))
         .route("/api/admin/notes/:id", put(admin::notes::update_note))
         .route("/api/admin/notes/:id", delete(admin::notes::delete_note))
+        .layer(DefaultBodyLimit::max(4 * 1024 * 1024))
         // 应用 JWT 认证中间件 - 需要在 with_state 之后应用
 }
 
@@ -120,6 +127,8 @@ pub fn app_routes(state: AppState) -> Router {
         ));
 
     Router::new()
+        .route("/health/live", get(health::live))
+        .route("/health/ready", get(health::ready))
         .merge(auth_routes())
         .merge(public_routes())
         .merge(admin_routes_with_auth)

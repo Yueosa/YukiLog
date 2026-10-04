@@ -12,6 +12,9 @@ pub enum ServiceError {
 
     #[error("not found")]
     NotFound,
+
+    #[error("service unavailable: {0}")]
+    Unavailable(String),
 }
 
 impl From<sea_orm::DbErr> for ServiceError {
