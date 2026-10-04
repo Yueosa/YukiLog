@@ -64,6 +64,7 @@ struct ArticleCard {
 }
 
 struct DynamicCard {
+    id: Uuid,
     content_html: String,
     published: String,
 }
@@ -96,6 +97,7 @@ struct RenderContext<'a> {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{ site.description }}">
+  <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
   <title>{{ page_title }} · {{ site.title }}</title>
   <style>
     :root{--bg:{{ site.background }};--surface:{{ site.surface }};--muted-surface:{{ site.surface_muted }};--text:{{ site.text }};--muted:{{ site.text_muted }};--primary:{{ site.primary }};--secondary:{{ site.secondary }};--border:{{ site.border }};--radius:{{ site.radius }}px;--scale:{{ site.scale }}}
@@ -104,7 +106,7 @@ struct RenderContext<'a> {
   </style>
 </head>
 <body class="{{ site.font_class }} shell-{{ site.navigation_class }}">
-  <nav class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}" aria-label="主导航"><strong class="brand">{{ site.title }}</strong><div class="nav-links"><a href="/">首页</a><a href="/articles">文章</a><a href="/dynamics">动态</a><a href="/friends">友链</a>{% if site.show_search %}<a href="/search">搜索</a>{% endif %}</div></nav>
+  <nav class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}" aria-label="主导航"><strong class="brand">{{ site.title }}</strong><div class="nav-links"><a href="/">首页</a><a href="/articles">文章</a><a href="/dynamics">动态</a><a href="/friends">友链</a>{% if site.show_search %}<a href="/search">搜索</a>{% endif %}<a href="/feed.xml">RSS</a></div></nav>
   <main><div class="page {{ site.page_width_class }}">{{ content|safe }}</div></main>
   <footer>© {{ site.owner_name }} · YukiLog</footer>
 </body>
@@ -168,7 +170,7 @@ struct ArticleFeedTemplate<'a> {
 
 #[derive(Template)]
 #[template(
-    source = r#"<section class="dynamics">{% for item in dynamics %}<article class="dynamic-card"><div class="meta"><time>{{ item.published }}</time></div><div class="prose">{{ item.content_html|safe }}</div></article>{% endfor %}{% if dynamics.is_empty() %}<p class="empty">这里还没有公开动态。</p>{% endif %}</section>"#,
+    source = r#"<section class="dynamics">{% for item in dynamics %}<article class="dynamic-card" id="dynamic-{{ item.id }}"><div class="meta"><time>{{ item.published }}</time></div><div class="prose">{{ item.content_html|safe }}</div></article>{% endfor %}{% if dynamics.is_empty() %}<p class="empty">这里还没有公开动态。</p>{% endif %}</section>"#,
     ext = "html"
 )]
 struct DynamicListTemplate<'a> {
@@ -620,6 +622,7 @@ async fn load_dynamics(state: &AppState, limit: u64) -> Result<Vec<DynamicCard>,
         .await?
         .into_iter()
         .map(|item| DynamicCard {
+            id: item.id,
             content_html: markdown::render(&item.content_markdown),
             published: date(item.published_at.expect("published dynamic has timestamp")),
         })

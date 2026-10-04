@@ -4,6 +4,7 @@ pub mod content;
 pub mod database;
 pub mod entities;
 pub mod error;
+pub mod feed;
 mod http;
 pub mod layout;
 pub mod markdown;

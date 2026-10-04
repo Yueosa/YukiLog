@@ -74,6 +74,10 @@ impl AuthState {
         })
     }
 
+    pub(crate) fn public_origin(&self) -> &str {
+        &self.public_origin
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test() -> Self {
         Self {
