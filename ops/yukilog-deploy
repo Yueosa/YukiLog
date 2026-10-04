@@ -84,23 +84,29 @@ rollback_release() {
     if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
         ln -s "$PREVIOUS" "$BASE/.rollback-current"
         mv -Tf "$BASE/.rollback-current" "$CURRENT"
+        systemctl reset-failed yukilog-server.service
         systemctl restart yukilog-server.service
-        [[ "${YUKILOG_MAIL_ENABLED:-false}" != "true" ]] \
-            || systemctl restart yukilog-mailer.service
+        if [[ "${YUKILOG_MAIL_ENABLED:-false}" == "true" ]]; then
+            systemctl reset-failed yukilog-mailer.service 2>/dev/null || true
+            systemctl restart yukilog-mailer.service
+        fi
         echo "应用切换失败，已恢复上一版本：$PREVIOUS" >&2
     else
         rm -f -- "$CURRENT"
         systemctl stop yukilog-mailer.service yukilog-server.service \
             2>/dev/null || true
+        systemctl reset-failed yukilog-server.service 2>/dev/null || true
         echo "首次应用切换失败，已移除无效 current 链接" >&2
     fi
 }
 
 systemctl enable yukilog-server.service
+systemctl reset-failed yukilog-server.service 2>/dev/null || true
 systemctl restart yukilog-server.service
 if [[ "${YUKILOG_MAIL_ENABLED:-false}" == "true" ]]; then
     : "${YUKILOG_SMTP_HOST:?邮件已启用但 YUKILOG_SMTP_HOST 未配置}"
     systemctl enable yukilog-mailer.service
+    systemctl reset-failed yukilog-mailer.service 2>/dev/null || true
     systemctl restart yukilog-mailer.service
 else
     systemctl disable yukilog-mailer.service 2>/dev/null || true

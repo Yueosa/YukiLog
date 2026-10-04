@@ -73,8 +73,10 @@ then
 ALTER DATABASE :"old_db" RENAME TO yukilog;
 SQL
     then
+        systemctl reset-failed yukilog-server.service 2>/dev/null || true
         systemctl start yukilog-server.service
         if [[ "${YUKILOG_MAIL_ENABLED:-false}" == "true" ]]; then
+            systemctl reset-failed yukilog-mailer.service 2>/dev/null || true
             systemctl start yukilog-mailer.service
         fi
         echo "$warn；已恢复原数据库" >&2
@@ -89,8 +91,10 @@ mv -- "$MEDIA_STAGE/media" "$DATA_ROOT/media"
 chown -R yukilog:yukilog "$DATA_ROOT/media"
 rm -rf -- "$MEDIA_STAGE"
 
+systemctl reset-failed yukilog-server.service 2>/dev/null || true
 systemctl start yukilog-server.service
 if [[ "${YUKILOG_MAIL_ENABLED:-false}" == "true" ]]; then
+    systemctl reset-failed yukilog-mailer.service 2>/dev/null || true
     systemctl start yukilog-mailer.service
 fi
 
