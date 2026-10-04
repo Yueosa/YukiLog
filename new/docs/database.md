@@ -226,15 +226,15 @@ Askama 和 Lit 只渲染代码中注册过的组件，不执行数据库中的 H
 | `subscribe_articles` | 是否接收新文章。 |
 | `subscribe_dynamics` | 是否接收新动态。 |
 | `status` | `pending`、`active` 或 `unsubscribed`。 |
-| `confirmation_token_hash` | 确认令牌 SHA-256；待确认时写，确认后可清空。 |
-| `unsubscribe_token_hash` | 退订令牌 SHA-256；订阅创建时写。 |
+| `token_nonce` | 16 字节随机 nonce；重新订阅时轮换，使旧签名链接失效。 |
 | `confirmation_sent_at` | 最近确认邮件发送时间。 |
 | `confirmed_at` | 完成 double opt-in 的时间。 |
 | `unsubscribed_at` | 退订时间。 |
 | `created_at` | 首次提交时间。 |
 | `updated_at` | 偏好或状态变化时间；触发器维护。 |
 
-至少订阅文章或动态中的一种。令牌明文只发送给用户，不写入数据库。
+至少订阅文章或动态中的一种。确认与退订令牌由订阅者 UUID、用途和 nonce 经
+HMAC-SHA-256 签名生成；数据库不保存令牌明文或可直接使用的链接。
 
 ### `email_deliveries`
 

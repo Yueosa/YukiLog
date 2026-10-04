@@ -15,7 +15,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = AppConfig::from_env()?;
     let database = database::connect(&config.database_url).await?;
     let listen_addr = config.listen_addr;
-    let state = AppState::new(database.clone(), config.public_origin, config.media_dir).await?;
+    let state = AppState::new(
+        database.clone(),
+        config.public_origin,
+        config.media_dir,
+        config.subscription_secret,
+    )
+    .await?;
     let listener = tokio::net::TcpListener::bind(listen_addr).await?;
 
     tracing::info!(address = %listen_addr, "YukiLog server started");

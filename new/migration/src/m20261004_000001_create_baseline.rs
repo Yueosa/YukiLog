@@ -393,8 +393,7 @@ CREATE TABLE subscribers (
     subscribe_articles boolean NOT NULL DEFAULT true,
     subscribe_dynamics boolean NOT NULL DEFAULT false,
     status text NOT NULL DEFAULT 'pending',
-    confirmation_token_hash bytea UNIQUE,
-    unsubscribe_token_hash bytea NOT NULL UNIQUE,
+    token_nonce bytea NOT NULL,
     confirmation_sent_at timestamptz,
     confirmed_at timestamptz,
     unsubscribed_at timestamptz,
@@ -409,13 +408,8 @@ CREATE TABLE subscribers (
         CHECK (subscribe_articles OR subscribe_dynamics),
     CONSTRAINT subscribers_status_valid
         CHECK (status IN ('pending', 'active', 'unsubscribed')),
-    CONSTRAINT subscribers_confirmation_hash_length
-        CHECK (
-            confirmation_token_hash IS NULL
-            OR octet_length(confirmation_token_hash) = 32
-        ),
-    CONSTRAINT subscribers_unsubscribe_hash_length
-        CHECK (octet_length(unsubscribe_token_hash) = 32),
+    CONSTRAINT subscribers_token_nonce_length
+        CHECK (octet_length(token_nonce) = 16),
     CONSTRAINT subscribers_state_times_valid
         CHECK (
             (status = 'pending' AND confirmed_at IS NULL AND unsubscribed_at IS NULL)
@@ -467,6 +461,9 @@ CREATE UNIQUE INDEX email_deliveries_subscriber_article_uidx
 CREATE UNIQUE INDEX email_deliveries_subscriber_dynamic_uidx
     ON email_deliveries (subscriber_id, dynamic_id)
     WHERE dynamic_id IS NOT NULL;
+CREATE UNIQUE INDEX email_deliveries_subscriber_confirmation_uidx
+    ON email_deliveries (subscriber_id)
+    WHERE kind = 'confirm_subscription';
 CREATE INDEX email_deliveries_ready_idx
     ON email_deliveries (next_attempt_at, created_at)
     WHERE status IN ('pending', 'failed');

@@ -11,6 +11,7 @@ pub struct AppConfig {
     pub database_url: String,
     pub public_origin: String,
     pub media_dir: PathBuf,
+    pub subscription_secret: String,
 }
 
 #[derive(Debug, Error)]
@@ -25,6 +26,8 @@ pub enum ConfigError {
     InvalidPublicOrigin { value: String },
     #[error("缺少 YUKILOG_MEDIA_DIR")]
     MissingMediaDir,
+    #[error("YUKILOG_SUBSCRIPTION_SECRET 必须至少包含 32 个字节")]
+    InvalidSubscriptionSecret,
 }
 
 impl AppConfig {
@@ -34,7 +37,14 @@ impl AppConfig {
         let database_url = env::var("DATABASE_URL").unwrap_or_default();
         let public_origin = env::var("YUKILOG_PUBLIC_ORIGIN").unwrap_or_default();
         let media_dir = env::var("YUKILOG_MEDIA_DIR").unwrap_or_default();
-        Self::from_values(&listen_addr, &database_url, &public_origin, &media_dir)
+        let subscription_secret = env::var("YUKILOG_SUBSCRIPTION_SECRET").unwrap_or_default();
+        Self::from_values(
+            &listen_addr,
+            &database_url,
+            &public_origin,
+            &media_dir,
+            &subscription_secret,
+        )
     }
 
     fn from_values(
@@ -42,6 +52,7 @@ impl AppConfig {
         database_url: &str,
         public_origin: &str,
         media_dir: &str,
+        subscription_secret: &str,
     ) -> Result<Self, ConfigError> {
         let listen_addr = listen_addr
             .parse()
@@ -58,11 +69,15 @@ impl AppConfig {
         if media_dir.trim().is_empty() {
             return Err(ConfigError::MissingMediaDir);
         }
+        if subscription_secret.len() < 32 {
+            return Err(ConfigError::InvalidSubscriptionSecret);
+        }
         Ok(Self {
             listen_addr,
             database_url: database_url.to_owned(),
             public_origin,
             media_dir: PathBuf::from(media_dir),
+            subscription_secret: subscription_secret.to_owned(),
         })
     }
 }
@@ -100,6 +115,7 @@ mod tests {
             "postgresql://localhost/yukilog",
             "https://blog.yeastar.xin/",
             "/var/lib/yukilog/media",
+            "test subscription secret with 32+ bytes",
         )
         .unwrap();
         assert_eq!(config.listen_addr.to_string(), "127.0.0.1:8080");
@@ -116,6 +132,7 @@ mod tests {
                 "postgresql://localhost/yukilog",
                 "https://blog.yeastar.xin",
                 "/var/lib/yukilog/media",
+                "test subscription secret with 32+ bytes",
             )
             .is_err()
         );
@@ -129,6 +146,7 @@ mod tests {
                 "",
                 "https://blog.yeastar.xin",
                 "/var/lib/yukilog/media",
+                "test subscription secret with 32+ bytes",
             )
             .is_err()
         );
@@ -142,6 +160,7 @@ mod tests {
                 "postgresql://localhost/yukilog",
                 "https://blog.yeastar.xin/admin",
                 "/var/lib/yukilog/media",
+                "test subscription secret with 32+ bytes",
             )
             .is_err()
         );
@@ -155,6 +174,21 @@ mod tests {
                 "postgresql://localhost/yukilog",
                 "https://blog.yeastar.xin",
                 "",
+                "test subscription secret with 32+ bytes",
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_short_subscription_secret() {
+        assert!(
+            AppConfig::from_values(
+                "127.0.0.1:3000",
+                "postgresql://localhost/yukilog",
+                "https://blog.yeastar.xin",
+                "/var/lib/yukilog/media",
+                "too-short",
             )
             .is_err()
         );

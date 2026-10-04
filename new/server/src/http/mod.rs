@@ -34,6 +34,21 @@ pub fn router(state: AppState) -> Router {
         .route("/feed.xml", get(crate::feed::all))
         .route("/feeds/articles.xml", get(crate::feed::articles))
         .route("/feeds/dynamics.xml", get(crate::feed::dynamics))
+        .route("/api/subscriptions", post(crate::subscriptions::subscribe))
+        .route("/subscriptions", post(crate::subscriptions::subscribe_form))
+        .route(
+            "/subscriptions/confirm/{token}",
+            get(crate::subscriptions::confirm),
+        )
+        .route(
+            "/api/subscriptions/unsubscribe",
+            post(crate::subscriptions::unsubscribe),
+        )
+        .route(
+            "/subscriptions/unsubscribe/{token}",
+            get(crate::subscriptions::unsubscribe_page)
+                .post(crate::subscriptions::unsubscribe_form),
+        )
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/api/admin/auth/login", post(crate::auth::login))
