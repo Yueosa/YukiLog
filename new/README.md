@@ -4,7 +4,7 @@
 
 ## 目录
 
-- `server/`：Rust、Axum，以及后续的 Askama 服务端渲染
+- `server/`：Rust、Axum 与 Askama 服务端渲染
 - `migration/`：SeaORM PostgreSQL 迁移
 - `web/`：Lit Web Components 与管理后台
 - `ops/`：nginx、systemd、发布与备份工具

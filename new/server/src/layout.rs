@@ -195,7 +195,7 @@ fn validate_properties(
 }
 
 impl ComponentType {
-    fn accepts_children(self) -> bool {
+    pub(crate) fn accepts_children(self) -> bool {
         matches!(self, Self::Stack | Self::Grid | Self::Split | Self::Bento)
     }
 }

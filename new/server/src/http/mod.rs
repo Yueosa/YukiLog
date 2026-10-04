@@ -25,6 +25,12 @@ pub fn router(state: AppState) -> Router {
         .service(ServeDir::new(state.media.public_dir()));
 
     Router::new()
+        .route("/", get(crate::web::home))
+        .route("/articles", get(crate::web::article_list))
+        .route("/articles/{slug}", get(crate::web::article_detail))
+        .route("/dynamics", get(crate::web::dynamic_list))
+        .route("/friends", get(crate::web::friend_list))
+        .route("/search", get(crate::web::search))
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/api/admin/auth/login", post(crate::auth::login))

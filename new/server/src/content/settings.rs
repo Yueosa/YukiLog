@@ -197,7 +197,7 @@ pub async fn put_settings(
 }
 
 impl SiteSettingsWrite {
-    fn validate(&self) -> Result<(), AppError> {
+    pub(crate) fn validate(&self) -> Result<(), AppError> {
         if self.theme.schema_version != 1 || self.shell_layout.schema_version != 1 {
             return Err(AppError::InvalidRequest("不支持的配置 schemaVersion"));
         }

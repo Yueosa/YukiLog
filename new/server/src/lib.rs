@@ -6,7 +6,9 @@ pub mod entities;
 pub mod error;
 mod http;
 pub mod layout;
+pub mod markdown;
 pub mod media;
+pub mod web;
 
 use axum::Router;
 use sea_orm::DatabaseConnection;
