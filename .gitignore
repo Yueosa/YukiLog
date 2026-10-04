@@ -1,14 +1,16 @@
-# Rust 编译产物
-target/
+/target/
+/.cargo-home/
+/.build-tmp/
+/.release-build/
+node_modules/
+/.pnpm-store/
+/web/dist/
+/.env
+/.env.*
+!/.env.example
+*.log
 
-# 环境变量
-.env
-
-# 开发用
-TODO*.md
-.vscode/
-plan.md
-
-# blog
-blog/
-
+# Runtime data belongs outside release directories in production.
+/data/
+/uploads/
+/backups/
