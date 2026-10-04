@@ -33,14 +33,63 @@ export const layoutPresets: LayoutDocument[] = [
         },
         {
           id: 'hanakoi-content',
-          type: 'split',
-          props: { sidebarWidth: '270px', side: 'left', gap: 'lg', sticky: true },
-          responsive: { mobile: { columns: '1fr', sticky: false } },
+          type: 'grid',
+          props: {
+            columns: '240px minmax(0, 1fr) 240px',
+            gap: 'lg',
+            align: 'start',
+            maxWidth: 'full',
+          },
+          responsive: { mobile: { columns: '1fr' } },
           children: [
             {
               id: 'hanakoi-profile',
-              type: 'profile-card',
-              props: { variant: 'portrait', flip: true, showSocials: true, showStatus: true },
+              type: 'card',
+              props: {
+                variant: 'plain',
+                padding: 'lg',
+                radius: 'lg',
+                shadow: 'pink',
+                align: 'center',
+                sticky: true,
+              },
+              children: [
+                {
+                  id: 'hanakoi-avatar',
+                  type: 'avatar',
+                  props: { source: 'site-owner', size: 'xl', shape: 'circle', label: 'Sakurine' },
+                },
+                {
+                  id: 'hanakoi-name',
+                  type: 'text-block',
+                  props: {
+                    source: 'owner-name',
+                    variant: 'heading',
+                    text: 'Sakurine',
+                    alignment: 'center',
+                  },
+                },
+                {
+                  id: 'hanakoi-bio',
+                  type: 'text-block',
+                  props: {
+                    source: 'owner-bio',
+                    variant: 'body',
+                    text: '写代码，也收藏深夜、长风和不肯消失的心动。',
+                    alignment: 'center',
+                  },
+                },
+                {
+                  id: 'hanakoi-socials',
+                  type: 'social-links',
+                  props: { variant: 'labels', alignment: 'left' },
+                },
+                {
+                  id: 'hanakoi-status',
+                  type: 'status-line',
+                  props: { text: 'system.log · rebuilding YukiLog', tone: 'accent' },
+                },
+              ],
             },
             {
               id: 'hanakoi-main',
@@ -72,6 +121,63 @@ export const layoutPresets: LayoutDocument[] = [
                   id: 'hanakoi-dynamics',
                   type: 'dynamic-strip',
                   props: { limit: 3, variant: 'compact' },
+                },
+              ],
+            },
+            {
+              id: 'hanakoi-right-rail',
+              type: 'stack',
+              props: { gap: 'lg', sticky: true },
+              children: [
+                {
+                  id: 'hanakoi-quote-card',
+                  type: 'card',
+                  props: {
+                    variant: 'glass',
+                    padding: 'lg',
+                    radius: 'lg',
+                    shadow: 'blue',
+                    align: 'stretch',
+                  },
+                  children: [
+                    {
+                      id: 'hanakoi-quote',
+                      type: 'quote',
+                      props: {
+                        text: '愿你在漫长的时间里，仍然保有认真感受世界的能力。',
+                        attribution: '今日一言',
+                        alignment: 'left',
+                      },
+                    },
+                  ],
+                },
+                {
+                  id: 'hanakoi-stats-card',
+                  type: 'card',
+                  props: {
+                    variant: 'plain',
+                    padding: 'lg',
+                    radius: 'lg',
+                    shadow: 'blue',
+                    align: 'stretch',
+                  },
+                  children: [
+                    {
+                      id: 'hanakoi-stats-title',
+                      type: 'text-block',
+                      props: {
+                        source: 'literal',
+                        variant: 'eyebrow',
+                        text: 'SITE INFO',
+                        alignment: 'left',
+                      },
+                    },
+                    {
+                      id: 'hanakoi-stats',
+                      type: 'stats',
+                      props: { fields: ['articles', 'dynamics', 'words'], compact: true },
+                    },
+                  ],
                 },
               ],
             },

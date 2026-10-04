@@ -14,7 +14,9 @@ use serde_json::Value;
 
 use crate::{
     AppState,
-    content::settings::{BrandPosition, NavigationVariant, ShellWidth, SiteSettingsWrite},
+    content::settings::{
+        BrandPosition, NavigationVariant, ShellWidth, SiteSettingsWrite, SocialLink,
+    },
     entities::{
         article_metrics, article_tags, articles, categories, comments, dynamics, friend_links,
         media_assets, page_layouts, site_settings, tags,
@@ -36,6 +38,7 @@ struct SiteView {
     owner_name: String,
     owner_bio: String,
     avatar_url: String,
+    social_links: Vec<SocialLink>,
     navigation_class: &'static str,
     navigation_options: &'static str,
     page_width_class: &'static str,
@@ -123,6 +126,23 @@ struct RenderContext<'a> {
     :root{--bg:{{ site.background }};--surface:{{ site.surface }};--muted-surface:{{ site.surface_muted }};--text:{{ site.text }};--muted:{{ site.text_muted }};--primary:{{ site.primary }};--secondary:{{ site.secondary }};--border:{{ site.border }};--radius:{{ site.radius }}px;--scale:{{ site.scale }}}
     *{box-sizing:border-box}html{color-scheme:light dark;scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--text);font:calc(16px * var(--scale))/1.75 system-ui,sans-serif}body.font-serif{font-family:Georgia,"Noto Serif SC",serif}body.font-rounded{font-family:ui-rounded,"Noto Sans SC",sans-serif}body.font-mono{font-family:ui-monospace,monospace}a{color:inherit;text-decoration:none}img{max-width:100%;display:block}.site-nav{z-index:20;padding:1rem 1.5rem;background:var(--surface);border-bottom:1px solid var(--border)}.nav-translucent{background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(18px)}.brand-center .brand{margin:auto}.nav-topbar{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between}.nav-links{display:flex;gap:1rem;flex-wrap:wrap}.nav-sidebar{position:fixed;inset:0 auto 0 0;width:240px;display:flex;flex-direction:column;gap:2rem}.nav-sidebar .nav-links{flex-direction:column}.nav-floating-dock{position:fixed;left:50%;bottom:1rem;transform:translateX(-50%);border:1px solid var(--border);border-radius:999px;display:flex;gap:1rem}.shell-sidebar main{margin-left:240px}.page{width:min(1180px,calc(100% - 2rem));margin:auto;padding:2rem 0 6rem}.width-content{max-width:880px}.width-wide{max-width:1180px}.width-full{max-width:none}.layout-stack{display:flex;flex-direction:column}.gap-none{gap:0}.gap-sm{gap:.6rem}.gap-md{gap:1rem}.gap-lg{gap:2rem}.gap-xl{gap:4rem}.layout-grid{display:grid;grid-template-columns:minmax(0,1fr) 280px}.grid-aside-first{grid-template-columns:280px minmax(0,1fr)}.layout-split{display:grid;grid-template-columns:270px minmax(0,1fr)}.split-right{grid-template-columns:minmax(0,1fr) 270px}.layout-bento{display:grid;grid-template-columns:repeat(12,minmax(0,1fr))}.area-3-7{grid-area:span 3/span 7}.area-4-5{grid-area:span 4/span 5}.area-8-5{grid-area:span 8/span 5}.area-9-7{grid-area:span 9/span 7}.hero{min-height:55vh;display:grid;place-items:center;padding:4rem 2rem;text-align:center;border-radius:var(--radius);background:linear-gradient(135deg,color-mix(in srgb,var(--primary) 24%,var(--surface)),color-mix(in srgb,var(--secondary) 24%,var(--surface)))}.hero h1,.masthead h1{font-size:clamp(2.5rem,8vw,6rem);line-height:1.05;margin:.4em 0}.masthead{padding:4rem 0;border-bottom:1px solid var(--border)}.profile,.quote,.stats,.dynamic-card,.friend-card,.article{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}.profile,.quote,.stats{padding:1.4rem}.avatar{width:5rem;height:5rem;border-radius:50%;object-fit:cover;background:var(--muted-surface)}.article-feed{display:grid;gap:1.2rem}.feed-editorial{grid-template-columns:repeat(2,minmax(0,1fr))}.feed-cover-overlay{grid-template-columns:repeat(3,minmax(0,1fr))}.article{display:grid;grid-template-columns:minmax(180px,36%) 1fr}.feed-compact .article,.feed-editorial .article,.feed-cover-overlay .article{display:block}.article-cover{aspect-ratio:16/10;width:100%;object-fit:cover;background:var(--muted-surface)}.article-copy{padding:1.3rem}.article h2{margin:.25rem 0;font-size:1.35rem}.meta{display:flex;gap:.6rem;flex-wrap:wrap;color:var(--muted);font-size:.86rem}.pill{color:var(--primary)}.prose{max-width:760px;margin:auto}.prose img{border-radius:var(--radius)}.prose pre{overflow:auto;padding:1rem;background:var(--muted-surface);border-radius:var(--radius)}.dynamics,.friends,.comments{display:grid;gap:1rem}.dynamic-card,.friend-card,.comment{padding:1.3rem}.friend-card{display:flex;gap:1rem}.friend-card .avatar{width:3rem;height:3rem}.empty{padding:4rem;text-align:center;color:var(--muted)}footer{padding:3rem;text-align:center;color:var(--muted)}
     @media(max-width:800px){.nav-sidebar{position:sticky;width:auto;inset:auto;flex-direction:row}.nav-sidebar .nav-links{flex-direction:row}.shell-sidebar main{margin-left:0}.layout-grid,.layout-split{grid-template-columns:1fr}.layout-bento{display:block}.feed-editorial,.feed-cover-overlay{grid-template-columns:1fr}.article{display:block}.page{padding-top:1rem}.nav-floating-dock .brand{display:none}}
+  </style>
+  <style>
+    .layout-grid.grid-three-rail{width:min(1420px,calc(100% - 3rem));grid-template-columns:minmax(220px,280px) minmax(0,900px) minmax(220px,280px);justify-content:center}
+    .layout-card{display:flex;min-width:0;flex-direction:column;gap:1rem;border:1px solid var(--border);background:var(--surface);color:var(--text)}
+    .card-glass{background:color-mix(in srgb,var(--surface) 82%,transparent);backdrop-filter:blur(18px)}
+    .card-outlined{border-width:2px;background:transparent}.card-paper{border-radius:2px;background:var(--surface)}
+    .padding-none{padding:0}.padding-sm{padding:.75rem}.padding-md{padding:1.25rem}.padding-lg{padding:1.75rem}.padding-xl{padding:2.5rem}
+    .radius-none{border-radius:0}.radius-sm{border-radius:8px}.radius-md{border-radius:16px}.radius-lg{border-radius:24px}.radius-pill{border-radius:999px}
+    .shadow-none{box-shadow:none}.shadow-soft{box-shadow:0 18px 48px rgb(38 57 78/.1)}.shadow-blue{box-shadow:-7px 9px 0 color-mix(in srgb,var(--primary) 14%,transparent)}.shadow-pink{box-shadow:7px 9px 0 color-mix(in srgb,var(--secondary) 15%,transparent)}
+    .align-start{align-items:start}.align-center{align-items:center}.align-stretch{align-items:stretch}.is-sticky{position:sticky;top:5.5rem;align-self:start}
+    .primitive-avatar{display:grid;flex:0 0 auto;place-items:center;object-fit:cover;background:linear-gradient(145deg,var(--secondary),var(--primary));color:white}
+    .avatar-sm{width:44px;height:44px}.avatar-md{width:64px;height:64px}.avatar-lg{width:88px;height:88px}.avatar-xl{width:104px;height:104px}.avatar-circle{border-radius:50%}.avatar-rounded{border-radius:20px}.avatar-square{border-radius:0}
+    .primitive-text{width:100%}.text-eyebrow{color:var(--secondary);font-size:.7rem;font-weight:700;letter-spacing:.2em}.text-heading{color:var(--secondary);font-size:1.5rem;font-weight:700}.text-body,.text-caption{color:var(--muted)}.text-caption{font-size:.75rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}
+    .primitive-socials{display:flex;width:100%;flex-wrap:wrap;gap:.5rem}.primitive-socials a{color:var(--primary);font-size:.8rem}.socials-labels{flex-direction:column}.socials-labels a{padding:.5rem .65rem;border-radius:9px;background:var(--muted-surface)}.socials-pills a,.socials-icons a{padding:.45rem .7rem;border:1px solid var(--border);border-radius:999px}
+    .primitive-status{width:100%;padding:.65rem .75rem;border-radius:9px;background:var(--muted-surface);color:var(--muted);font:.7rem/1.5 ui-monospace,monospace}.status-online{color:#35835c}.status-accent{color:var(--secondary)}
+    .layout-card>.quote,.layout-card>.stats{padding:0;border:0;background:transparent}
+    @media(max-width:1100px){.layout-grid.grid-three-rail{grid-template-columns:1fr;max-width:760px}.is-sticky{position:static}}
   </style>
 </head>
 <body class="{{ site.font_class }} shell-{{ site.navigation_class }}">
@@ -452,6 +472,7 @@ fn render_node(node: &LayoutNode, context: &RenderContext<'_>) -> Result<String,
             ComponentType::Grid => "layout-grid",
             ComponentType::Split => "layout-split",
             ComponentType::Bento => "layout-bento",
+            ComponentType::Card => "layout-card",
             _ => unreachable!(),
         };
         let classes = layout_classes(node, base);
@@ -472,6 +493,63 @@ fn render_node(node: &LayoutNode, context: &RenderContext<'_>) -> Result<String,
             lead: text_prop(node, "lead"),
         }
         .render(),
+        ComponentType::Avatar => {
+            let label = text_prop_or(node, "label", &context.site.owner_name);
+            if text_prop_or(node, "source", "site-owner") == "site-owner"
+                && !context.site.avatar_url.is_empty()
+            {
+                Ok(format!(
+                    r#"<img class="primitive-avatar avatar-{} avatar-{}" src="{}" alt="{}">"#,
+                    escape_html(text_prop_or(node, "size", "md")),
+                    escape_html(text_prop_or(node, "shape", "circle")),
+                    escape_html(&context.site.avatar_url),
+                    escape_html(label)
+                ))
+            } else {
+                Ok(format!(
+                    r#"<div class="primitive-avatar avatar-{} avatar-{}" aria-label="{}">{}</div>"#,
+                    escape_html(text_prop_or(node, "size", "md")),
+                    escape_html(text_prop_or(node, "shape", "circle")),
+                    escape_html(label),
+                    escape_html(&label.chars().next().unwrap_or('雪').to_string())
+                ))
+            }
+        }
+        ComponentType::TextBlock => {
+            let text = match text_prop_or(node, "source", "literal") {
+                "owner-name" => &context.site.owner_name,
+                "owner-bio" => &context.site.owner_bio,
+                "site-title" => &context.site.title,
+                "site-description" => &context.site.description,
+                _ => text_prop(node, "text"),
+            };
+            Ok(format!(
+                r#"<div class="primitive-text text-{} text-{}">{}</div>"#,
+                escape_html(text_prop_or(node, "variant", "body")),
+                escape_html(text_prop_or(node, "alignment", "left")),
+                escape_html(text)
+            ))
+        }
+        ComponentType::SocialLinks => {
+            let mut links = String::new();
+            for link in &context.site.social_links {
+                links.push_str(&format!(
+                    r#"<a href="{}" rel="me noopener">{}</a>"#,
+                    escape_html(&link.url),
+                    escape_html(&link.label)
+                ));
+            }
+            Ok(format!(
+                r#"<nav class="primitive-socials socials-{} text-{}">{links}</nav>"#,
+                escape_html(text_prop_or(node, "variant", "labels")),
+                escape_html(text_prop_or(node, "alignment", "left"))
+            ))
+        }
+        ComponentType::StatusLine => Ok(format!(
+            r#"<div class="primitive-status status-{}">{}</div>"#,
+            escape_html(text_prop_or(node, "tone", "neutral")),
+            escape_html(text_prop(node, "text"))
+        )),
         ComponentType::ProfileCard => ProfileTemplate {
             name: &context.site.owner_name,
             bio: &context.site.owner_bio,
@@ -572,6 +650,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         owner_name: settings.owner_name,
         owner_bio: settings.owner_bio,
         avatar_url,
+        social_links: settings.social_links,
         navigation_class,
         navigation_options,
         page_width_class,
@@ -876,10 +955,51 @@ fn layout_classes(node: &LayoutNode, base: &str) -> String {
     {
         classes.push("grid-aside-first");
     }
+    if matches!(node.component_type, ComponentType::Grid)
+        && node.props.get("columns").and_then(Value::as_str) == Some("240px minmax(0, 1fr) 240px")
+    {
+        classes.push("grid-three-rail");
+    }
     if matches!(node.component_type, ComponentType::Split)
         && node.props.get("side").and_then(Value::as_str) == Some("right")
     {
         classes.push("split-right");
+    }
+    if bool_prop(node, "sticky") {
+        classes.push("is-sticky");
+    }
+    if matches!(node.component_type, ComponentType::Card) {
+        classes.push(match text_prop_or(node, "variant", "plain") {
+            "glass" => "card-glass",
+            "outlined" => "card-outlined",
+            "paper" => "card-paper",
+            _ => "card-plain",
+        });
+        classes.push(match text_prop_or(node, "padding", "md") {
+            "none" => "padding-none",
+            "sm" => "padding-sm",
+            "lg" => "padding-lg",
+            "xl" => "padding-xl",
+            _ => "padding-md",
+        });
+        classes.push(match text_prop_or(node, "radius", "md") {
+            "none" => "radius-none",
+            "sm" => "radius-sm",
+            "lg" => "radius-lg",
+            "pill" => "radius-pill",
+            _ => "radius-md",
+        });
+        classes.push(match text_prop_or(node, "shadow", "none") {
+            "soft" => "shadow-soft",
+            "blue" => "shadow-blue",
+            "pink" => "shadow-pink",
+            _ => "shadow-none",
+        });
+        classes.push(match text_prop_or(node, "align", "stretch") {
+            "start" => "align-start",
+            "center" => "align-center",
+            _ => "align-stretch",
+        });
     }
     if let Some(area) = placement_class(node) {
         classes.push(area);

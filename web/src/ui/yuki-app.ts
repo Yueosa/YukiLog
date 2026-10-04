@@ -98,6 +98,40 @@ export class YukiApp extends LitElement {
   private studio = false;
   private selectedNodeId = this.layout.root.id;
   private flippedProfiles = new Set<string>();
+  private draggingNodeId: string | null = null;
+  private navPastHero = false;
+  private navRevealed = false;
+
+  private readonly handleViewportScroll = () => {
+    const pastHero = window.scrollY >= window.innerHeight - 56;
+    if (pastHero !== this.navPastHero) {
+      this.navPastHero = pastHero;
+      if (pastHero) this.navRevealed = false;
+      this.requestUpdate();
+    }
+  };
+
+  private readonly handlePointerMove = (event: PointerEvent) => {
+    if (this.layout.shell.navigation !== 'topbar' || this.navPastHero) return;
+    const revealed = event.clientY < 82;
+    if (revealed !== this.navRevealed) {
+      this.navRevealed = revealed;
+      this.requestUpdate();
+    }
+  };
+
+  connectedCallback() {
+    super.connectedCallback();
+    window.addEventListener('scroll', this.handleViewportScroll, { passive: true });
+    window.addEventListener('pointermove', this.handlePointerMove, { passive: true });
+    this.handleViewportScroll();
+  }
+
+  disconnectedCallback() {
+    window.removeEventListener('scroll', this.handleViewportScroll);
+    window.removeEventListener('pointermove', this.handlePointerMove);
+    super.disconnectedCallback();
+  }
 
   loadPageLayout(page: PageLayoutDocument) {
     this.layout = { ...this.layout, ...structuredClone(page) };
@@ -137,14 +171,15 @@ export class YukiApp extends LitElement {
     .lab-bar {
       position: fixed;
       z-index: 200;
-      top: 12px;
-      left: 50%;
+      bottom: 14px;
+      left: 14px;
       display: flex;
-      width: min(860px, calc(100% - 24px));
+      width: auto;
+      max-width: calc(100% - 28px);
       align-items: center;
       gap: 6px;
       padding: 7px;
-      transform: translateX(-50%);
+      transform: none;
       border: 1px solid rgb(255 255 255 / 15%);
       border-radius: 20px;
       background: rgb(12 17 25 / 82%);
@@ -239,23 +274,65 @@ export class YukiApp extends LitElement {
 
     .nav-topbar {
       position: fixed;
-      top: 66px;
+      top: 10px;
       left: 50%;
       display: flex;
-      width: min(1120px, calc(100% - 32px));
+      width: auto;
+      max-width: calc(100% - 32px);
       height: 54px;
       align-items: center;
       justify-content: space-between;
       padding: 0 20px;
       transform: translateX(-50%);
-      border: 1px solid rgb(255 255 255 / 18%);
-      border-radius: 18px;
-      background: rgb(18 26 40 / 34%);
-      color: white;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: color-mix(in srgb, var(--surface) 95%, transparent);
+      color: var(--ink);
+      opacity: 0;
+      pointer-events: none;
+      box-shadow: 0 12px 38px rgb(25 40 58 / 12%);
       backdrop-filter: blur(16px);
       transition:
+        opacity 220ms ease,
         background 220ms ease,
         transform 220ms ease;
+    }
+
+    .nav-topbar.revealed,
+    .nav-topbar.sticky {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .nav-topbar:not(.sticky) .brand {
+      display: none;
+    }
+
+    .nav-corners {
+      position: fixed;
+      z-index: 49;
+      top: 0;
+      right: 0;
+      left: 0;
+      display: flex;
+      height: 64px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 30px;
+      color: white;
+      text-shadow: 0 2px 12px rgb(0 0 0 / 28%);
+      pointer-events: none;
+      transition: opacity 180ms ease;
+    }
+
+    .nav-corners.hidden {
+      opacity: 0;
+    }
+
+    .nav-corner-actions {
+      display: flex;
+      gap: 14px;
+      font-size: 18px;
     }
 
     .brand {
@@ -280,6 +357,11 @@ export class YukiApp extends LitElement {
     .nav-links a:hover {
       background: rgb(255 255 255 / 12%);
       transform: translateY(-1px);
+    }
+
+    .nav-topbar .nav-links a:hover {
+      background: var(--surface-soft);
+      color: var(--primary);
     }
 
     .nav-sidebar {
@@ -442,6 +524,24 @@ export class YukiApp extends LitElement {
       padding: 130px 0 120px;
     }
 
+    .layout-grid.grid-aside-first {
+      grid-template-columns: 280px minmax(0, 1fr);
+    }
+
+    .layout-grid.grid-three-rail {
+      width: min(1420px, calc(100% - 48px));
+      grid-template-columns: minmax(220px, 280px) minmax(0, 900px) minmax(220px, 280px);
+      justify-content: center;
+    }
+
+    .max-full {
+      max-width: none;
+    }
+
+    .max-1240 {
+      max-width: 1240px;
+    }
+
     .layout-split {
       display: grid;
       width: min(1180px, calc(100% - 40px));
@@ -518,6 +618,240 @@ export class YukiApp extends LitElement {
       min-width: 0;
     }
 
+    .layout-card {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 16px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    .layout-card.card-glass {
+      border-color: color-mix(in srgb, var(--primary) 22%, var(--line));
+      background: color-mix(in srgb, var(--surface) 82%, transparent);
+      backdrop-filter: blur(18px);
+    }
+
+    .layout-card.card-outlined {
+      border-width: 2px;
+      background: transparent;
+    }
+
+    .layout-card.card-paper {
+      border-radius: 2px;
+      background:
+        repeating-linear-gradient(
+          transparent 0 31px,
+          color-mix(in srgb, var(--primary) 8%, transparent) 32px
+        ),
+        var(--surface);
+    }
+
+    .padding-none {
+      padding: 0;
+    }
+
+    .padding-sm {
+      padding: 12px;
+    }
+
+    .padding-md {
+      padding: 20px;
+    }
+
+    .padding-lg {
+      padding: 28px;
+    }
+
+    .padding-xl {
+      padding: 40px;
+    }
+
+    .radius-none {
+      border-radius: 0;
+    }
+
+    .radius-sm {
+      border-radius: 8px;
+    }
+
+    .radius-md {
+      border-radius: 16px;
+    }
+
+    .radius-lg {
+      border-radius: 24px;
+    }
+
+    .radius-pill {
+      border-radius: 999px;
+    }
+
+    .shadow-none {
+      box-shadow: none;
+    }
+
+    .shadow-soft {
+      box-shadow: 0 18px 48px rgb(38 57 78 / 10%);
+    }
+
+    .shadow-blue {
+      box-shadow: -7px 9px 0 rgb(114 173 210 / 14%);
+    }
+
+    .shadow-pink {
+      box-shadow: 7px 9px 0 rgb(227 160 178 / 15%);
+    }
+
+    .is-sticky {
+      position: sticky;
+      top: 88px;
+      align-self: start;
+    }
+
+    .primitive-avatar {
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      background: linear-gradient(145deg, var(--secondary), var(--primary));
+      color: white;
+      font-family: var(--serif);
+      box-shadow: 0 10px 28px color-mix(in srgb, var(--secondary) 22%, transparent);
+    }
+
+    .avatar-sm {
+      width: 44px;
+      height: 44px;
+      font-size: 16px;
+    }
+
+    .avatar-md {
+      width: 64px;
+      height: 64px;
+      font-size: 21px;
+    }
+
+    .avatar-lg {
+      width: 88px;
+      height: 88px;
+      font-size: 28px;
+    }
+
+    .avatar-xl {
+      width: 104px;
+      height: 104px;
+      font-size: 34px;
+    }
+
+    .avatar-circle {
+      border-radius: 50%;
+    }
+
+    .avatar-rounded {
+      border-radius: 20px;
+    }
+
+    .avatar-square {
+      border-radius: 0;
+    }
+
+    .primitive-text {
+      width: 100%;
+    }
+
+    .text-eyebrow {
+      color: var(--secondary);
+      font: 700 10px/1.4 system-ui, sans-serif;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .text-heading {
+      color: var(--secondary);
+      font-family: var(--serif);
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .text-body {
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .text-caption {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .text-left {
+      text-align: left;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .primitive-socials {
+      display: flex;
+      width: 100%;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .primitive-socials a {
+      color: var(--primary);
+      font-size: 12px;
+    }
+
+    .socials-labels {
+      flex-direction: column;
+    }
+
+    .socials-labels a {
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: var(--surface-soft);
+    }
+
+    .socials-pills a,
+    .socials-icons a {
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+    }
+
+    .primitive-status {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 9px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      font: 10px/1.5 ui-monospace, monospace;
+    }
+
+    .status-online {
+      color: #35835c;
+    }
+
+    .status-accent {
+      color: var(--secondary);
+    }
+
+    .layout-card > .quote-card,
+    .layout-card > .stats-card {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
     .hero {
       position: relative;
       display: grid;
@@ -590,6 +924,29 @@ export class YukiApp extends LitElement {
       font-weight: 700;
       letter-spacing: 0.09em;
       text-wrap: balance;
+    }
+
+    .hero-character {
+      display: inline-block;
+      opacity: 0;
+      transform: translateY(14px);
+      animation: character-in 520ms calc(180ms + var(--char-index) * 65ms)
+        cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+    }
+
+    .hero-info {
+      width: min(580px, 82vw);
+      margin-top: 22px;
+      padding: 18px 26px 14px;
+      border: 1px solid rgb(255 255 255 / 11%);
+      border-radius: 22px;
+      background: rgb(3 9 18 / 54%);
+      box-shadow: 0 22px 54px rgb(0 0 0 / 20%);
+      backdrop-filter: blur(14px);
+    }
+
+    .hero-info > p {
+      margin-top: 0;
     }
 
     .hero p {
@@ -1309,6 +1666,56 @@ export class YukiApp extends LitElement {
       background: #21323e;
     }
 
+    .tree-help {
+      margin: 0 0 10px;
+      color: #788497;
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 9px;
+    }
+
+    .tree-row.dragging {
+      opacity: 0.38;
+    }
+
+    .tree-row .tree-item {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .tree-depth {
+      color: #59677a;
+      font-family: ui-monospace, monospace;
+    }
+
+    .tree-actions {
+      display: flex;
+      gap: 2px;
+      opacity: 0;
+      transition: opacity 120ms ease;
+    }
+
+    .tree-row:hover .tree-actions,
+    .tree-row:focus-within .tree-actions {
+      opacity: 1;
+    }
+
+    .tree-actions button {
+      width: 24px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid #303b49;
+      border-radius: 7px;
+      background: #1b2330;
+      color: #aeb8c7;
+    }
+
     .studio-canvas {
       min-width: 0;
       padding: 28px;
@@ -1427,6 +1834,13 @@ export class YukiApp extends LitElement {
       }
     }
 
+    @keyframes character-in {
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     @keyframes enter-float {
       0%,
       100% {
@@ -1469,7 +1883,7 @@ export class YukiApp extends LitElement {
       }
 
       .nav-topbar {
-        top: 64px;
+        top: 8px;
         padding-inline: 12px;
       }
 
@@ -1514,6 +1928,11 @@ export class YukiApp extends LitElement {
         padding-top: 72px;
       }
 
+      .layout-grid.grid-three-rail {
+        width: min(100% - 24px, 680px);
+        grid-template-columns: 1fr;
+      }
+
       .masthead-minimal {
         grid-template-columns: 1fr;
       }
@@ -1538,6 +1957,11 @@ export class YukiApp extends LitElement {
         top: auto;
         width: min(100%, 420px);
         margin: 0 auto;
+      }
+
+      .is-sticky {
+        position: relative;
+        top: auto;
       }
 
       .feed-alternating .article,
@@ -1584,7 +2008,10 @@ export class YukiApp extends LitElement {
 
     @media (max-width: 600px) {
       .lab-bar {
-        top: 8px;
+        top: auto;
+        right: 8px;
+        bottom: 8px;
+        left: 8px;
         overflow-x: auto;
         justify-content: flex-start;
       }
@@ -1654,6 +2081,97 @@ export class YukiApp extends LitElement {
     this.requestUpdate();
   }
 
+  private findNode(node: LayoutNode, id: string): LayoutNode | undefined {
+    if (node.id === id) return node;
+    for (const child of node.children ?? []) {
+      const found = this.findNode(child, id);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  private moveNode(
+    draggedId: string,
+    targetId: string,
+    position: 'before' | 'inside' | 'after',
+  ) {
+    if (draggedId === this.layout.root.id || draggedId === targetId) return;
+    const dragged = this.findNode(this.layout.root, draggedId);
+    const target = this.findNode(this.layout.root, targetId);
+    if (!dragged || !target || this.findNode(dragged, targetId)) return;
+    if (position === 'inside' && !componentRegistry[target.type].acceptsChildren) {
+      position = 'after';
+    }
+    if (targetId === this.layout.root.id && position !== 'inside') return;
+
+    let detached: LayoutNode | undefined;
+    const detach = (node: LayoutNode): LayoutNode => {
+      const children: LayoutNode[] = [];
+      for (const child of node.children ?? []) {
+        if (child.id === draggedId) detached = child;
+        else children.push(detach(child));
+      }
+      return { ...node, children };
+    };
+    const withoutDragged = detach(this.layout.root);
+    if (!detached) return;
+
+    const moving = detached;
+    const insert = (node: LayoutNode): LayoutNode => {
+      if (node.id === targetId && position === 'inside') {
+        return { ...node, children: [...(node.children ?? []).map(insert), moving] };
+      }
+      const children: LayoutNode[] = [];
+      for (const child of node.children ?? []) {
+        if (child.id === targetId && position === 'before') children.push(moving);
+        children.push(insert(child));
+        if (child.id === targetId && position === 'after') children.push(moving);
+      }
+      return { ...node, children };
+    };
+
+    this.layout = { ...this.layout, root: insert(withoutDragged) };
+    this.selectedNodeId = draggedId;
+    this.draggingNodeId = null;
+    this.requestUpdate();
+  }
+
+  private dropNode(target: LayoutNode, event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    const draggedId = event.dataTransfer?.getData('text/yukilog-node') || this.draggingNodeId;
+    if (!draggedId) return;
+    const element = event.currentTarget as HTMLElement;
+    const ratio = (event.clientY - element.getBoundingClientRect().top) / element.offsetHeight;
+    const acceptsChildren = componentRegistry[target.type].acceptsChildren;
+    const position =
+      ratio < 0.28 ? 'before' : ratio > 0.72 ? 'after' : acceptsChildren ? 'inside' : 'after';
+    this.moveNode(draggedId, target.id, position);
+  }
+
+  private moveSibling(id: string, direction: -1 | 1) {
+    let changed = false;
+    const visit = (node: LayoutNode): LayoutNode => {
+      const children = [...(node.children ?? [])];
+      const index = children.findIndex((child) => child.id === id);
+      if (index >= 0) {
+        const target = index + direction;
+        if (target >= 0 && target < children.length) {
+          [children[index], children[target]] = [children[target], children[index]];
+          changed = true;
+        }
+        return { ...node, children };
+      }
+      return { ...node, children: children.map(visit) };
+    };
+    const root = visit(this.layout.root);
+    if (changed) {
+      this.layout = { ...this.layout, root };
+      this.selectedNodeId = id;
+      this.requestUpdate();
+    }
+  }
+
   private updateNavigation(navigation: NavigationVariant) {
     this.layout = { ...this.layout, shell: { ...this.layout.shell, navigation } };
     this.requestUpdate();
@@ -1676,6 +2194,12 @@ export class YukiApp extends LitElement {
     });
   }
 
+  private setSelectedProperty(name: string, value: unknown) {
+    this.mutateSelected((node) => {
+      node.props[name] = value;
+    });
+  }
+
   private toggleArticleField(field: ArticleField) {
     this.mutateSelected((node) => {
       if (node.type !== 'article-feed') return;
@@ -1688,6 +2212,22 @@ export class YukiApp extends LitElement {
 
   private addComponent(type: ComponentType) {
     const defaults: Partial<Record<ComponentType, Record<string, unknown>>> = {
+      card: {
+        variant: 'plain',
+        padding: 'md',
+        radius: 'md',
+        shadow: 'soft',
+        align: 'stretch',
+      },
+      avatar: { source: 'site-owner', size: 'lg', shape: 'circle', label: '头像' },
+      'text-block': {
+        source: 'literal',
+        variant: 'body',
+        text: '新的文字内容',
+        alignment: 'left',
+      },
+      'social-links': { variant: 'labels', alignment: 'left' },
+      'status-line': { text: 'system.log · online', tone: 'online' },
       quote: { text: '新加入的一段引语。', attribution: 'YukiLog' },
       stats: { fields: ['articles', 'dynamics', 'words'], compact: true },
       'dynamic-strip': { limit: 3, variant: 'timeline' },
@@ -1706,12 +2246,18 @@ export class YukiApp extends LitElement {
       type,
       props: defaults[type] ?? {},
     };
+    const selected = this.findNode(this.layout.root, this.selectedNodeId);
+    const targetId =
+      selected && componentRegistry[selected.type].acceptsChildren
+        ? selected.id
+        : this.layout.root.id;
+    const append = (current: LayoutNode): LayoutNode =>
+      current.id === targetId
+        ? { ...current, children: [...(current.children ?? []), node] }
+        : { ...current, children: current.children?.map(append) };
     this.layout = {
       ...this.layout,
-      root: {
-        ...this.layout.root,
-        children: [...(this.layout.root.children ?? []), node],
-      },
+      root: append(this.layout.root),
     };
     this.selectedNodeId = node.id;
     this.requestUpdate();
@@ -1752,7 +2298,20 @@ export class YukiApp extends LitElement {
     if (this.layout.shell.navigation === 'floating-dock') {
       return html`<nav class="site-nav nav-dock"><div class="brand">Y</div>${links}</nav>`;
     }
-    return html`<nav class="site-nav nav-topbar"><div class="brand">YukiLog</div>${links}</nav>`;
+    return html`
+      <div class="nav-corners${this.navPastHero ? ' hidden' : ''}">
+        <div class="brand">YukiLog</div>
+        <div class="nav-corner-actions"><span>⌕</span><span>☰</span></div>
+      </div>
+      <nav
+        class="site-nav nav-topbar${this.navPastHero ? ' sticky' : ''}${this.navRevealed
+          ? ' revealed'
+          : ''}"
+      >
+        <div class="brand">YukiLog</div>
+        ${links}
+      </nav>
+    `;
   }
 
   private renderNode(node: LayoutNode): unknown {
@@ -1764,11 +2323,41 @@ export class YukiApp extends LitElement {
     if (definition.acceptsChildren) {
       const gap = typeof node.props.gap === 'string' ? ` gap-${node.props.gap}` : '';
       const align = typeof node.props.align === 'string' ? ` align-${node.props.align}` : '';
+      const sticky = node.props.sticky ? ' is-sticky' : '';
+      const columns =
+        node.type === 'grid' && node.props.columns === '240px minmax(0, 1fr) 240px'
+          ? ' grid-three-rail'
+          : node.type === 'grid' && node.props.columns === '280px minmax(0, 1fr)'
+            ? ' grid-aside-first'
+            : '';
+      const maxWidth =
+        node.props.maxWidth === 'full'
+          ? ' max-full'
+          : node.props.maxWidth === '1240px'
+            ? ' max-1240'
+            : '';
+      const card =
+        node.type === 'card'
+          ? [
+              ` card-${String(node.props.variant ?? 'plain')}`,
+              ` padding-${String(node.props.padding ?? 'md')}`,
+              ` radius-${String(node.props.radius ?? 'md')}`,
+              ` shadow-${String(node.props.shadow ?? 'none')}`,
+              ` align-${String(node.props.align ?? 'stretch')}`,
+            ].join('')
+          : '';
       return html`
         <section
-          class="${base} layout-${node.type}${gap}${align}"
+          class="${base} layout-${node.type}${gap}${align}${sticky}${columns}${maxWidth}${card}"
           data-label="${definition.label}"
           data-node-id="${node.id}"
+          .draggable=${this.studio && node.id !== this.layout.root.id}
+          @dragstart=${(event: DragEvent) => {
+            this.draggingNodeId = node.id;
+            event.dataTransfer?.setData('text/yukilog-node', node.id);
+          }}
+          @dragover=${(event: DragEvent) => event.preventDefault()}
+          @drop=${(event: DragEvent) => this.dropNode(node, event)}
           @click=${click}
         >
           ${node.children?.map((child) => this.renderNode(child))}
@@ -1781,6 +2370,42 @@ export class YukiApp extends LitElement {
         return this.renderHero(node, base, click);
       case 'masthead':
         return this.renderMasthead(node, base, click);
+      case 'avatar':
+        return html`
+          <div
+            class="${base} primitive-avatar avatar-${String(node.props.size ?? 'md')} avatar-${String(
+              node.props.shape ?? 'circle',
+            )}"
+            data-label="头像"
+            @click=${click}
+          >
+            雪
+          </div>
+        `;
+      case 'text-block':
+        return this.renderTextBlock(node, base, click);
+      case 'social-links':
+        return html`
+          <nav
+            class="${base} primitive-socials socials-${String(
+              node.props.variant ?? 'labels',
+            )} text-${String(node.props.alignment ?? 'left')}"
+            data-label="社交链接"
+            @click=${click}
+          >
+            <a href="#github">GitHub</a><a href="#rss">RSS</a><a href="#mail">Mail</a>
+          </nav>
+        `;
+      case 'status-line':
+        return html`
+          <div
+            class="${base} primitive-status status-${String(node.props.tone ?? 'neutral')}"
+            data-label="状态行"
+            @click=${click}
+          >
+            ${String(node.props.text ?? '')}
+          </div>
+        `;
       case 'profile-card':
         return this.renderProfile(node, base, click);
       case 'article-feed':
@@ -1843,6 +2468,13 @@ export class YukiApp extends LitElement {
 
   private renderHero(node: LayoutNode, base: string, click: (event: Event) => void) {
     const variant = String(node.props.variant ?? 'cinematic');
+    const title = String(node.props.title ?? '');
+    const details = html`
+      <p>${String(node.props.lead ?? '')}</p>
+      ${node.props.showSocials
+        ? html`<div class="social-row"><span>GitHub</span><span>Mail</span><span>RSS</span></div>`
+        : nothing}
+    `;
     return html`
       <section
         class="${base} hero hero-${variant}"
@@ -1852,11 +2484,17 @@ export class YukiApp extends LitElement {
       >
         <div class="hero-inner">
           <p class="component-kicker">YukiLog · 写给时间的长信</p>
-          <h1>${String(node.props.title ?? '')}</h1>
-          <p>${String(node.props.lead ?? '')}</p>
-          ${node.props.showSocials
-            ? html`<div class="social-row"><span>GitHub</span><span>Mail</span><span>RSS</span></div>`
-            : nothing}
+          <h1>
+            ${variant === 'cinematic'
+              ? [...title].map(
+                  (character, index) =>
+                    html`<span class="hero-character" style="--char-index:${index}"
+                      >${character}</span
+                    >`,
+                )
+              : title}
+          </h1>
+          ${variant === 'cinematic' ? html`<div class="hero-info">${details}</div>` : details}
           ${node.props.showEnter
             ? html`<button
                 class="enter-button"
@@ -1889,6 +2527,29 @@ export class YukiApp extends LitElement {
         <h1>${String(node.props.title ?? '')}</h1>
         <p class="lead">${String(node.props.lead ?? '')}</p>
       </header>
+    `;
+  }
+
+  private renderTextBlock(node: LayoutNode, base: string, click: (event: Event) => void) {
+    const source = String(node.props.source ?? 'literal');
+    const text =
+      {
+        'owner-name': 'Sakurine',
+        'owner-bio': '写代码，也收藏深夜、长风和那些不肯消失的心动。',
+        'site-title': 'YukiLog',
+        'site-description': '写给时间的长信。',
+      }[source] ?? String(node.props.text ?? '');
+    const variant = String(node.props.variant ?? 'body');
+    return html`
+      <div
+        class="${base} primitive-text text-${variant} text-${String(
+          node.props.alignment ?? 'left',
+        )}"
+        data-label="文字块"
+        @click=${click}
+      >
+        ${text}
+      </div>
     `;
   }
 
@@ -2026,6 +2687,47 @@ export class YukiApp extends LitElement {
     `;
   }
 
+  private renderTreeNode(node: LayoutNode, depth = 0): unknown {
+    const selected = node.id === this.selectedNodeId;
+    const movable = node.id !== this.layout.root.id;
+    return html`
+      <div
+        class="tree-row${this.draggingNodeId === node.id ? ' dragging' : ''}"
+        .draggable=${movable}
+        @dragstart=${(event: DragEvent) => {
+          if (!movable) return;
+          this.draggingNodeId = node.id;
+          event.dataTransfer?.setData('text/yukilog-node', node.id);
+          if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+        }}
+        @dragend=${() => {
+          this.draggingNodeId = null;
+          this.requestUpdate();
+        }}
+        @dragover=${(event: DragEvent) => {
+          event.preventDefault();
+          if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        }}
+        @drop=${(event: DragEvent) => this.dropNode(node, event)}
+      >
+        <button
+          class="tree-item"
+          aria-pressed=${selected}
+          @click=${() => this.selectNode(node.id)}
+        >
+          <span class="tree-depth">${'· '.repeat(depth)}</span>${componentRegistry[node.type].label}
+        </button>
+        ${movable
+          ? html`<span class="tree-actions">
+              <button aria-label="上移组件" @click=${() => this.moveSibling(node.id, -1)}>↑</button>
+              <button aria-label="下移组件" @click=${() => this.moveSibling(node.id, 1)}>↓</button>
+            </span>`
+          : nothing}
+      </div>
+      ${node.children?.map((child) => this.renderTreeNode(child, depth + 1))}
+    `;
+  }
+
   private renderInspector() {
     const nodes = flattenLayout(this.layout.root);
     const selected = nodes.find((node) => node.id === this.selectedNodeId) ?? this.layout.root;
@@ -2037,17 +2739,8 @@ export class YukiApp extends LitElement {
       <aside class="studio-panel right">
         <h2>页面结构</h2>
         <div class="inspector-section">
-          ${nodes.map(
-            (node) => html`
-              <button
-                class="tree-item"
-                aria-pressed=${node.id === selected.id}
-                @click=${() => this.selectNode(node.id)}
-              >
-                ${componentRegistry[node.type].label}
-              </button>
-            `,
-          )}
+          <p class="tree-help">拖动节点：上部插入之前，中部放入容器，下部插入之后。</p>
+          ${this.renderTreeNode(this.layout.root)}
         </div>
 
         <h2>属性 · ${definition.label}</h2>
@@ -2066,6 +2759,56 @@ export class YukiApp extends LitElement {
             )}
           </div>
         </section>
+
+        ${selected.type === 'card'
+          ? html`
+              <section class="inspector-section">
+                <label>卡片外观</label>
+                <div class="segmented">
+                  ${(['plain', 'glass', 'outlined', 'paper'] as const).map(
+                    (variant) => html`
+                      <button
+                        aria-pressed=${selected.props.variant === variant}
+                        @click=${() => this.setSelectedProperty('variant', variant)}
+                      >
+                        ${variant}
+                      </button>
+                    `,
+                  )}
+                </div>
+              </section>
+              <section class="inspector-section">
+                <label>阴影</label>
+                <div class="segmented">
+                  ${(['none', 'soft', 'blue', 'pink'] as const).map(
+                    (shadow) => html`
+                      <button
+                        aria-pressed=${selected.props.shadow === shadow}
+                        @click=${() => this.setSelectedProperty('shadow', shadow)}
+                      >
+                        ${shadow}
+                      </button>
+                    `,
+                  )}
+                </div>
+              </section>
+              <section class="inspector-section">
+                <label>内边距</label>
+                <div class="segmented">
+                  ${(['none', 'sm', 'md', 'lg', 'xl'] as const).map(
+                    (padding) => html`
+                      <button
+                        aria-pressed=${selected.props.padding === padding}
+                        @click=${() => this.setSelectedProperty('padding', padding)}
+                      >
+                        ${padding}
+                      </button>
+                    `,
+                  )}
+                </div>
+              </section>
+            `
+          : nothing}
 
         ${selected.type === 'article-feed'
           ? html`

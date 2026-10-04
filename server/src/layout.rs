@@ -36,8 +36,13 @@ pub enum ComponentType {
     Grid,
     Split,
     Bento,
+    Card,
     Hero,
     Masthead,
+    Avatar,
+    TextBlock,
+    SocialLinks,
+    StatusLine,
     ProfileCard,
     ArticleFeed,
     Quote,
@@ -123,7 +128,12 @@ fn validate_properties(
             (ComponentType::Stack, "sticky") => value.is_boolean(),
             (ComponentType::Grid, "columns") => string_in(
                 value,
-                &["1fr", "minmax(0, 1fr) 280px", "280px minmax(0, 1fr)"],
+                &[
+                    "1fr",
+                    "minmax(0, 1fr) 280px",
+                    "280px minmax(0, 1fr)",
+                    "240px minmax(0, 1fr) 240px",
+                ],
             ),
             (ComponentType::Grid, "gap") => spacing(value),
             (ComponentType::Grid, "align") => string_in(value, &["start", "center", "stretch"]),
@@ -140,6 +150,16 @@ fn validate_properties(
             (ComponentType::Bento, "columns") => integer_between(value, 1, 12),
             (ComponentType::Bento, "rowHeight") => string_in(value, &["auto", "84px"]),
             (ComponentType::Bento, "gap") => spacing(value),
+            (ComponentType::Card, "variant") => {
+                string_in(value, &["plain", "glass", "outlined", "paper"])
+            }
+            (ComponentType::Card, "padding") => spacing(value),
+            (ComponentType::Card, "radius") => {
+                string_in(value, &["none", "sm", "md", "lg", "pill"])
+            }
+            (ComponentType::Card, "shadow") => string_in(value, &["none", "soft", "blue", "pink"]),
+            (ComponentType::Card, "align") => string_in(value, &["start", "center", "stretch"]),
+            (ComponentType::Card, "sticky") => value.is_boolean(),
             (ComponentType::Hero, "variant") => {
                 string_in(value, &["cinematic", "compact", "split"])
             }
@@ -158,6 +178,34 @@ fn validate_properties(
             (ComponentType::Masthead, "variant") => string_in(value, &["editorial", "minimal"]),
             (ComponentType::Masthead, "alignment") | (ComponentType::Quote, "alignment") => {
                 string_in(value, &["left", "center", "right"])
+            }
+            (ComponentType::Avatar, "source") => string_in(value, &["site-owner", "placeholder"]),
+            (ComponentType::Avatar, "size") => string_in(value, &["sm", "md", "lg", "xl"]),
+            (ComponentType::Avatar, "shape") => string_in(value, &["circle", "rounded", "square"]),
+            (ComponentType::Avatar, "label") => short_string(value, 80),
+            (ComponentType::TextBlock, "source") => string_in(
+                value,
+                &[
+                    "literal",
+                    "owner-name",
+                    "owner-bio",
+                    "site-title",
+                    "site-description",
+                ],
+            ),
+            (ComponentType::TextBlock, "variant") => {
+                string_in(value, &["eyebrow", "heading", "body", "caption"])
+            }
+            (ComponentType::TextBlock, "text") => short_string(value, 500),
+            (ComponentType::TextBlock, "alignment") | (ComponentType::SocialLinks, "alignment") => {
+                string_in(value, &["left", "center", "right"])
+            }
+            (ComponentType::SocialLinks, "variant") => {
+                string_in(value, &["icons", "labels", "pills"])
+            }
+            (ComponentType::StatusLine, "text") => short_string(value, 160),
+            (ComponentType::StatusLine, "tone") => {
+                string_in(value, &["neutral", "online", "accent"])
             }
             (ComponentType::ProfileCard, "variant") => {
                 string_in(value, &["portrait", "letter", "compact"])
@@ -196,7 +244,10 @@ fn validate_properties(
 
 impl ComponentType {
     pub(crate) fn accepts_children(self) -> bool {
-        matches!(self, Self::Stack | Self::Grid | Self::Split | Self::Bento)
+        matches!(
+            self,
+            Self::Stack | Self::Grid | Self::Split | Self::Bento | Self::Card
+        )
     }
 }
 
@@ -276,6 +327,67 @@ mod tests {
     #[test]
     fn accepts_registered_component_tree() {
         assert!(valid_layout().validate().is_ok());
+    }
+
+    #[test]
+    fn accepts_composed_card_content() {
+        let layout: PageLayoutDocument = serde_json::from_value(serde_json::json!({
+            "schemaVersion": 1,
+            "id": "composed-home",
+            "label": "组合首页",
+            "description": "由通用卡片和内容原语组合",
+            "root": {
+                "id": "root-stack",
+                "type": "stack",
+                "props": {"gap": "lg"},
+                "children": [{
+                    "id": "profile-surface",
+                    "type": "card",
+                    "props": {
+                        "variant": "plain",
+                        "padding": "lg",
+                        "radius": "lg",
+                        "shadow": "pink",
+                        "align": "center",
+                        "sticky": true
+                    },
+                    "children": [
+                        {
+                            "id": "owner-avatar",
+                            "type": "avatar",
+                            "props": {
+                                "source": "site-owner",
+                                "size": "xl",
+                                "shape": "circle",
+                                "label": "站主头像"
+                            }
+                        },
+                        {
+                            "id": "owner-name",
+                            "type": "text-block",
+                            "props": {
+                                "source": "owner-name",
+                                "variant": "heading",
+                                "text": "",
+                                "alignment": "center"
+                            }
+                        },
+                        {
+                            "id": "owner-socials",
+                            "type": "social-links",
+                            "props": {"variant": "labels", "alignment": "left"}
+                        },
+                        {
+                            "id": "owner-status",
+                            "type": "status-line",
+                            "props": {"text": "system.log · online", "tone": "online"}
+                        }
+                    ]
+                }]
+            }
+        }))
+        .unwrap();
+        assert!(layout.validate().is_ok());
     }
 
     #[test]
