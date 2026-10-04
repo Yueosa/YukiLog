@@ -34,6 +34,10 @@ pub fn router(state: AppState) -> Router {
         .route("/feed.xml", get(crate::feed::all))
         .route("/feeds/articles.xml", get(crate::feed::articles))
         .route("/feeds/dynamics.xml", get(crate::feed::dynamics))
+        .route(
+            "/api/friend-link-applications",
+            post(public::apply_friend_link),
+        )
         .route("/api/subscriptions", post(crate::subscriptions::subscribe))
         .route("/subscriptions", post(crate::subscriptions::subscribe_form))
         .route(
@@ -155,6 +159,27 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/deliveries/{id}/cancel",
             post(crate::subscriptions::admin_cancel_delivery),
+        )
+        .route("/api/admin/notifications", get(crate::notifications::list))
+        .route(
+            "/api/admin/notifications/read-all",
+            post(crate::notifications::mark_all_read),
+        )
+        .route(
+            "/api/admin/notifications/{id}/read",
+            post(crate::notifications::mark_read),
+        )
+        .route(
+            "/api/admin/notifications/{id}/email-retry",
+            post(crate::notifications::retry_email),
+        )
+        .route(
+            "/api/admin/notifications/{id}/email-cancel",
+            post(crate::notifications::cancel_email),
+        )
+        .route(
+            "/api/admin/notification-settings",
+            get(crate::notifications::get_settings).put(crate::notifications::put_settings),
         )
         .route(
             "/api/articles/{id}/comments",

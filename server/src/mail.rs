@@ -11,7 +11,9 @@ use sea_orm::{
 };
 
 use crate::{
-    entities::{articles, dynamics, email_deliveries, subscribers},
+    entities::{
+        admin_accounts, admin_notifications, articles, dynamics, email_deliveries, subscribers,
+    },
     subscriptions::{SubscriptionState, TokenPurpose},
 };
 
@@ -106,7 +108,8 @@ RETURNING delivery.*
                 );
             }
         }
-        Ok(count)
+        let admin_count = self.run_admin_notification().await?;
+        Ok(count + admin_count)
     }
 
     async fn quarantine_stale_deliveries(&self) -> Result<(), sea_orm::DbErr> {
@@ -121,6 +124,21 @@ UPDATE email_deliveries
        last_error = '投递结果未知：worker 在 SMTP 完成前后中断；为避免重复邮件，必须人工核对后重试'
  WHERE status = 'sending'
    AND locked_at < now() - interval '{STALE_AFTER_MINUTES} minutes'
+"#
+                ),
+            ))
+            .await?;
+        self.database
+            .execute(Statement::from_string(
+                DatabaseBackend::Postgres,
+                format!(
+                    r#"
+UPDATE admin_notifications
+   SET email_status = 'uncertain',
+       email_locked_at = NULL,
+       email_last_error = '投递结果未知：worker 在 SMTP 完成前后中断；为避免重复邮件，必须人工核对后处理'
+ WHERE email_status = 'sending'
+   AND email_locked_at < now() - interval '{STALE_AFTER_MINUTES} minutes'
 "#
                 ),
             ))
@@ -269,6 +287,167 @@ UPDATE email_deliveries
         Ok(())
     }
 
+    async fn run_admin_notification(&self) -> Result<usize, WorkerError> {
+        let notifications = admin_notifications::Model::find_by_statement(Statement::from_string(
+            DatabaseBackend::Postgres,
+            format!(
+                r#"
+WITH selected AS (
+    SELECT id
+      FROM admin_notifications
+     WHERE email_status IN ('pending', 'failed')
+       AND email_attempt_count < {MAX_ATTEMPTS}
+       AND email_due_at <= now()
+     ORDER BY email_due_at, created_at
+     FOR UPDATE SKIP LOCKED
+     LIMIT {BATCH_SIZE}
+)
+UPDATE admin_notifications AS notification
+   SET email_status = 'sending',
+       email_attempt_count = LEAST(notification.email_attempt_count + 1, 20),
+       email_locked_at = now(),
+       email_last_error = NULL
+  FROM selected
+ WHERE notification.id = selected.id
+RETURNING notification.*
+"#
+            ),
+        ))
+        .all(&self.database)
+        .await?;
+        let count = notifications.len();
+        for notification in notifications {
+            if let Err(error) = self.send_admin_notification(&notification).await {
+                tracing::error!(
+                    notification_id = %notification.id,
+                    %error,
+                    "admin notification email state could not be finalized"
+                );
+            }
+        }
+        Ok(count)
+    }
+
+    async fn send_admin_notification(
+        &self,
+        claimed: &admin_notifications::Model,
+    ) -> Result<(), WorkerError> {
+        let transaction = self.database.begin().await?;
+        let account = admin_accounts::Entity::find_by_id(claimed.account_id)
+            .lock_shared()
+            .one(&transaction)
+            .await?
+            .ok_or("notification account no longer exists")?;
+        let current = admin_notifications::Entity::find_by_id(claimed.id)
+            .lock_exclusive()
+            .one(&transaction)
+            .await?;
+        let Some(current) = current else {
+            transaction.rollback().await?;
+            return Ok(());
+        };
+        if current.email_status != "sending" {
+            transaction.rollback().await?;
+            return Ok(());
+        }
+        let kind_enabled = match current.kind.as_str() {
+            "comment" => account.notify_on_comments,
+            "friend_link_application" => account.notify_on_friend_links,
+            "article_like" => account.notify_on_likes,
+            _ => false,
+        };
+        let Some(recipient) = account
+            .notification_email
+            .as_deref()
+            .filter(|_| account.is_active && account.email_notifications_enabled && kind_enabled)
+        else {
+            let mut active = current.into_active_model();
+            active.email_status = Set("cancelled".to_owned());
+            active.email_locked_at = Set(None);
+            active.update(&transaction).await?;
+            transaction.commit().await?;
+            return Ok(());
+        };
+        let recipient = match recipient.parse::<Mailbox>() {
+            Ok(recipient) => recipient,
+            Err(error) => {
+                let mut active = current.into_active_model();
+                active.email_status = Set("failed".to_owned());
+                active.email_attempt_count = Set(MAX_ATTEMPTS);
+                active.email_locked_at = Set(None);
+                active.email_last_error = Set(Some(excerpt(&error.to_string(), 2000)));
+                active.update(&transaction).await?;
+                transaction.commit().await?;
+                return Ok(());
+            }
+        };
+        let new_events = current.event_count - current.emailed_event_count;
+        if new_events <= 0 {
+            let mut active = current.into_active_model();
+            active.email_status = Set("sent".to_owned());
+            active.email_locked_at = Set(None);
+            active.email_sent_at = Set(Some(chrono::Utc::now().fixed_offset()));
+            active.update(&transaction).await?;
+            transaction.commit().await?;
+            return Ok(());
+        }
+        let body = format!(
+            "{}\n\n本次新增事件：{}\n查看：{}{}\n",
+            current.message, new_events, self.public_origin, current.target_url
+        );
+        let message = Message::builder()
+            .from(self.from.clone())
+            .to(recipient)
+            .subject(format!("[YukiLog] {}", current.title))
+            .body(body)?;
+        match self.transport.send(message).await {
+            Ok(_) => {
+                let event_count = current.event_count;
+                let mut active = current.into_active_model();
+                active.email_status = Set("sent".to_owned());
+                active.emailed_event_count = Set(event_count);
+                active.email_sent_at = Set(Some(chrono::Utc::now().fixed_offset()));
+                active.email_locked_at = Set(None);
+                active.email_last_error = Set(None);
+                active.update(&transaction).await?;
+                transaction.commit().await?;
+            }
+            Err(error) => {
+                let disposition = smtp_failure_disposition(&error);
+                let mut active = current.into_active_model();
+                active.email_locked_at = Set(None);
+                active.email_last_error = Set(Some(excerpt(&error.to_string(), 2000)));
+                match disposition {
+                    SmtpFailureDisposition::Retry => {
+                        active.email_status = Set("failed".to_owned());
+                        active.email_due_at = Set(Some(
+                            chrono::Utc::now().fixed_offset()
+                                + chrono::Duration::seconds(
+                                    retry_delay(claimed.email_attempt_count) as i64,
+                                ),
+                        ));
+                    }
+                    SmtpFailureDisposition::Permanent => {
+                        active.email_status = Set("failed".to_owned());
+                        active.email_attempt_count = Set(MAX_ATTEMPTS);
+                    }
+                    SmtpFailureDisposition::Uncertain => {
+                        active.email_status = Set("uncertain".to_owned());
+                    }
+                }
+                active.update(&transaction).await?;
+                transaction.commit().await?;
+                tracing::warn!(
+                    notification_id = %claimed.id,
+                    ?disposition,
+                    smtp_status = ?error.status(),
+                    "admin notification email did not complete normally"
+                );
+            }
+        }
+        Ok(())
+    }
+
     fn notification_body(
         &self,
         subscriber_id: sea_orm::prelude::Uuid,
@@ -344,10 +523,14 @@ fn retry_delay(attempt: i16) -> u64 {
 }
 
 fn excerpt(value: &str, maximum: usize) -> String {
-    let mut output = value.chars().take(maximum).collect::<String>();
-    if value.chars().count() > maximum {
-        output.push('…');
+    if value.chars().count() <= maximum {
+        return value.to_owned();
     }
+    let mut output = value
+        .chars()
+        .take(maximum.saturating_sub(1))
+        .collect::<String>();
+    output.push('…');
     output
 }
 

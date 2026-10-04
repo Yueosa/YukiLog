@@ -2,6 +2,7 @@ import { LitElement, css, html, nothing } from 'lit';
 import { api, ApiError } from '../admin/api.js';
 import type {
   Admin,
+  AdminNotification,
   Article,
   Category,
   Comment,
@@ -10,6 +11,7 @@ import type {
   FriendLink,
   LayoutRecord,
   MediaAsset,
+  NotificationSettings,
   SiteSettings,
   Subscriber,
   Tag,
@@ -30,6 +32,7 @@ type View =
   | 'friends'
   | 'settings'
   | 'layouts'
+  | 'notifications'
   | 'subscriptions';
 
 const defaultSettings: SiteSettings = {
@@ -82,6 +85,15 @@ export class YukiAdmin extends LitElement {
   private layouts: LayoutRecord[] = [];
   private subscribers: Subscriber[] = [];
   private deliveries: Delivery[] = [];
+  private notifications: AdminNotification[] = [];
+  private notificationSettings: NotificationSettings = {
+    notification_email: null,
+    email_notifications_enabled: false,
+    notify_on_comments: true,
+    notify_on_friend_links: true,
+    notify_on_likes: false,
+    notification_frequency: 'hourly',
+  };
   private settings: SiteSettings = structuredClone(defaultSettings);
   private selectedArticle: Article | null = null;
   private selectedDynamic: Dynamic | null = null;
@@ -185,6 +197,8 @@ export class YukiAdmin extends LitElement {
       layouts,
       subscribers,
       deliveries,
+      notifications,
+      notificationSettings,
       settings,
     ] = await Promise.all([
       api<Category[]>('/api/admin/categories'),
@@ -197,6 +211,8 @@ export class YukiAdmin extends LitElement {
       api<LayoutRecord[]>('/api/admin/layouts'),
       api<Subscriber[]>('/api/admin/subscribers'),
       api<Delivery[]>('/api/admin/deliveries'),
+      api<AdminNotification[]>('/api/admin/notifications'),
+      api<NotificationSettings>('/api/admin/notification-settings'),
       api<SiteSettings>('/api/admin/settings').catch((error) => {
         if (error instanceof ApiError && error.status === 404) return structuredClone(defaultSettings);
         throw error;
@@ -204,7 +220,7 @@ export class YukiAdmin extends LitElement {
     ]);
     Object.assign(this, {
       categories, tags, articles, dynamics, comments, media, friends, layouts,
-      subscribers, deliveries, settings,
+      subscribers, deliveries, notifications, notificationSettings, settings,
     });
     this.requestUpdate();
   }
@@ -254,6 +270,7 @@ export class YukiAdmin extends LitElement {
       ['dashboard', '概览'], ['articles', '文章'], ['dynamics', '动态'],
       ['taxonomy', '分类与标签'], ['comments', '评论'], ['media', '媒体'],
       ['friends', '友链'], ['settings', '站点设置'], ['layouts', '布局工作室'],
+      ['notifications', `消息 (${this.notifications.filter((item) => !item.read_at).length})`],
       ['subscriptions', '订阅与投递'],
     ];
     return html`<div class="shell">
@@ -285,6 +302,7 @@ export class YukiAdmin extends LitElement {
       case 'friends': return this.renderFriends();
       case 'settings': return this.renderSettings();
       case 'layouts': return this.renderLayouts();
+      case 'notifications': return this.renderNotifications();
       case 'subscriptions': return this.renderSubscriptions();
     }
   }
@@ -296,6 +314,7 @@ export class YukiAdmin extends LitElement {
       ${[
         ['文章', this.articles.length], ['动态', this.dynamics.length],
         ['待审评论', pending], ['媒体', this.media.length],
+        ['未读消息', this.notifications.filter((item) => !item.read_at).length],
         ['活跃订阅', this.subscribers.filter((item) => item.status === 'active').length],
         ['投递失败', failed],
       ].map(([label, value]) => html`<article class="card"><span>${label}</span><strong>${value}</strong></article>`)}
@@ -439,10 +458,11 @@ export class YukiAdmin extends LitElement {
   private async uploadMedia(event: SubmitEvent) { event.preventDefault(); const form=event.currentTarget as HTMLFormElement; const data=new FormData(form); await this.run(async()=>{ await api('/api/admin/media',{method:'POST',formData:data}); this.media=await api('/api/admin/media'); form.reset(); },'上传成功'); }
 
   private renderFriends() {
-    return html`<section class="split"><form class="panel" @submit=${this.createFriend}><label>名称<input name="name" required></label><label>URL<input name="url" type="url" required></label><label>说明<textarea name="description"></textarea></label><label>头像<select name="avatar_media_id"><option value="">无</option>${this.media.filter((item)=>item.media_type.startsWith('image/')).map((item)=>html`<option value=${item.id}>${item.original_name}</option>`)}</select></label><label>排序<input name="sort_order" type="number" value="0"></label><label><span><input name="is_visible" type="checkbox" checked> 公开</span></label><button>添加友链</button></form><div class="panel list">${this.friends.map((item)=>html`<div class="list-item"><span><strong>${item.name}</strong><br>${item.url}</span><span class="actions"><button @click=${()=>this.editFriend(item)}>编辑</button><button class="danger" @click=${()=>this.deleteFriend(item.id)}>删除</button></span></div>`)}</div></section>`;
+    return html`<section class="split"><form class="panel" @submit=${this.createFriend}><label>名称<input name="name" required></label><label>URL<input name="url" type="url" required></label><label>说明<textarea name="description"></textarea></label><label>头像<select name="avatar_media_id"><option value="">无</option>${this.media.filter((item)=>item.media_type.startsWith('image/')).map((item)=>html`<option value=${item.id}>${item.original_name}</option>`)}</select></label><label>排序<input name="sort_order" type="number" value="0"></label><label><span><input name="is_visible" type="checkbox" checked> 公开</span></label><button>添加友链</button></form><div class="panel list">${this.friends.map((item)=>html`<div class="list-item"><span><strong>${item.name}</strong><br>${item.url}${item.application_email?html`<br><small>申请邮箱：${item.application_email}</small>`:nothing}</span><span class="actions">${item.application_email&&!item.is_visible?html`<button @click=${()=>this.approveFriend(item)}>通过</button>`:nothing}<button @click=${()=>this.editFriend(item)}>编辑</button><button class="danger" @click=${()=>this.deleteFriend(item.id)}>删除</button></span></div>`)}</div></section>`;
   }
   private async createFriend(event:SubmitEvent){event.preventDefault();const form=event.currentTarget as HTMLFormElement;const data=new FormData(form);await this.run(async()=>{await api('/api/admin/friend-links',{method:'POST',body:{name:data.get('name'),url:data.get('url'),description:data.get('description')||null,avatar_media_id:data.get('avatar_media_id')||null,is_visible:data.has('is_visible'),sort_order:Number(data.get('sort_order'))}});this.friends=await api('/api/admin/friend-links');form.reset();});}
   private async editFriend(item:FriendLink){const name=prompt('名称',item.name);if(name===null)return;const url=prompt('URL',item.url);if(url===null)return;const description=prompt('说明',item.description??'');await this.run(async()=>{await api(`/api/admin/friend-links/${item.id}`,{method:'PUT',body:{name,url,description:description||null,avatar_media_id:item.avatar_media_id,is_visible:item.is_visible,sort_order:item.sort_order}});this.friends=await api('/api/admin/friend-links');});}
+  private async approveFriend(item:FriendLink){await this.run(async()=>{await api(`/api/admin/friend-links/${item.id}`,{method:'PUT',body:{name:item.name,url:item.url,description:item.description,avatar_media_id:item.avatar_media_id,is_visible:true,sort_order:item.sort_order}});this.friends=await api('/api/admin/friend-links');},'友链申请已通过');}
   private async deleteFriend(id:string){if(!confirm('确定删除友链？'))return;await this.run(async()=>{await api(`/api/admin/friend-links/${id}`,{method:'DELETE'});this.friends=await api('/api/admin/friend-links');},'友链已删除');}
 
   private renderSettings() {
@@ -470,6 +490,37 @@ export class YukiAdmin extends LitElement {
   }
   private loadStudioLayout(layout?:PageLayoutDocument){if(!layout){this.error='尚未保存首页布局';this.requestUpdate();return;}const studio=this.renderRoot.querySelector<YukiApp>('#layout-studio');studio?.loadPageLayout(layout);}
   private async saveStudioLayout(){const studio=this.renderRoot.querySelector<YukiApp>('#layout-studio');if(!studio)return;const layout=studio.exportPageLayout();const errors=validatePageLayout(layout);if(errors.length){this.error=errors.join('；');this.requestUpdate();return;}await this.run(async()=>{await api('/api/admin/layouts/home',{method:'PUT',body:layout});this.layouts=await api('/api/admin/layouts');},'首页布局已保存');}
+
+  private renderNotifications() {
+    const settings=this.notificationSettings;
+    return html`<section class="grid">
+      <div class="panel">
+        <div class="actions"><button @click=${()=>this.markAllNotificationsRead()}>全部标为已读</button></div>
+        <div class="list">${this.notifications.map((item)=>html`
+          <article class="list-item">
+            <span><strong>${item.title}${item.event_count>1?` × ${item.event_count}`:''}</strong><br>${item.message}<br><small>${new Date(item.updated_at).toLocaleString()} · 邮件 ${item.email_status}${item.email_last_error?`：${item.email_last_error}`:''}</small></span>
+            <span class="actions"><a href=${item.target_url}>查看</a>${!item.read_at?html`<button @click=${()=>this.markNotificationRead(item.id)}>已读</button>`:nothing}${!['sent','sending','pending','suppressed'].includes(item.email_status)?html`<button @click=${()=>this.notificationEmailAction(item,'email-retry')}>邮件重试</button>`:nothing}${!['sent','cancelled','suppressed'].includes(item.email_status)?html`<button class="danger" @click=${()=>this.notificationEmailAction(item,'email-cancel')}>取消邮件</button>`:nothing}</span>
+          </article>`)}
+        </div>
+      </div>
+      <form class="panel form-grid" @submit=${this.saveNotificationSettings}>
+        <label class="full">通知邮箱<input name="notification_email" type="email" .value=${settings.notification_email??''}></label>
+        <label class="full"><span><input name="email_notifications_enabled" type="checkbox" ?checked=${settings.email_notifications_enabled}> 启用邮件提醒</span></label>
+        <div class="full checks">
+          <label><input name="notify_on_comments" type="checkbox" ?checked=${settings.notify_on_comments}>评论</label>
+          <label><input name="notify_on_friend_links" type="checkbox" ?checked=${settings.notify_on_friend_links}>友链申请</label>
+          <label><input name="notify_on_likes" type="checkbox" ?checked=${settings.notify_on_likes}>点赞</label>
+        </div>
+        <label class="full">邮件频率<select name="notification_frequency">${(['immediate','hourly','daily'] as const).map((value)=>html`<option value=${value} ?selected=${settings.notification_frequency===value}>${value}</option>`)}</select></label>
+        <p class="full">真实邮件总开关默认关闭；完成 SMTP 灰度验证前，这些设置只会保留站内消息。</p>
+        <button class="full">保存通知设置</button>
+      </form>
+    </section>`;
+  }
+  private async markNotificationRead(id:string){await this.run(async()=>{await api(`/api/admin/notifications/${id}/read`,{method:'POST'});this.notifications=await api('/api/admin/notifications');},'消息已读');}
+  private async markAllNotificationsRead(){await this.run(async()=>{await api('/api/admin/notifications/read-all',{method:'POST'});this.notifications=await api('/api/admin/notifications');},'全部消息已读');}
+  private async notificationEmailAction(item:AdminNotification,action:'email-retry'|'email-cancel'){if(action==='email-retry'&&item.email_status==='uncertain'&&!confirm('SMTP 可能已经接收过这封邮件。重试可能导致重复发送，确定继续？'))return;await this.run(async()=>{await api(`/api/admin/notifications/${item.id}/${action}`,{method:'POST'});this.notifications=await api('/api/admin/notifications');});}
+  private async saveNotificationSettings(event:SubmitEvent){event.preventDefault();const data=new FormData(event.currentTarget as HTMLFormElement);await this.run(async()=>{this.notificationSettings=await api('/api/admin/notification-settings',{method:'PUT',body:{notification_email:String(data.get('notification_email'))||null,email_notifications_enabled:data.has('email_notifications_enabled'),notify_on_comments:data.has('notify_on_comments'),notify_on_friend_links:data.has('notify_on_friend_links'),notify_on_likes:data.has('notify_on_likes'),notification_frequency:data.get('notification_frequency')}});},'通知设置已保存');}
 
   private renderSubscriptions() {
     return html`<section class="grid"><div class="panel scroll"><table><thead><tr><th>邮箱</th><th>偏好</th><th>状态</th></tr></thead><tbody>${this.subscribers.map((item)=>html`<tr><td>${item.email}</td><td>${item.subscribe_articles?'文章 ':''}${item.subscribe_dynamics?'动态':''}</td><td>${item.status}</td></tr>`)}</tbody></table></div><div class="panel scroll"><table><thead><tr><th>类型</th><th>状态</th><th>尝试</th><th></th></tr></thead><tbody>${this.deliveries.map((item)=>html`<tr><td>${item.kind}${item.last_error?html`<br><small>${item.last_error}</small>`:nothing}</td><td>${item.status}</td><td>${item.attempt_count}</td><td>${item.status!=='sent'?html`<div class="actions">${item.status!=='sending'?html`<button @click=${()=>this.deliveryAction(item.id,'retry')}>重试</button>`:nothing}<button class="danger" @click=${()=>this.deliveryAction(item.id,'cancel')}>取消</button></div>`:nothing}</td></tr>`)}</tbody></table></div></section>`;

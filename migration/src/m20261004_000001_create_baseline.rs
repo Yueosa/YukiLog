@@ -38,6 +38,12 @@ CREATE TABLE admin_accounts (
     username citext NOT NULL UNIQUE,
     password_hash text NOT NULL,
     display_name varchar(80) NOT NULL,
+    notification_email citext,
+    email_notifications_enabled boolean NOT NULL DEFAULT false,
+    notify_on_comments boolean NOT NULL DEFAULT true,
+    notify_on_friend_links boolean NOT NULL DEFAULT true,
+    notify_on_likes boolean NOT NULL DEFAULT false,
+    notification_frequency text NOT NULL DEFAULT 'hourly',
     is_active boolean NOT NULL DEFAULT true,
     last_login_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -48,6 +54,18 @@ CREATE TABLE admin_accounts (
         CHECK (password_hash LIKE '$argon2id$%'),
     CONSTRAINT admin_accounts_display_name_length
         CHECK (char_length(btrim(display_name)) BETWEEN 1 AND 80),
+    CONSTRAINT admin_accounts_notification_email_shape
+        CHECK (
+            notification_email IS NULL
+            OR (
+                char_length(notification_email::text) BETWEEN 3 AND 254
+                AND position('@' IN notification_email::text) > 1
+            )
+        ),
+    CONSTRAINT admin_accounts_notification_frequency_valid
+        CHECK (notification_frequency IN ('immediate', 'hourly', 'daily')),
+    CONSTRAINT admin_accounts_notification_email_required
+        CHECK (NOT email_notifications_enabled OR notification_email IS NOT NULL),
     CONSTRAINT admin_accounts_last_login_valid
         CHECK (last_login_at IS NULL OR last_login_at >= created_at)
 );
@@ -336,6 +354,7 @@ CREATE TABLE friend_links (
     name varchar(100) NOT NULL,
     url text NOT NULL UNIQUE,
     description varchar(300),
+    application_email citext,
     is_visible boolean NOT NULL DEFAULT true,
     sort_order integer NOT NULL DEFAULT 0,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -345,11 +364,86 @@ CREATE TABLE friend_links (
     CONSTRAINT friend_links_url_length
         CHECK (char_length(url) BETWEEN 8 AND 2048),
     CONSTRAINT friend_links_description_length
-        CHECK (description IS NULL OR char_length(description) <= 300)
+        CHECK (description IS NULL OR char_length(description) <= 300),
+    CONSTRAINT friend_links_application_email_shape
+        CHECK (
+            application_email IS NULL
+            OR (
+                char_length(application_email::text) BETWEEN 3 AND 254
+                AND position('@' IN application_email::text) > 1
+            )
+        )
 );
 CREATE INDEX friend_links_visible_order_idx
     ON friend_links (sort_order, name)
     WHERE is_visible;
+
+CREATE TABLE admin_notifications (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    account_id uuid NOT NULL REFERENCES admin_accounts(id) ON DELETE CASCADE,
+    kind text NOT NULL,
+    article_id uuid REFERENCES articles(id) ON DELETE CASCADE,
+    comment_id uuid REFERENCES comments(id) ON DELETE CASCADE,
+    friend_link_id uuid REFERENCES friend_links(id) ON DELETE CASCADE,
+    title varchar(200) NOT NULL,
+    message varchar(500) NOT NULL,
+    target_url varchar(500) NOT NULL,
+    aggregation_key varchar(200),
+    event_count integer NOT NULL DEFAULT 1,
+    read_at timestamptz,
+    email_status text NOT NULL DEFAULT 'suppressed',
+    email_due_at timestamptz,
+    email_attempt_count smallint NOT NULL DEFAULT 0,
+    email_locked_at timestamptz,
+    email_last_error varchar(2000),
+    emailed_event_count integer NOT NULL DEFAULT 0,
+    email_sent_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT admin_notifications_kind_valid
+        CHECK (kind IN ('comment', 'friend_link_application', 'article_like')),
+    CONSTRAINT admin_notifications_target_valid
+        CHECK (
+            (kind = 'comment' AND comment_id IS NOT NULL
+                AND friend_link_id IS NULL)
+            OR (kind = 'friend_link_application' AND friend_link_id IS NOT NULL
+                AND article_id IS NULL AND comment_id IS NULL)
+            OR (kind = 'article_like' AND article_id IS NOT NULL
+                AND comment_id IS NULL AND friend_link_id IS NULL)
+        ),
+    CONSTRAINT admin_notifications_title_length
+        CHECK (char_length(btrim(title)) BETWEEN 1 AND 200),
+    CONSTRAINT admin_notifications_message_length
+        CHECK (char_length(btrim(message)) BETWEEN 1 AND 500),
+    CONSTRAINT admin_notifications_target_url_length
+        CHECK (char_length(target_url) BETWEEN 1 AND 500),
+    CONSTRAINT admin_notifications_aggregation_key_length
+        CHECK (aggregation_key IS NULL OR char_length(aggregation_key) BETWEEN 1 AND 200),
+    CONSTRAINT admin_notifications_event_count_positive
+        CHECK (event_count > 0 AND emailed_event_count BETWEEN 0 AND event_count),
+    CONSTRAINT admin_notifications_email_status_valid
+        CHECK (
+            email_status IN (
+                'suppressed', 'pending', 'sending', 'sent',
+                'failed', 'cancelled', 'uncertain'
+            )
+        ),
+    CONSTRAINT admin_notifications_email_attempt_count_valid
+        CHECK (email_attempt_count BETWEEN 0 AND 20),
+    CONSTRAINT admin_notifications_email_state_valid
+        CHECK (
+            (email_status = 'sending' AND email_locked_at IS NOT NULL)
+            OR (email_status <> 'sending' AND email_locked_at IS NULL)
+        )
+);
+CREATE UNIQUE INDEX admin_notifications_unread_aggregation_uidx
+    ON admin_notifications (account_id, aggregation_key)
+    WHERE read_at IS NULL AND aggregation_key IS NOT NULL;
+CREATE INDEX admin_notifications_inbox_idx
+    ON admin_notifications (account_id, read_at, updated_at DESC);
+CREATE INDEX admin_notifications_email_ready_idx
+    ON admin_notifications (email_due_at, created_at)
+    WHERE email_status IN ('pending', 'failed');
 
 CREATE TABLE site_settings (
     singleton boolean PRIMARY KEY DEFAULT true,
@@ -488,6 +582,10 @@ CREATE TRIGGER friend_links_set_updated_at
 BEFORE UPDATE ON friend_links
 FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
 
+CREATE TRIGGER admin_notifications_set_updated_at
+BEFORE UPDATE ON admin_notifications
+FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
+
 CREATE TRIGGER site_settings_set_updated_at
 BEFORE UPDATE ON site_settings
 FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
@@ -505,6 +603,7 @@ const DOWN_SQL: &str = r#"
 DROP TRIGGER IF EXISTS subscribers_set_updated_at ON subscribers;
 DROP TRIGGER IF EXISTS page_layouts_set_updated_at ON page_layouts;
 DROP TRIGGER IF EXISTS site_settings_set_updated_at ON site_settings;
+DROP TRIGGER IF EXISTS admin_notifications_set_updated_at ON admin_notifications;
 DROP TRIGGER IF EXISTS friend_links_set_updated_at ON friend_links;
 DROP TRIGGER IF EXISTS dynamics_set_updated_at ON dynamics;
 DROP TRIGGER IF EXISTS articles_set_updated_at ON articles;
@@ -515,6 +614,7 @@ DROP TABLE IF EXISTS email_deliveries;
 DROP TABLE IF EXISTS subscribers;
 DROP TABLE IF EXISTS page_layouts;
 DROP TABLE IF EXISTS site_settings;
+DROP TABLE IF EXISTS admin_notifications;
 DROP TABLE IF EXISTS friend_links;
 DROP TRIGGER IF EXISTS article_likes_update_count ON article_likes;
 DROP FUNCTION IF EXISTS yukilog_update_article_like_count();

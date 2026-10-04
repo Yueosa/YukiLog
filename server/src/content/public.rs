@@ -11,10 +11,8 @@ use chrono::Utc;
 use cookie::time::Duration as CookieDuration;
 use rand::{RngCore, rngs::OsRng};
 use sea_orm::{
-    ActiveModelTrait,
-    ActiveValue::NotSet,
-    ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set,
-    sea_query::{Expr, OnConflict},
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
+    EntityTrait, QueryFilter, QueryOrder, Set, Statement, TransactionTrait, sea_query::Expr,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,12 +20,15 @@ use sha2::{Digest, Sha256};
 use crate::{
     AppState, auth,
     content::client_ip,
-    entities::{article_likes, article_metrics, articles, comments, dynamics},
+    entities::{article_likes, article_metrics, articles, comments, dynamics, friend_links},
     error::AppError,
+    notifications::{self, NewNotification, NotificationKind},
 };
 
 const VIEW_COOLDOWN: Duration = Duration::from_secs(30);
 const COMMENT_COOLDOWN: Duration = Duration::from_secs(60);
+const FRIEND_LINK_COOLDOWN: Duration = Duration::from_secs(10 * 60);
+const LIKE_COOLDOWN: Duration = Duration::from_secs(30);
 const VISITOR_COOKIE_DAYS: i64 = 365;
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +55,76 @@ pub struct PublicCommentResponse {
 pub struct SubmittedCommentResponse {
     id: sea_orm::prelude::Uuid,
     status: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FriendLinkApplication {
+    name: String,
+    url: String,
+    description: Option<String>,
+    email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FriendLinkApplicationResponse {
+    status: &'static str,
+}
+
+pub async fn apply_friend_link(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(input): Json<FriendLinkApplication>,
+) -> Result<Json<FriendLinkApplicationResponse>, AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    validate_friend_link_url(&input.url)?;
+    let target = stable_rate_key(&input.url);
+    if !state
+        .content
+        .allow(
+            client_ip(&headers, peer),
+            target,
+            "friend-link-application",
+            FRIEND_LINK_COOLDOWN,
+        )
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
+
+    let transaction = state.database.begin().await?;
+    let model = friend_links::ActiveModel {
+        id: NotSet,
+        avatar_media_id: Set(None),
+        name: Set(input.name),
+        url: Set(input.url),
+        description: Set(input.description),
+        application_email: Set(Some(input.email.trim().to_lowercase())),
+        is_visible: Set(false),
+        sort_order: Set(0),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&transaction)
+    .await?;
+    notifications::create(
+        &transaction,
+        NewNotification {
+            kind: NotificationKind::FriendLinkApplication,
+            article_id: None,
+            comment_id: None,
+            friend_link_id: Some(model.id),
+            title: format!("新的友链申请：{}", model.name),
+            message: model
+                .description
+                .clone()
+                .unwrap_or_else(|| model.url.clone()),
+            target_url: "/admin#friends".to_owned(),
+        },
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(Json(FriendLinkApplicationResponse { status: "pending" }))
 }
 
 pub async fn list_article_comments(
@@ -86,6 +157,8 @@ pub async fn create_article_comment(
     ensure_article_published(&state, article_id, true).await?;
     enforce_comment_limit(&state, &headers, peer, article_id).await?;
     validate_website(input.website.as_deref())?;
+    let transaction = state.database.begin().await?;
+    ensure_visible_parent(&transaction, input.parent_id, Some(article_id), None).await?;
     let model = comments::ActiveModel {
         id: NotSet,
         article_id: Set(Some(article_id)),
@@ -98,8 +171,26 @@ pub async fn create_article_comment(
         status: Set("pending".to_owned()),
         created_at: NotSet,
     }
-    .insert(&state.database)
+    .insert(&transaction)
     .await?;
+    let article = articles::Entity::find_by_id(article_id)
+        .one(&transaction)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    notifications::create(
+        &transaction,
+        NewNotification {
+            kind: NotificationKind::Comment,
+            article_id: Some(article_id),
+            comment_id: Some(model.id),
+            friend_link_id: None,
+            title: format!("文章收到新评论：{}", article.title),
+            message: excerpt(&model.content, 500),
+            target_url: format!("/articles/{}#comments", article.slug),
+        },
+    )
+    .await?;
+    transaction.commit().await?;
     Ok(Json(SubmittedCommentResponse {
         id: model.id,
         status: "pending",
@@ -136,6 +227,8 @@ pub async fn create_dynamic_comment(
     ensure_dynamic_published(&state, dynamic_id, true).await?;
     enforce_comment_limit(&state, &headers, peer, dynamic_id).await?;
     validate_website(input.website.as_deref())?;
+    let transaction = state.database.begin().await?;
+    ensure_visible_parent(&transaction, input.parent_id, None, Some(dynamic_id)).await?;
     let model = comments::ActiveModel {
         id: NotSet,
         article_id: Set(None),
@@ -148,8 +241,22 @@ pub async fn create_dynamic_comment(
         status: Set("pending".to_owned()),
         created_at: NotSet,
     }
-    .insert(&state.database)
+    .insert(&transaction)
     .await?;
+    notifications::create(
+        &transaction,
+        NewNotification {
+            kind: NotificationKind::Comment,
+            article_id: None,
+            comment_id: Some(model.id),
+            friend_link_id: None,
+            title: "动态收到新评论".to_owned(),
+            message: excerpt(&model.content, 500),
+            target_url: format!("/dynamics#dynamic-{dynamic_id}"),
+        },
+    )
+    .await?;
+    transaction.commit().await?;
     Ok(Json(SubmittedCommentResponse {
         id: model.id,
         status: "pending",
@@ -204,27 +311,43 @@ pub async fn get_metrics(
 pub async fn like_article(
     State(state): State<AppState>,
     Path(article_id): Path<sea_orm::prelude::Uuid>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     jar: CookieJar,
 ) -> Result<(CookieJar, Json<MetricsResponse>), AppError> {
     auth::verify_public_origin(&state.auth, &headers)?;
     ensure_article_published(&state, article_id, false).await?;
+    if !state
+        .content
+        .allow(client_ip(&headers, peer), article_id, "like", LIKE_COOLDOWN)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
     let (jar, visitor_hash) = visitor_identity(&state, jar);
-    article_likes::Entity::insert(article_likes::ActiveModel {
-        article_id: Set(article_id),
-        visitor_token_hash: Set(visitor_hash),
-        created_at: NotSet,
-    })
-    .on_conflict(
-        OnConflict::columns([
-            article_likes::Column::ArticleId,
-            article_likes::Column::VisitorTokenHash,
-        ])
-        .do_nothing()
-        .to_owned(),
-    )
-    .exec_without_returning(&state.database)
-    .await?;
+    let transaction = state.database.begin().await?;
+    let inserted = transaction
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO article_likes (article_id, visitor_token_hash)
+VALUES ($1, $2)
+ON CONFLICT (article_id, visitor_token_hash) DO NOTHING
+RETURNING article_id
+"#,
+            [article_id.into(), visitor_hash.into()],
+        ))
+        .await?
+        .is_some();
+    if inserted {
+        let article = articles::Entity::find_by_id(article_id)
+            .one(&transaction)
+            .await?
+            .ok_or(AppError::NotFound)?;
+        notifications::create_article_like(&transaction, article_id, &article.slug, &article.title)
+            .await?;
+    }
+    transaction.commit().await?;
     Ok((jar, Json(metrics(&state, article_id, true).await?)))
 }
 
@@ -307,6 +430,28 @@ async fn enforce_comment_limit(
     }
 }
 
+async fn ensure_visible_parent<C: ConnectionTrait>(
+    connection: &C,
+    parent_id: Option<sea_orm::prelude::Uuid>,
+    article_id: Option<sea_orm::prelude::Uuid>,
+    dynamic_id: Option<sea_orm::prelude::Uuid>,
+) -> Result<(), AppError> {
+    let Some(parent_id) = parent_id else {
+        return Ok(());
+    };
+    let exists = comments::Entity::find_by_id(parent_id)
+        .filter(comments::Column::ArticleId.eq(article_id))
+        .filter(comments::Column::DynamicId.eq(dynamic_id))
+        .filter(comments::Column::Status.eq("visible"))
+        .one(connection)
+        .await?
+        .is_some();
+    if !exists {
+        return Err(AppError::InvalidRequest("回复的评论不存在或尚未公开"));
+    }
+    Ok(())
+}
+
 async fn metrics(
     state: &AppState,
     article_id: sea_orm::prelude::Uuid,
@@ -387,6 +532,35 @@ fn validate_website(value: Option<&str>) -> Result<(), AppError> {
     Ok(())
 }
 
+fn validate_friend_link_url(value: &str) -> Result<(), AppError> {
+    let uri = value
+        .parse::<Uri>()
+        .map_err(|_| AppError::InvalidRequest("友链 URL 无效"))?;
+    if !matches!(uri.scheme_str(), Some("http" | "https")) || uri.authority().is_none() {
+        return Err(AppError::InvalidRequest("友链 URL 必须使用 http 或 https"));
+    }
+    Ok(())
+}
+
+fn stable_rate_key(value: &str) -> sea_orm::prelude::Uuid {
+    let digest = Sha256::digest(value.as_bytes());
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    sea_orm::prelude::Uuid::from_bytes(bytes)
+}
+
+fn excerpt(value: &str, maximum: usize) -> String {
+    if value.chars().count() <= maximum {
+        return value.to_owned();
+    }
+    let mut output = value
+        .chars()
+        .take(maximum.saturating_sub(1))
+        .collect::<String>();
+    output.push('…');
+    output
+}
+
 impl From<comments::Model> for PublicCommentResponse {
     fn from(model: comments::Model) -> Self {
         Self {
@@ -410,6 +584,20 @@ mod tests {
         assert!(validate_website(None).is_ok());
         assert!(validate_website(Some("https://example.com")).is_ok());
         assert!(validate_website(Some("file:///etc/passwd")).is_err());
+    }
+
+    #[test]
+    fn validates_friend_link_protocol() {
+        assert!(validate_friend_link_url("https://example.com").is_ok());
+        assert!(validate_friend_link_url("javascript:alert(1)").is_err());
+        assert!(validate_friend_link_url("/relative").is_err());
+    }
+
+    #[test]
+    fn excerpts_never_exceed_database_limit() {
+        assert_eq!(excerpt("abcd", 4), "abcd");
+        assert_eq!(excerpt("abcde", 4), "abc…");
+        assert_eq!(excerpt("测试文本内容", 4).chars().count(), 4);
     }
 
     #[test]

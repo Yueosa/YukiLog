@@ -599,6 +599,7 @@ pub struct FriendLinkResponse {
     name: String,
     url: String,
     description: Option<String>,
+    application_email: Option<String>,
     is_visible: bool,
     sort_order: i32,
 }
@@ -631,6 +632,7 @@ pub async fn create_friend_link(
         name: Set(input.name),
         url: Set(input.url),
         description: Set(input.description),
+        application_email: Set(None),
         is_visible: Set(input.is_visible),
         sort_order: Set(input.sort_order),
         created_at: NotSet,
@@ -904,6 +906,7 @@ impl From<friend_links::Model> for FriendLinkResponse {
             name: model.name,
             url: model.url,
             description: model.description,
+            application_email: model.application_email,
             is_visible: model.is_visible,
             sort_order: model.sort_order,
         }

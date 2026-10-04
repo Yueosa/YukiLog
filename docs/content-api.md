@@ -21,6 +21,10 @@
 - `GET /api/admin/subscribers`：订阅者列表；
 - `GET /api/admin/deliveries`：邮件投递列表；
 - `POST /api/admin/deliveries/{id}/retry|cancel`：重试或取消投递。
+- `GET /api/admin/notifications`：当前管理员最近 100 条站内消息；
+- `POST /api/admin/notifications/{id}/read`、`/api/admin/notifications/read-all`：标记已读；
+- `GET|PUT /api/admin/notification-settings`：通知邮箱、类别与频率；
+- `POST /api/admin/notifications/{id}/email-retry|email-cancel`：人工处理通知邮件。
 
 文章保存会在事务中锁定文章行并整体替换标签。首次发布内容时，同一事务为符合
 偏好的活跃订阅者建立 `email_deliveries`；编辑已发布内容不会再次通知。撤回会
@@ -28,6 +32,7 @@
 
 ## 公开互动
 
+- `POST /api/friend-link-applications`
 - `GET|POST /api/articles/{id}/comments`
 - `GET|POST /api/dynamics/{id}/comments`
 - `GET /api/articles/{id}/metrics`
@@ -36,6 +41,9 @@
 
 评论默认进入 `pending`，仅 `visible` 评论公开。评论表单中的昵称、邮箱、网站与
 正文按页面声明公开；订阅邮箱仍然私密。
+
+友链申请只接收名称、HTTP(S) URL、简介和联系邮箱，不抓取访客 URL 或远程头像。
+申请以不可见友链保存，管理员通过后才公开，并同时建立站内通知。
 
 浏览量按 IP、文章和 30 秒窗口进行进程内限频。仅当请求来自本机反向代理时才信任
 `X-Real-IP`。评论按目标和 IP 限制为每分钟一次。

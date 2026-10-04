@@ -177,9 +177,10 @@ pub(crate) async fn authorize_write(
     state: &AppState,
     headers: &HeaderMap,
     jar: &CookieJar,
-) -> Result<(), AppError> {
+) -> Result<sea_orm::prelude::Uuid, AppError> {
     let authenticated = authenticate(state, jar).await?;
-    verify_csrf(&state.auth, headers, jar, &authenticated.session)
+    verify_csrf(&state.auth, headers, jar, &authenticated.session)?;
+    Ok(authenticated.account.id)
 }
 
 pub(crate) async fn authorize_read(

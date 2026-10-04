@@ -10,6 +10,7 @@ pub mod layout;
 pub mod mail;
 pub mod markdown;
 pub mod media;
+pub mod notifications;
 pub mod subscriptions;
 pub mod web;
 

@@ -65,6 +65,7 @@ export type FriendLink = {
   name: string;
   url: string;
   description: string | null;
+  application_email: string | null;
   is_visible: boolean;
   sort_order: number;
 };
@@ -142,4 +143,33 @@ export type Delivery = {
   last_error: string | null;
   created_at: string;
   sent_at: string | null;
+};
+
+export type AdminNotification = {
+  id: string;
+  kind: 'comment' | 'friend_link_application' | 'article_like';
+  article_id: string | null;
+  comment_id: string | null;
+  friend_link_id: string | null;
+  title: string;
+  message: string;
+  target_url: string;
+  event_count: number;
+  read_at: string | null;
+  email_status: string;
+  email_attempt_count: number;
+  email_last_error: string | null;
+  emailed_event_count: number;
+  email_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type NotificationSettings = {
+  notification_email: string | null;
+  email_notifications_enabled: boolean;
+  notify_on_comments: boolean;
+  notify_on_friend_links: boolean;
+  notify_on_likes: boolean;
+  notification_frequency: 'immediate' | 'hourly' | 'daily';
 };

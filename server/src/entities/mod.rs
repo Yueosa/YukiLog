@@ -12,6 +12,12 @@ pub mod admin_accounts {
         pub username: String,
         pub password_hash: String,
         pub display_name: String,
+        pub notification_email: Option<String>,
+        pub email_notifications_enabled: bool,
+        pub notify_on_comments: bool,
+        pub notify_on_friend_links: bool,
+        pub notify_on_likes: bool,
+        pub notification_frequency: String,
         pub is_active: bool,
         pub last_login_at: Option<DateTimeWithTimeZone>,
         pub created_at: DateTimeWithTimeZone,
@@ -253,8 +259,45 @@ pub mod friend_links {
         pub name: String,
         pub url: String,
         pub description: Option<String>,
+        pub application_email: Option<String>,
         pub is_visible: bool,
         pub sort_order: i32,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod admin_notifications {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "admin_notifications")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub account_id: Uuid,
+        pub kind: String,
+        pub article_id: Option<Uuid>,
+        pub comment_id: Option<Uuid>,
+        pub friend_link_id: Option<Uuid>,
+        pub title: String,
+        pub message: String,
+        pub target_url: String,
+        pub aggregation_key: Option<String>,
+        pub event_count: i32,
+        pub read_at: Option<DateTimeWithTimeZone>,
+        pub email_status: String,
+        pub email_due_at: Option<DateTimeWithTimeZone>,
+        pub email_attempt_count: i16,
+        pub email_locked_at: Option<DateTimeWithTimeZone>,
+        pub email_last_error: Option<String>,
+        pub emailed_event_count: i32,
+        pub email_sent_at: Option<DateTimeWithTimeZone>,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
     }
