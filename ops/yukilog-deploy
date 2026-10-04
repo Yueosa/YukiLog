@@ -67,7 +67,16 @@ set +a
 runuser -u yukilog -- env DATABASE_URL="$DATABASE_URL" \
     "$RELEASE/bin/yukilog-migration" up
 
-readonly PREVIOUS="$(readlink -f "$CURRENT" 2>/dev/null || true)"
+PREVIOUS=""
+if [[ -L "$CURRENT" ]]; then
+    PREVIOUS="$(readlink -f -- "$CURRENT" 2>/dev/null || true)"
+    [[ -n "$PREVIOUS" && -d "$PREVIOUS" && "$PREVIOUS" == "$RELEASES/"* ]] \
+        || { echo "current 不是有效的 release 链接" >&2; exit 1; }
+elif [[ -e "$CURRENT" ]]; then
+    echo "current 存在但不是符号链接，拒绝覆盖" >&2
+    exit 1
+fi
+readonly PREVIOUS
 ln -s "$RELEASE" "$BASE/.current-$VERSION"
 mv -Tf "$BASE/.current-$VERSION" "$CURRENT"
 
@@ -100,7 +109,7 @@ fi
 
 healthy=false
 for _ in {1..30}; do
-    if curl --fail --silent --show-error \
+    if curl --fail --silent \
         http://127.0.0.1:3000/health/ready >/dev/null; then
         healthy=true
         break
