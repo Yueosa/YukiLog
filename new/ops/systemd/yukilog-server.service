@@ -1,0 +1,38 @@
+[Unit]
+Description=YukiLog web server
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yukilog
+Group=yukilog
+WorkingDirectory=/var/www/yukilog/current
+EnvironmentFile=/etc/yukilog/yukilog.env
+ExecStart=/var/www/yukilog/current/bin/yukilog-server
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=30s
+UMask=0027
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadOnlyPaths=/var/www/yukilog
+ReadWritePaths=/var/lib/yukilog
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

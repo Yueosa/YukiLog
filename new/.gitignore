@@ -1,6 +1,7 @@
 /target/
 /.cargo-home/
 /.build-tmp/
+/.release-build/
 node_modules/
 /.pnpm-store/
 /web/dist/

@@ -19,7 +19,7 @@ Browser
     Filesystem media
 ```
 
-- Axum 是唯一应用服务进程。
+- Axum 是唯一处理 HTTP 的应用进程；SMTP worker 是独立的后台投递进程。
 - Askama 负责公开页面的 HTML，Lit 只增强需要状态的交互。
 - 管理后台使用 Lit SPA，但复用同一套 API 和 Web Components。
 - PostgreSQL 是持久业务数据的唯一事实来源。

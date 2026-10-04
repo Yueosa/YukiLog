@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+umask 077
+
+readonly BACKUP_ID="${1:-}"
+readonly CONFIRM="${2:-}"
+readonly BACKUP_ROOT="/var/backups/yukilog"
+readonly DATA_ROOT="/var/lib/yukilog"
+readonly BACKUP="$BACKUP_ROOT/$BACKUP_ID"
+
+[[ $EUID -eq 0 ]] || { echo "请以 root 运行" >&2; exit 1; }
+[[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] \
+    || { echo "用法：yukilog-restore <备份ID> --confirm-restore" >&2; exit 2; }
+[[ "$CONFIRM" == "--confirm-restore" ]] \
+    || { echo "恢复会替换当前数据库与媒体，请显式确认" >&2; exit 2; }
+[[ -d "$BACKUP" ]] || { echo "备份不存在：$BACKUP" >&2; exit 1; }
+
+(
+    cd "$BACKUP"
+    sha256sum --check MANIFEST.sha256
+)
+
+readonly RESTORE_DB="yukilog_restore_${BACKUP_ID//[^0-9A-Za-z]/_}"
+readonly OLD_DB="yukilog_before_${BACKUP_ID//[^0-9A-Za-z]/_}"
+readonly MEDIA_STAGE="$DATA_ROOT/.media-restore-$BACKUP_ID"
+readonly MEDIA_OLD="$DATA_ROOT/media-before-$BACKUP_ID"
+
+[[ ! -e "$MEDIA_OLD" ]] || { echo "保留目录已存在：$MEDIA_OLD" >&2; exit 1; }
+if runuser -u postgres -- psql -tAc \
+    "SELECT 1 FROM pg_database WHERE datname = '$OLD_DB'" | grep -qx '1'; then
+    echo "保留数据库已存在：$OLD_DB" >&2
+    exit 1
+fi
+runuser -u postgres -- dropdb --if-exists "$RESTORE_DB"
+runuser -u postgres -- createdb --owner=yukilog "$RESTORE_DB"
+if ! runuser -u postgres -- pg_restore \
+    --exit-on-error --no-owner --no-acl \
+    --dbname="$RESTORE_DB" "$BACKUP/database.dump"; then
+    runuser -u postgres -- dropdb --if-exists "$RESTORE_DB"
+    exit 1
+fi
+
+rm -rf -- "$MEDIA_STAGE"
+mkdir -m 700 "$MEDIA_STAGE"
+tar -C "$MEDIA_STAGE" -xzf "$BACKUP/media.tar.gz"
+[[ -d "$MEDIA_STAGE/media" ]] || { echo "媒体备份结构无效" >&2; exit 1; }
+
+systemctl stop yukilog-mailer.service yukilog-server.service
+runuser -u postgres -- psql --dbname=postgres --set=ON_ERROR_STOP=1 <<SQL
+SELECT pg_terminate_backend(pid)
+  FROM pg_stat_activity
+ WHERE datname IN ('yukilog', '$RESTORE_DB')
+   AND pid <> pg_backend_pid();
+ALTER DATABASE yukilog RENAME TO $OLD_DB;
+ALTER DATABASE $RESTORE_DB RENAME TO yukilog;
+SQL
+
+mv -- "$DATA_ROOT/media" "$MEDIA_OLD"
+mv -- "$MEDIA_STAGE/media" "$DATA_ROOT/media"
+chown -R yukilog:yukilog "$DATA_ROOT/media"
+rm -rf -- "$MEDIA_STAGE"
+
+systemctl start yukilog-server.service
+if grep -q '^YUKILOG_SMTP_HOST=.\+' /etc/yukilog/yukilog.env; then
+    systemctl start yukilog-mailer.service
+fi
+
+printf '恢复完成。旧数据库保留为 %s，旧媒体保留在 %s\n' "$OLD_DB" "$MEDIA_OLD"
