@@ -5,7 +5,7 @@
 ## 目录
 
 - `server/`：Rust、Axum，以及后续的 Askama 服务端渲染
-- `migration/`：SeaORM 迁移（下一阶段建立）
+- `migration/`：SeaORM PostgreSQL 迁移
 - `web/`：Lit Web Components 与管理后台
 - `ops/`：nginx、systemd、发布与备份工具
 - `docs/`：产品、架构和接口决策
@@ -15,6 +15,9 @@
 ```bash
 # Rust 服务
 cargo run -p yukilog-server
+
+# 数据库迁移
+cargo run -p yukilog-migration -- up
 
 # Lit 开发服务器
 pnpm install
