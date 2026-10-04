@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
-export default defineConfig({
-  base: '/admin/',
+export default defineConfig(({ command }) => ({
+  base: command === 'serve' ? '/' : '/admin/',
   server: {
     proxy: {
       '/api': 'http://127.0.0.1:3000',
@@ -14,4 +14,4 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
-});
+}));
