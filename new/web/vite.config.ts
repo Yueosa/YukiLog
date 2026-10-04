@@ -1,6 +1,13 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+  server: {
+    proxy: {
+      '/api': 'http://127.0.0.1:3000',
+      '/media': 'http://127.0.0.1:3000',
+      '/subscriptions': 'http://127.0.0.1:3000',
+    },
+  },
   build: {
     manifest: true,
     outDir: 'dist',

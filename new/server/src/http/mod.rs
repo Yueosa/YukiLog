@@ -141,6 +141,22 @@ pub fn router(state: AppState) -> Router {
             get(settings::get_settings).put(settings::put_settings),
         )
         .route(
+            "/api/admin/subscribers",
+            get(crate::subscriptions::admin_list_subscribers),
+        )
+        .route(
+            "/api/admin/deliveries",
+            get(crate::subscriptions::admin_list_deliveries),
+        )
+        .route(
+            "/api/admin/deliveries/{id}/retry",
+            post(crate::subscriptions::admin_retry_delivery),
+        )
+        .route(
+            "/api/admin/deliveries/{id}/cancel",
+            post(crate::subscriptions::admin_cancel_delivery),
+        )
+        .route(
             "/api/articles/{id}/comments",
             get(public::list_article_comments).post(public::create_article_comment),
         )

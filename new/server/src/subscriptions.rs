@@ -6,14 +6,15 @@ use axum::{
     http::HeaderMap,
     response::Html,
 };
+use axum_extra::extract::cookie::CookieJar;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
 use rand::{RngCore, rngs::OsRng};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    EntityTrait, IntoActiveModel, QueryFilter, QuerySelect, Set, Statement, TransactionTrait,
-    prelude::Uuid,
+    EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set, Statement,
+    TransactionTrait, prelude::Uuid,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -66,6 +67,34 @@ pub struct SubscribeForm {
 #[derive(Debug, Serialize)]
 pub struct SubscriptionResponse {
     status: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminSubscriberResponse {
+    id: Uuid,
+    email: String,
+    subscribe_articles: bool,
+    subscribe_dynamics: bool,
+    status: String,
+    confirmation_sent_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    confirmed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    unsubscribed_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminDeliveryResponse {
+    id: Uuid,
+    subscriber_id: Uuid,
+    kind: String,
+    article_id: Option<Uuid>,
+    dynamic_id: Option<Uuid>,
+    status: String,
+    attempt_count: i16,
+    next_attempt_at: chrono::DateTime<chrono::FixedOffset>,
+    last_error: Option<String>,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+    sent_at: Option<chrono::DateTime<chrono::FixedOffset>>,
 }
 
 impl SubscriptionState {
@@ -292,6 +321,75 @@ pub async fn unsubscribe_form(
     ))
 }
 
+pub async fn admin_list_subscribers(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<Vec<AdminSubscriberResponse>>, AppError> {
+    auth::authorize_read(&state, &jar).await?;
+    let models = subscribers::Entity::find()
+        .order_by_desc(subscribers::Column::CreatedAt)
+        .all(&state.database)
+        .await?;
+    Ok(Json(models.into_iter().map(Into::into).collect()))
+}
+
+pub async fn admin_list_deliveries(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<Vec<AdminDeliveryResponse>>, AppError> {
+    auth::authorize_read(&state, &jar).await?;
+    let models = email_deliveries::Entity::find()
+        .order_by_desc(email_deliveries::Column::CreatedAt)
+        .all(&state.database)
+        .await?;
+    Ok(Json(models.into_iter().map(Into::into).collect()))
+}
+
+pub async fn admin_retry_delivery(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<Json<AdminDeliveryResponse>, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let model = email_deliveries::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if model.status == "sent" {
+        return Err(AppError::InvalidRequest("已发送的邮件不能重试"));
+    }
+    let mut active = model.into_active_model();
+    active.status = Set("pending".to_owned());
+    active.attempt_count = Set(0);
+    active.next_attempt_at = Set(Utc::now().fixed_offset());
+    active.locked_at = Set(None);
+    active.last_error = Set(None);
+    active.sent_at = Set(None);
+    Ok(Json(active.update(&state.database).await?.into()))
+}
+
+pub async fn admin_cancel_delivery(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<Json<AdminDeliveryResponse>, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let model = email_deliveries::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if model.status == "sent" {
+        return Err(AppError::InvalidRequest("已发送的邮件不能取消"));
+    }
+    let mut active = model.into_active_model();
+    active.status = Set("cancelled".to_owned());
+    active.locked_at = Set(None);
+    active.sent_at = Set(None);
+    Ok(Json(active.update(&state.database).await?.into()))
+}
+
 async fn unsubscribe_with_token(state: &AppState, token: &str) -> Result<(), AppError> {
     let (subscriber_id, nonce) = state
         .subscriptions
@@ -370,6 +468,40 @@ fn email_rate_key(email: &str) -> Uuid {
     let mut bytes = [0_u8; 16];
     bytes.copy_from_slice(&digest[..16]);
     Uuid::from_bytes(bytes)
+}
+
+impl From<subscribers::Model> for AdminSubscriberResponse {
+    fn from(model: subscribers::Model) -> Self {
+        Self {
+            id: model.id,
+            email: model.email,
+            subscribe_articles: model.subscribe_articles,
+            subscribe_dynamics: model.subscribe_dynamics,
+            status: model.status,
+            confirmation_sent_at: model.confirmation_sent_at,
+            confirmed_at: model.confirmed_at,
+            unsubscribed_at: model.unsubscribed_at,
+            created_at: model.created_at,
+        }
+    }
+}
+
+impl From<email_deliveries::Model> for AdminDeliveryResponse {
+    fn from(model: email_deliveries::Model) -> Self {
+        Self {
+            id: model.id,
+            subscriber_id: model.subscriber_id,
+            kind: model.kind,
+            article_id: model.article_id,
+            dynamic_id: model.dynamic_id,
+            status: model.status,
+            attempt_count: model.attempt_count,
+            next_attempt_at: model.next_attempt_at,
+            last_error: model.last_error,
+            created_at: model.created_at,
+            sent_at: model.sent_at,
+        }
+    }
 }
 
 #[cfg(test)]

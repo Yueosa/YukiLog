@@ -1,5 +1,10 @@
 import { LitElement, css, html, nothing } from 'lit';
-import { componentRegistry, flattenLayout, validateLayout } from '../layout/registry.js';
+import {
+  componentRegistry,
+  flattenLayout,
+  toPageLayout,
+  validateLayout,
+} from '../layout/registry.js';
 import { layoutPresets } from '../layout/presets.js';
 import type {
   ArticleField,
@@ -8,6 +13,7 @@ import type {
   LayoutDocument,
   LayoutNode,
   NavigationVariant,
+  PageLayoutDocument,
 } from '../layout/types.js';
 
 const articles = [
@@ -54,6 +60,17 @@ export class YukiApp extends LitElement {
   private studio = false;
   private selectedNodeId = this.layout.root.id;
   private flippedProfiles = new Set<string>();
+
+  loadPageLayout(page: PageLayoutDocument) {
+    this.layout = { ...this.layout, ...structuredClone(page) };
+    this.selectedNodeId = this.layout.root.id;
+    this.studio = true;
+    this.requestUpdate();
+  }
+
+  exportPageLayout(): PageLayoutDocument {
+    return structuredClone(toPageLayout(this.layout));
+  }
 
   static styles = css`
     * {

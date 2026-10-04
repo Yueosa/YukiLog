@@ -16,6 +16,11 @@
 - `/api/admin/comments`、`/api/admin/comments/{id}`：审核与删除；
 - `/api/admin/friend-links`、`/api/admin/friend-links/{id}`：友链 CRUD；
 - `GET /api/admin/media`：媒体选择列表。
+- `GET|PUT /api/admin/settings`：站点资料、主题 Token 与页面外壳；
+- `GET /api/admin/layouts`、`GET|PUT /api/admin/layouts/{page_key}`：页面布局；
+- `GET /api/admin/subscribers`：订阅者列表；
+- `GET /api/admin/deliveries`：邮件投递列表；
+- `POST /api/admin/deliveries/{id}/retry|cancel`：重试或取消投递。
 
 文章保存会在事务中锁定文章行并整体替换标签。首次发布内容时，同一事务为符合
 偏好的活跃订阅者建立 `email_deliveries`；编辑已发布内容不会再次通知。撤回会
@@ -38,5 +43,5 @@
 点赞使用一年有效的 HttpOnly 匿名访客 Cookie。Cookie 保存随机令牌，数据库只
 保存 SHA-256；联合主键和触发器负责去重及维护点赞数。
 
-本阶段只存储 Markdown 原文。HTML 安全渲染、RSS、搜索和邮件发送 worker 属于
-下一阶段。
+Markdown 原文由公开 Askama 页面统一安全渲染。管理后台不接收或保存生成后的
+HTML。
