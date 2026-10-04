@@ -1,4 +1,6 @@
 /target/
+/.cargo-home/
+/.build-tmp/
 node_modules/
 /.pnpm-store/
 /web/dist/
