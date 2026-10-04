@@ -36,3 +36,5 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 http-body-util.workspace = true
+sea-orm-migration.workspace = true
+yukilog-migration = { path = "../migration" }

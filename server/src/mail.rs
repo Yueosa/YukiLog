@@ -537,10 +537,18 @@ fn excerpt(value: &str, maximum: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sea_orm::{Database, EntityTrait, prelude::Uuid};
+    use sea_orm_migration::MigratorTrait;
     use tokio::{
         io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
         net::TcpListener,
     };
+
+    #[derive(Clone, Copy)]
+    enum FakeSmtpOutcome {
+        Respond(&'static str),
+        DisconnectAfterData,
+    }
 
     #[test]
     fn retries_only_explicit_transient_smtp_rejections() {
@@ -560,7 +568,7 @@ mod tests {
 
     #[tokio::test]
     async fn fake_smtp_accepts_one_message() {
-        let (port, server) = fake_smtp("250 2.0.0 queued\r\n").await;
+        let (port, server) = fake_smtp(FakeSmtpOutcome::Respond("250 2.0.0 queued\r\n")).await;
         let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
             .port(port)
             .build();
@@ -570,7 +578,7 @@ mod tests {
 
     #[tokio::test]
     async fn fake_smtp_transient_rejection_is_retryable() {
-        let (port, server) = fake_smtp("451 4.3.0 try later\r\n").await;
+        let (port, server) = fake_smtp(FakeSmtpOutcome::Respond("451 4.3.0 try later\r\n")).await;
         let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
             .port(port)
             .build();
@@ -578,6 +586,37 @@ mod tests {
         assert_eq!(
             smtp_failure_disposition(&error),
             SmtpFailureDisposition::Retry
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fake_smtp_permanent_rejection_is_not_retried() {
+        let (port, server) = fake_smtp(FakeSmtpOutcome::Respond(
+            "550 5.1.1 mailbox unavailable\r\n",
+        ))
+        .await;
+        let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
+            .port(port)
+            .build();
+        let error = transport.send(test_message()).await.unwrap_err();
+        assert_eq!(
+            smtp_failure_disposition(&error),
+            SmtpFailureDisposition::Permanent
+        );
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fake_smtp_disconnect_after_data_is_uncertain() {
+        let (port, server) = fake_smtp(FakeSmtpOutcome::DisconnectAfterData).await;
+        let transport = AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
+            .port(port)
+            .build();
+        let error = transport.send(test_message()).await.unwrap_err();
+        assert_eq!(
+            smtp_failure_disposition(&error),
+            SmtpFailureDisposition::Uncertain
         );
         server.await.unwrap();
     }
@@ -591,7 +630,7 @@ mod tests {
             .unwrap()
     }
 
-    async fn fake_smtp(final_response: &'static str) -> (u16, tokio::task::JoinHandle<()>) {
+    async fn fake_smtp(outcome: FakeSmtpOutcome) -> (u16, tokio::task::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let task = tokio::spawn(async move {
@@ -613,9 +652,14 @@ mod tests {
                         .await
                         .unwrap();
                     while lines.next_line().await.unwrap().as_deref() != Some(".") {}
-                    writer.write_all(final_response.as_bytes()).await.unwrap();
-                    if final_response.starts_with('4') || final_response.starts_with('5') {
-                        break;
+                    match outcome {
+                        FakeSmtpOutcome::Respond(final_response) => {
+                            writer.write_all(final_response.as_bytes()).await.unwrap();
+                            if final_response.starts_with('4') || final_response.starts_with('5') {
+                                break;
+                            }
+                        }
+                        FakeSmtpOutcome::DisconnectAfterData => break,
                     }
                 } else if line == "QUIT" {
                     writer.write_all(b"221 2.0.0 bye\r\n").await.unwrap();
@@ -632,5 +676,171 @@ mod tests {
         assert_eq!(retry_delay(2), 120);
         assert_eq!(retry_delay(10), 15_360);
         assert!(retry_delay(20) <= 6 * 60 * 60);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires an isolated PostgreSQL database in YUKILOG_TEST_DATABASE_URL"]
+    async fn postgres_delivery_state_machine_fault_injection() {
+        let database_url = std::env::var("YUKILOG_TEST_DATABASE_URL")
+            .expect("YUKILOG_TEST_DATABASE_URL is required");
+        assert!(
+            database_url.contains("test"),
+            "refusing to reset a database URL without 'test' in its name"
+        );
+        let database = Database::connect(&database_url).await.unwrap();
+        yukilog_migration::Migrator::fresh(&database).await.unwrap();
+        database
+            .execute_unprepared(
+                r#"
+INSERT INTO categories (id, name, slug)
+VALUES ('10000000-0000-0000-0000-000000000001', 'Test', 'test');
+INSERT INTO subscribers (
+    id, email, subscribe_articles, subscribe_dynamics, status,
+    token_nonce, confirmed_at
+) VALUES (
+    '20000000-0000-0000-0000-000000000001',
+    'reader@example.com', true, false, 'active',
+    decode(repeat('01', 16), 'hex'), now()
+);
+"#,
+            )
+            .await
+            .unwrap();
+
+        insert_test_delivery(
+            &database,
+            "30000000-0000-0000-0000-000000000001",
+            "40000000-0000-0000-0000-000000000001",
+        )
+        .await;
+        let (port, server) = fake_smtp(FakeSmtpOutcome::Respond("250 2.0.0 queued\r\n")).await;
+        test_worker(database.clone(), port)
+            .run_batch()
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_delivery_status(&database, "40000000-0000-0000-0000-000000000001", "sent").await;
+
+        insert_test_delivery(
+            &database,
+            "30000000-0000-0000-0000-000000000002",
+            "40000000-0000-0000-0000-000000000002",
+        )
+        .await;
+        let (port, server) = fake_smtp(FakeSmtpOutcome::Respond("451 4.3.0 try later\r\n")).await;
+        test_worker(database.clone(), port)
+            .run_batch()
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_delivery_status(&database, "40000000-0000-0000-0000-000000000002", "failed").await;
+
+        insert_test_delivery(
+            &database,
+            "30000000-0000-0000-0000-000000000003",
+            "40000000-0000-0000-0000-000000000003",
+        )
+        .await;
+        let (port, server) = fake_smtp(FakeSmtpOutcome::DisconnectAfterData).await;
+        test_worker(database.clone(), port)
+            .run_batch()
+            .await
+            .unwrap();
+        server.await.unwrap();
+        assert_delivery_status(
+            &database,
+            "40000000-0000-0000-0000-000000000003",
+            "uncertain",
+        )
+        .await;
+
+        database
+            .execute_unprepared(
+                r#"
+INSERT INTO articles (
+    id, category_id, title, slug, body_markdown, status, published_at
+) VALUES (
+    '30000000-0000-0000-0000-000000000004',
+    '10000000-0000-0000-0000-000000000001',
+    'Stale', 'stale', 'body', 'published', now()
+);
+INSERT INTO email_deliveries (
+    id, subscriber_id, kind, article_id, status, attempt_count, locked_at
+) VALUES (
+    '40000000-0000-0000-0000-000000000004',
+    '20000000-0000-0000-0000-000000000001',
+    'article_published',
+    '30000000-0000-0000-0000-000000000004',
+    'sending', 1, now() - interval '20 minutes'
+);
+"#,
+            )
+            .await
+            .unwrap();
+        test_worker(database.clone(), 9).run_batch().await.unwrap();
+        assert_delivery_status(
+            &database,
+            "40000000-0000-0000-0000-000000000004",
+            "uncertain",
+        )
+        .await;
+        database.close().await.unwrap();
+    }
+
+    fn test_worker(database: DatabaseConnection, port: u16) -> MailWorker {
+        MailWorker {
+            database,
+            signer: SubscriptionState::new(
+                "test subscription signing secret with more than 32 bytes".to_owned(),
+            )
+            .unwrap(),
+            public_origin: "https://blog.example.com".to_owned(),
+            from: "YukiLog <sender@example.com>".parse().unwrap(),
+            transport: AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous("127.0.0.1")
+                .port(port)
+                .build(),
+        }
+    }
+
+    async fn insert_test_delivery(
+        database: &DatabaseConnection,
+        article_id: &str,
+        delivery_id: &str,
+    ) {
+        database
+            .execute_unprepared(&format!(
+                r#"
+INSERT INTO articles (
+    id, category_id, title, slug, body_markdown, status, published_at
+) VALUES (
+    '{article_id}',
+    '10000000-0000-0000-0000-000000000001',
+    'Article {article_id}', 'article-{article_id}',
+    'body', 'published', now()
+);
+INSERT INTO email_deliveries (
+    id, subscriber_id, kind, article_id
+) VALUES (
+    '{delivery_id}',
+    '20000000-0000-0000-0000-000000000001',
+    'article_published', '{article_id}'
+);
+"#
+            ))
+            .await
+            .unwrap();
+    }
+
+    async fn assert_delivery_status(
+        database: &DatabaseConnection,
+        delivery_id: &str,
+        expected: &str,
+    ) {
+        let delivery = email_deliveries::Entity::find_by_id(Uuid::parse_str(delivery_id).unwrap())
+            .one(database)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(delivery.status, expected);
     }
 }

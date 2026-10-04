@@ -280,7 +280,11 @@ async fn subscribe_inner(
 }
 
 pub(crate) fn mail_enabled() -> bool {
-    std::env::var("YUKILOG_MAIL_ENABLED").as_deref() == Ok("true")
+    mail_enabled_value(std::env::var("YUKILOG_MAIL_ENABLED").ok().as_deref())
+}
+
+fn mail_enabled_value(value: Option<&str>) -> bool {
+    value == Some("true")
 }
 
 pub async fn confirm(
@@ -607,5 +611,14 @@ mod tests {
             now,
         ));
         assert!(!confirmation_requeue_blocked(Some("cancelled"), None, now));
+    }
+
+    #[test]
+    fn global_mail_switch_is_explicit_and_fail_closed() {
+        assert!(mail_enabled_value(Some("true")));
+        assert!(!mail_enabled_value(Some("TRUE")));
+        assert!(!mail_enabled_value(Some("1")));
+        assert!(!mail_enabled_value(Some("false")));
+        assert!(!mail_enabled_value(None));
     }
 }

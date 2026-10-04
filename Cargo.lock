@@ -3518,6 +3518,7 @@ dependencies = [
  "rand",
  "rpassword",
  "sea-orm",
+ "sea-orm-migration",
  "serde",
  "serde_json",
  "sha2",
@@ -3529,6 +3530,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "yukilog-migration",
 ]
 
 [[package]]
