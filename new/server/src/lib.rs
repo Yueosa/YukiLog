@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod config;
+pub mod content;
 pub mod database;
 pub mod entities;
 pub mod error;
@@ -13,6 +14,7 @@ use sea_orm::DatabaseConnection;
 pub struct AppState {
     pub(crate) database: DatabaseConnection,
     pub(crate) auth: auth::AuthState,
+    pub(crate) content: content::ContentState,
     pub(crate) media: media::MediaStorage,
 }
 
@@ -27,6 +29,7 @@ impl AppState {
         Ok(Self {
             database,
             auth,
+            content: content::ContentState::default(),
             media,
         })
     }
@@ -36,6 +39,7 @@ impl AppState {
         Self {
             database: DatabaseConnection::Disconnected,
             auth: auth::AuthState::for_test(),
+            content: content::ContentState::default(),
             media: media::MediaStorage::for_test(),
         }
     }

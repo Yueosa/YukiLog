@@ -15,6 +15,8 @@ pub enum AppError {
     InvalidRequest(&'static str),
     #[error("authentication required")]
     Unauthorized,
+    #[error("resource not found")]
+    NotFound,
     #[error("request origin or CSRF token is invalid")]
     Forbidden,
     #[error("too many authentication attempts")]
@@ -49,6 +51,7 @@ impl IntoResponse for AppError {
                 "invalid_credentials",
                 "登录信息无效",
             ),
+            Self::NotFound => (StatusCode::NOT_FOUND, "not_found", "资源不存在"),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", "请求验证失败"),
             Self::RateLimited => (
                 StatusCode::TOO_MANY_REQUESTS,

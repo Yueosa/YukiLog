@@ -178,6 +178,28 @@ pub(crate) async fn authorize_write(
     verify_csrf(&state.auth, headers, jar, &authenticated.session)
 }
 
+pub(crate) async fn authorize_read(
+    state: &AppState,
+    jar: &CookieJar,
+) -> Result<sea_orm::prelude::Uuid, AppError> {
+    Ok(authenticate(state, jar).await?.account.id)
+}
+
+pub(crate) fn verify_public_origin(auth: &AuthState, headers: &HeaderMap) -> Result<(), AppError> {
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok());
+    if origin == Some(auth.public_origin.as_ref()) {
+        Ok(())
+    } else {
+        Err(AppError::Forbidden)
+    }
+}
+
+pub(crate) fn secure_cookies(auth: &AuthState) -> bool {
+    auth.secure_cookies
+}
+
 pub async fn login(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
@@ -345,12 +367,7 @@ fn verify_csrf(
     jar: &CookieJar,
     session: &admin_sessions::Model,
 ) -> Result<(), AppError> {
-    let origin = headers
-        .get(header::ORIGIN)
-        .and_then(|value| value.to_str().ok());
-    if origin != Some(auth.public_origin.as_ref()) {
-        return Err(AppError::Forbidden);
-    }
+    verify_public_origin(auth, headers)?;
 
     let cookie_token = jar
         .get(auth.csrf_cookie_name.as_ref())

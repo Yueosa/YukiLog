@@ -13,7 +13,7 @@ async-trait = "0.1"
 axum = { version = "0.8", features = ["multipart"] }
 axum-extra = { version = "0.12", features = ["cookie"] }
 base64 = "0.22"
-chrono = "0.4"
+chrono = { version = "0.4", features = ["serde"] }
 cookie = "0.18"
 http-body-util = "0.1"
 imagesize = "0.14"

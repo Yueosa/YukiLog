@@ -1,0 +1,423 @@
+use std::{net::SocketAddr, time::Duration};
+
+use axum::{
+    Json,
+    extract::{ConnectInfo, Path, State},
+    http::{HeaderMap, Uri},
+};
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use chrono::Utc;
+use cookie::time::Duration as CookieDuration;
+use rand::{RngCore, rngs::OsRng};
+use sea_orm::{
+    ActiveModelTrait,
+    ActiveValue::NotSet,
+    ColumnTrait, EntityTrait, QueryFilter, QueryOrder, Set,
+    sea_query::{Expr, OnConflict},
+};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+
+use crate::{
+    AppState, auth,
+    content::client_ip,
+    entities::{article_likes, article_metrics, articles, comments, dynamics},
+    error::AppError,
+};
+
+const VIEW_COOLDOWN: Duration = Duration::from_secs(30);
+const COMMENT_COOLDOWN: Duration = Duration::from_secs(60);
+const VISITOR_COOKIE_DAYS: i64 = 365;
+
+#[derive(Debug, Deserialize)]
+pub struct CommentWrite {
+    parent_id: Option<sea_orm::prelude::Uuid>,
+    display_name: String,
+    email: String,
+    website: Option<String>,
+    content: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublicCommentResponse {
+    id: sea_orm::prelude::Uuid,
+    parent_id: Option<sea_orm::prelude::Uuid>,
+    display_name: String,
+    email: String,
+    website: Option<String>,
+    content: String,
+    created_at: chrono::DateTime<chrono::FixedOffset>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SubmittedCommentResponse {
+    id: sea_orm::prelude::Uuid,
+    status: &'static str,
+}
+
+pub async fn list_article_comments(
+    State(state): State<AppState>,
+    Path(article_id): Path<sea_orm::prelude::Uuid>,
+) -> Result<Json<Vec<PublicCommentResponse>>, AppError> {
+    ensure_article_published(&state, article_id, false).await?;
+    let models = comments::Entity::find()
+        .filter(comments::Column::ArticleId.eq(article_id))
+        .filter(comments::Column::Status.eq("visible"))
+        .order_by_asc(comments::Column::CreatedAt)
+        .all(&state.database)
+        .await?;
+    Ok(Json(
+        models
+            .into_iter()
+            .map(PublicCommentResponse::from)
+            .collect(),
+    ))
+}
+
+pub async fn create_article_comment(
+    State(state): State<AppState>,
+    Path(article_id): Path<sea_orm::prelude::Uuid>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(input): Json<CommentWrite>,
+) -> Result<Json<SubmittedCommentResponse>, AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_article_published(&state, article_id, true).await?;
+    enforce_comment_limit(&state, &headers, peer, article_id).await?;
+    validate_website(input.website.as_deref())?;
+    let model = comments::ActiveModel {
+        id: NotSet,
+        article_id: Set(Some(article_id)),
+        dynamic_id: Set(None),
+        parent_id: Set(input.parent_id),
+        display_name: Set(input.display_name),
+        email: Set(input.email),
+        website: Set(input.website),
+        content: Set(input.content),
+        status: Set("pending".to_owned()),
+        created_at: NotSet,
+    }
+    .insert(&state.database)
+    .await?;
+    Ok(Json(SubmittedCommentResponse {
+        id: model.id,
+        status: "pending",
+    }))
+}
+
+pub async fn list_dynamic_comments(
+    State(state): State<AppState>,
+    Path(dynamic_id): Path<sea_orm::prelude::Uuid>,
+) -> Result<Json<Vec<PublicCommentResponse>>, AppError> {
+    ensure_dynamic_published(&state, dynamic_id, false).await?;
+    let models = comments::Entity::find()
+        .filter(comments::Column::DynamicId.eq(dynamic_id))
+        .filter(comments::Column::Status.eq("visible"))
+        .order_by_asc(comments::Column::CreatedAt)
+        .all(&state.database)
+        .await?;
+    Ok(Json(
+        models
+            .into_iter()
+            .map(PublicCommentResponse::from)
+            .collect(),
+    ))
+}
+
+pub async fn create_dynamic_comment(
+    State(state): State<AppState>,
+    Path(dynamic_id): Path<sea_orm::prelude::Uuid>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Json(input): Json<CommentWrite>,
+) -> Result<Json<SubmittedCommentResponse>, AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_dynamic_published(&state, dynamic_id, true).await?;
+    enforce_comment_limit(&state, &headers, peer, dynamic_id).await?;
+    validate_website(input.website.as_deref())?;
+    let model = comments::ActiveModel {
+        id: NotSet,
+        article_id: Set(None),
+        dynamic_id: Set(Some(dynamic_id)),
+        parent_id: Set(input.parent_id),
+        display_name: Set(input.display_name),
+        email: Set(input.email),
+        website: Set(input.website),
+        content: Set(input.content),
+        status: Set("pending".to_owned()),
+        created_at: NotSet,
+    }
+    .insert(&state.database)
+    .await?;
+    Ok(Json(SubmittedCommentResponse {
+        id: model.id,
+        status: "pending",
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct MetricsResponse {
+    view_count: i64,
+    like_count: i64,
+    liked: bool,
+}
+
+pub async fn record_view(
+    State(state): State<AppState>,
+    Path(article_id): Path<sea_orm::prelude::Uuid>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<Json<MetricsResponse>, AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_article_published(&state, article_id, false).await?;
+    let address = client_ip(&headers, peer);
+    if state
+        .content
+        .allow(address, article_id, "view", VIEW_COOLDOWN)
+        .await
+    {
+        article_metrics::Entity::update_many()
+            .filter(article_metrics::Column::ArticleId.eq(article_id))
+            .col_expr(
+                article_metrics::Column::ViewCount,
+                Expr::col(article_metrics::Column::ViewCount).add(1),
+            )
+            .exec(&state.database)
+            .await?;
+    }
+    let liked = visitor_liked(&state, &jar, article_id).await?;
+    Ok(Json(metrics(&state, article_id, liked).await?))
+}
+
+pub async fn get_metrics(
+    State(state): State<AppState>,
+    Path(article_id): Path<sea_orm::prelude::Uuid>,
+    jar: CookieJar,
+) -> Result<Json<MetricsResponse>, AppError> {
+    ensure_article_published(&state, article_id, false).await?;
+    let liked = visitor_liked(&state, &jar, article_id).await?;
+    Ok(Json(metrics(&state, article_id, liked).await?))
+}
+
+pub async fn like_article(
+    State(state): State<AppState>,
+    Path(article_id): Path<sea_orm::prelude::Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(CookieJar, Json<MetricsResponse>), AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_article_published(&state, article_id, false).await?;
+    let (jar, visitor_hash) = visitor_identity(&state, jar);
+    article_likes::Entity::insert(article_likes::ActiveModel {
+        article_id: Set(article_id),
+        visitor_token_hash: Set(visitor_hash),
+        created_at: NotSet,
+    })
+    .on_conflict(
+        OnConflict::columns([
+            article_likes::Column::ArticleId,
+            article_likes::Column::VisitorTokenHash,
+        ])
+        .do_nothing()
+        .to_owned(),
+    )
+    .exec_without_returning(&state.database)
+    .await?;
+    Ok((jar, Json(metrics(&state, article_id, true).await?)))
+}
+
+pub async fn unlike_article(
+    State(state): State<AppState>,
+    Path(article_id): Path<sea_orm::prelude::Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(CookieJar, Json<MetricsResponse>), AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_article_published(&state, article_id, false).await?;
+    let (jar, visitor_hash) = visitor_identity(&state, jar);
+    article_likes::Entity::delete_many()
+        .filter(article_likes::Column::ArticleId.eq(article_id))
+        .filter(article_likes::Column::VisitorTokenHash.eq(visitor_hash))
+        .exec(&state.database)
+        .await?;
+    Ok((jar, Json(metrics(&state, article_id, false).await?)))
+}
+
+async fn ensure_article_published(
+    state: &AppState,
+    article_id: sea_orm::prelude::Uuid,
+    require_comments: bool,
+) -> Result<(), AppError> {
+    let model = articles::Entity::find_by_id(article_id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if model.status != "published"
+        || model
+            .published_at
+            .is_none_or(|time| time > Utc::now().fixed_offset())
+    {
+        return Err(AppError::NotFound);
+    }
+    if require_comments && !model.allow_comments {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+async fn ensure_dynamic_published(
+    state: &AppState,
+    dynamic_id: sea_orm::prelude::Uuid,
+    require_comments: bool,
+) -> Result<(), AppError> {
+    let model = dynamics::Entity::find_by_id(dynamic_id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    if model.status != "published"
+        || model
+            .published_at
+            .is_none_or(|time| time > Utc::now().fixed_offset())
+    {
+        return Err(AppError::NotFound);
+    }
+    if require_comments && !model.allow_comments {
+        return Err(AppError::Forbidden);
+    }
+    Ok(())
+}
+
+async fn enforce_comment_limit(
+    state: &AppState,
+    headers: &HeaderMap,
+    peer: SocketAddr,
+    target: sea_orm::prelude::Uuid,
+) -> Result<(), AppError> {
+    let address = client_ip(headers, peer);
+    if state
+        .content
+        .allow(address, target, "comment", COMMENT_COOLDOWN)
+        .await
+    {
+        Ok(())
+    } else {
+        Err(AppError::RateLimited)
+    }
+}
+
+async fn metrics(
+    state: &AppState,
+    article_id: sea_orm::prelude::Uuid,
+    liked: bool,
+) -> Result<MetricsResponse, AppError> {
+    let model = article_metrics::Entity::find_by_id(article_id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok(MetricsResponse {
+        view_count: model.view_count,
+        like_count: model.like_count,
+        liked,
+    })
+}
+
+async fn visitor_liked(
+    state: &AppState,
+    jar: &CookieJar,
+    article_id: sea_orm::prelude::Uuid,
+) -> Result<bool, AppError> {
+    let secure = auth::secure_cookies(&state.auth);
+    let cookie_name = if secure {
+        "__Host-yukilog_visitor"
+    } else {
+        "yukilog_visitor"
+    };
+    let Some(cookie) = jar.get(cookie_name) else {
+        return Ok(false);
+    };
+    let hash = Sha256::digest(cookie.value().as_bytes()).to_vec();
+    Ok(article_likes::Entity::find()
+        .filter(article_likes::Column::ArticleId.eq(article_id))
+        .filter(article_likes::Column::VisitorTokenHash.eq(hash))
+        .one(&state.database)
+        .await?
+        .is_some())
+}
+
+fn visitor_identity(state: &AppState, jar: CookieJar) -> (CookieJar, Vec<u8>) {
+    let secure = auth::secure_cookies(&state.auth);
+    let cookie_name = if secure {
+        "__Host-yukilog_visitor"
+    } else {
+        "yukilog_visitor"
+    };
+    if let Some(token) = jar.get(cookie_name).map(|cookie| cookie.value().to_owned()) {
+        let hash = Sha256::digest(token.as_bytes()).to_vec();
+        return (jar, hash);
+    }
+
+    let mut random = [0_u8; 32];
+    OsRng.fill_bytes(&mut random);
+    let token = URL_SAFE_NO_PAD.encode(random);
+    let hash = Sha256::digest(token.as_bytes()).to_vec();
+    let cookie = Cookie::build((cookie_name, token))
+        .path("/")
+        .http_only(true)
+        .secure(secure)
+        .same_site(SameSite::Lax)
+        .max_age(CookieDuration::days(VISITOR_COOKIE_DAYS))
+        .build();
+    (jar.add(cookie), hash)
+}
+
+fn validate_website(value: Option<&str>) -> Result<(), AppError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let uri = value
+        .parse::<Uri>()
+        .map_err(|_| AppError::InvalidRequest("评论网站 URL 无效"))?;
+    if !matches!(uri.scheme_str(), Some("http" | "https")) || uri.authority().is_none() {
+        return Err(AppError::InvalidRequest(
+            "评论网站 URL 必须使用 http 或 https",
+        ));
+    }
+    Ok(())
+}
+
+impl From<comments::Model> for PublicCommentResponse {
+    fn from(model: comments::Model) -> Self {
+        Self {
+            id: model.id,
+            parent_id: model.parent_id,
+            display_name: model.display_name,
+            email: model.email,
+            website: model.website,
+            content: model.content,
+            created_at: model.created_at,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_comment_website_protocol() {
+        assert!(validate_website(None).is_ok());
+        assert!(validate_website(Some("https://example.com")).is_ok());
+        assert!(validate_website(Some("file:///etc/passwd")).is_err());
+    }
+
+    #[test]
+    fn visitor_cookie_reuses_stable_hash() {
+        let state = AppState::for_test();
+        let (jar, first) = visitor_identity(&state, CookieJar::new());
+        let (_, second) = visitor_identity(&state, jar);
+        assert_eq!(first, second);
+        assert_eq!(first.len(), 32);
+    }
+}

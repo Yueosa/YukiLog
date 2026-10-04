@@ -15,6 +15,8 @@ use tower_http::{
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
+    use crate::content::{admin, public};
+
     let media_files = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::overriding(
             HeaderName::from_static("cache-control"),
@@ -33,10 +35,91 @@ pub fn router(state: AppState) -> Router {
             put(crate::auth::change_password),
         )
         .route(
+            "/api/admin/categories",
+            get(admin::list_categories).post(admin::create_category),
+        )
+        .route(
+            "/api/admin/categories/{id}",
+            put(admin::update_category).delete(admin::delete_category),
+        )
+        .route(
+            "/api/admin/tags",
+            get(admin::list_tags).post(admin::create_tag),
+        )
+        .route(
+            "/api/admin/tags/{id}",
+            put(admin::update_tag).delete(admin::delete_tag),
+        )
+        .route(
+            "/api/admin/articles",
+            get(admin::list_articles).post(admin::create_article),
+        )
+        .route(
+            "/api/admin/articles/{id}",
+            get(admin::get_article)
+                .put(admin::update_article)
+                .delete(admin::delete_article),
+        )
+        .route(
+            "/api/admin/articles/{id}/publish",
+            post(admin::publish_article),
+        )
+        .route(
+            "/api/admin/articles/{id}/withdraw",
+            post(admin::withdraw_article),
+        )
+        .route(
+            "/api/admin/dynamics",
+            get(admin::list_dynamics).post(admin::create_dynamic),
+        )
+        .route(
+            "/api/admin/dynamics/{id}",
+            get(admin::get_dynamic)
+                .put(admin::update_dynamic)
+                .delete(admin::delete_dynamic),
+        )
+        .route(
+            "/api/admin/dynamics/{id}/publish",
+            post(admin::publish_dynamic),
+        )
+        .route(
+            "/api/admin/dynamics/{id}/withdraw",
+            post(admin::withdraw_dynamic),
+        )
+        .route("/api/admin/comments", get(admin::list_comments))
+        .route(
+            "/api/admin/comments/{id}",
+            put(admin::update_comment_status).delete(admin::delete_comment),
+        )
+        .route(
+            "/api/admin/friend-links",
+            get(admin::list_friend_links).post(admin::create_friend_link),
+        )
+        .route(
+            "/api/admin/friend-links/{id}",
+            put(admin::update_friend_link).delete(admin::delete_friend_link),
+        )
+        .route(
             "/api/admin/media",
-            post(crate::media::upload).layer(DefaultBodyLimit::max(
-                crate::media::MAX_UPLOAD_BYTES + 1024 * 1024,
-            )),
+            get(admin::list_media)
+                .post(crate::media::upload)
+                .layer(DefaultBodyLimit::max(
+                    crate::media::MAX_UPLOAD_BYTES + 1024 * 1024,
+                )),
+        )
+        .route(
+            "/api/articles/{id}/comments",
+            get(public::list_article_comments).post(public::create_article_comment),
+        )
+        .route(
+            "/api/dynamics/{id}/comments",
+            get(public::list_dynamic_comments).post(public::create_dynamic_comment),
+        )
+        .route("/api/articles/{id}/view", post(public::record_view))
+        .route("/api/articles/{id}/metrics", get(public::get_metrics))
+        .route(
+            "/api/articles/{id}/like",
+            put(public::like_article).delete(public::unlike_article),
         )
         .nest_service("/media", media_files)
         .layer(DefaultBodyLimit::max(256 * 1024))
