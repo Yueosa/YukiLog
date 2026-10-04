@@ -12,9 +12,16 @@ readonly NGINX_ENABLED="/etc/nginx/sites-enabled/yukilog-blog.conf"
 [[ ! -e "$ENV_FILE" ]] \
     || { echo "$ENV_FILE 已存在；为避免覆盖密钥，已停止" >&2; exit 1; }
 
-apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    nginx certbot postgresql postgresql-client curl ca-certificates openssl
+if [[ "${YUKILOG_SKIP_PACKAGE_INSTALL:-false}" == "true" ]]; then
+    for command in nginx certbot psql pg_dump curl openssl; do
+        command -v "$command" >/dev/null \
+            || { echo "演练镜像缺少依赖：$command" >&2; exit 1; }
+    done
+else
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        nginx certbot postgresql postgresql-client curl ca-certificates openssl
+fi
 systemctl enable --now postgresql
 
 if ! id yukilog >/dev/null 2>&1; then

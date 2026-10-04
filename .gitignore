@@ -2,6 +2,7 @@
 /.cargo-home/
 /.build-tmp/
 /.release-build/
+/.rehearsal/
 node_modules/
 /.pnpm-store/
 /web/dist/
