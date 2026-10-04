@@ -30,6 +30,11 @@
 偏好的活跃订阅者建立 `email_deliveries`；编辑已发布内容不会再次通知。撤回会
 取消尚未发送的任务。
 
+`publish` 接受可选 JSON `{ "published_at": "<RFC 3339>" }`。未来时间表示定时
+发布：公开 SSR 与 RSS 在到点前不可见，订阅投递的 `next_attempt_at` 与发布时间
+一致，不依赖额外常驻调度器。未提供请求体或时间时立即发布；已公开内容不能直接改回
+未来时间，必须先撤回再重新安排。
+
 ## 公开互动
 
 - `POST /api/friend-link-applications`

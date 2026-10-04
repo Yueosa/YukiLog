@@ -19,6 +19,8 @@ pub enum AppError {
     NotFound,
     #[error("site setup is incomplete")]
     NotConfigured,
+    #[error("service unavailable: {0}")]
+    Unavailable(&'static str),
     #[error("request origin or CSRF token is invalid")]
     Forbidden,
     #[error("too many authentication attempts")]
@@ -58,6 +60,11 @@ impl IntoResponse for AppError {
                 StatusCode::SERVICE_UNAVAILABLE,
                 "site_not_configured",
                 "站点尚未完成初始化",
+            ),
+            Self::Unavailable(message) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "service_unavailable",
+                *message,
             ),
             Self::Forbidden => (StatusCode::FORBIDDEN, "forbidden", "请求验证失败"),
             Self::RateLimited => (

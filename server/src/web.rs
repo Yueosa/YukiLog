@@ -37,6 +37,7 @@ struct SiteView {
     navigation_options: &'static str,
     page_width_class: &'static str,
     show_search: bool,
+    mail_enabled: bool,
     font_class: &'static str,
     background: String,
     surface: String,
@@ -108,7 +109,7 @@ struct RenderContext<'a> {
 <body class="{{ site.font_class }} shell-{{ site.navigation_class }}">
   <nav class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}" aria-label="主导航"><strong class="brand">{{ site.title }}</strong><div class="nav-links"><a href="/">首页</a><a href="/articles">文章</a><a href="/dynamics">动态</a><a href="/friends">友链</a>{% if site.show_search %}<a href="/search">搜索</a>{% endif %}<a href="/feed.xml">RSS</a></div></nav>
   <main><div class="page {{ site.page_width_class }}">{{ content|safe }}</div></main>
-  <footer><form method="post" action="/subscriptions"><strong>订阅更新</strong> <input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="you@example.com"> <label><input type="checkbox" name="articles" checked>文章</label> <label><input type="checkbox" name="dynamics">动态</label> <button>订阅</button></form><p>© {{ site.owner_name }} · YukiLog</p></footer>
+  <footer>{% if site.mail_enabled %}<form method="post" action="/subscriptions"><strong>订阅更新</strong> <input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="you@example.com"> <label><input type="checkbox" name="articles" checked>文章</label><label><input type="checkbox" name="dynamics">动态</label><button>订阅</button></form>{% endif %}<p>© {{ site.owner_name }} · YukiLog</p></footer>
 </body>
 </html>"#,
     ext = "html"
@@ -518,6 +519,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         navigation_options,
         page_width_class,
         show_search: settings.shell_layout.show_search,
+        mail_enabled: crate::subscriptions::mail_enabled(),
         font_class,
         background: settings.theme.colors.background,
         surface: settings.theme.colors.surface,

@@ -328,7 +328,7 @@ export class YukiAdmin extends LitElement {
         <button @click=${() => { this.selectedArticle = null; this.requestUpdate(); }}>＋ 新文章</button>
         <div class="list">${this.articles.map((item) => html`
           <button class="list-item ${article?.id === item.id ? 'active' : ''}" @click=${() => { this.selectedArticle = item; this.requestUpdate(); }}>
-            <span>${item.title}</span><span class="status">${item.status}</span>
+            <span>${item.title}</span><span class="status">${this.contentStatus(item)}</span>
           </button>`)}</div>
       </div>
       <form class="panel form-grid" @submit=${this.saveArticle}>
@@ -343,7 +343,7 @@ export class YukiAdmin extends LitElement {
         <div class="full actions"><button ?disabled=${this.busy}>保存</button>
           ${article ? html`${article.status === 'published'
             ? html`<button type="button" class="secondary" @click=${() => this.articleAction(article.id, 'withdraw')}>撤回</button>`
-            : html`<button type="button" @click=${() => this.articleAction(article.id, 'publish')}>发布</button>`}
+            : html`<button type="button" @click=${() => this.articleAction(article.id, 'publish')}>立即发布</button><button type="button" class="secondary" @click=${() => this.scheduleArticle(article.id)}>定时发布</button>`}
             <button type="button" class="danger" @click=${() => this.deleteArticle(article.id)}>删除</button>` : nothing}
         </div>
       </form>
@@ -368,10 +368,12 @@ export class YukiAdmin extends LitElement {
 
   private async articleAction(id: string, action: 'publish' | 'withdraw') {
     await this.run(async () => {
-      this.selectedArticle = await api(`/api/admin/articles/${id}/${action}`, { method: 'POST' });
+      this.selectedArticle = await api(`/api/admin/articles/${id}/${action}`, { method: 'POST', body: action === 'publish' ? {} : undefined });
       this.articles = await api('/api/admin/articles');
     }, action === 'publish' ? '文章已发布' : '文章已撤回');
   }
+
+  private async scheduleArticle(id:string){const value=prompt('请输入本地发布时间（例如 2026-10-05 09:30）');if(!value)return;const date=new Date(value.replace(' ','T'));if(Number.isNaN(date.getTime())){this.error='发布时间格式无效';this.requestUpdate();return;}await this.run(async()=>{this.selectedArticle=await api(`/api/admin/articles/${id}/publish`,{method:'POST',body:{published_at:date.toISOString()}});this.articles=await api('/api/admin/articles');},'文章已安排定时发布');}
 
   private async deleteArticle(id: string) {
     if (!confirm('确定删除这篇文章？')) return;
@@ -385,10 +387,10 @@ export class YukiAdmin extends LitElement {
   private renderDynamics() {
     const item = this.selectedDynamic;
     return html`<section class="split"><div class="panel"><button @click=${() => { this.selectedDynamic = null; this.requestUpdate(); }}>＋ 新动态</button>
-      <div class="list">${this.dynamics.map((dynamic) => html`<button class="list-item ${item?.id === dynamic.id ? 'active' : ''}" @click=${() => { this.selectedDynamic = dynamic; this.requestUpdate(); }}><span>${dynamic.content_markdown.slice(0, 42)}</span><span class="status">${dynamic.status}</span></button>`)}</div></div>
+      <div class="list">${this.dynamics.map((dynamic) => html`<button class="list-item ${item?.id === dynamic.id ? 'active' : ''}" @click=${() => { this.selectedDynamic = dynamic; this.requestUpdate(); }}><span>${dynamic.content_markdown.slice(0, 42)}</span><span class="status">${this.contentStatus(dynamic)}</span></button>`)}</div></div>
       <form class="panel" @submit=${this.saveDynamic}><label>Markdown<textarea name="content_markdown" required .value=${item?.content_markdown ?? ''}></textarea></label>
       <label><span><input type="checkbox" name="allow_comments" ?checked=${item?.allow_comments ?? true}> 允许评论</span></label>
-      <div class="actions"><button>保存</button>${item ? html`${item.status === 'published' ? html`<button type="button" class="secondary" @click=${() => this.dynamicAction(item.id, 'withdraw')}>撤回</button>` : html`<button type="button" @click=${() => this.dynamicAction(item.id, 'publish')}>发布</button>`}<button type="button" class="danger" @click=${() => this.deleteDynamic(item.id)}>删除</button>` : nothing}</div></form></section>`;
+      <div class="actions"><button>保存</button>${item ? html`${item.status === 'published' ? html`<button type="button" class="secondary" @click=${() => this.dynamicAction(item.id, 'withdraw')}>撤回</button>` : html`<button type="button" @click=${() => this.dynamicAction(item.id, 'publish')}>立即发布</button><button type="button" class="secondary" @click=${() => this.scheduleDynamic(item.id)}>定时发布</button>`}<button type="button" class="danger" @click=${() => this.deleteDynamic(item.id)}>删除</button>` : nothing}</div></form></section>`;
   }
 
   private async saveDynamic(event: SubmitEvent) {
@@ -402,10 +404,14 @@ export class YukiAdmin extends LitElement {
 
   private async dynamicAction(id: string, action: 'publish' | 'withdraw') {
     await this.run(async () => {
-      this.selectedDynamic = await api(`/api/admin/dynamics/${id}/${action}`, { method: 'POST' });
+      this.selectedDynamic = await api(`/api/admin/dynamics/${id}/${action}`, { method: 'POST', body: action === 'publish' ? {} : undefined });
       this.dynamics = await api('/api/admin/dynamics');
     });
   }
+
+  private async scheduleDynamic(id:string){const value=prompt('请输入本地发布时间（例如 2026-10-05 09:30）');if(!value)return;const date=new Date(value.replace(' ','T'));if(Number.isNaN(date.getTime())){this.error='发布时间格式无效';this.requestUpdate();return;}await this.run(async()=>{this.selectedDynamic=await api(`/api/admin/dynamics/${id}/publish`,{method:'POST',body:{published_at:date.toISOString()}});this.dynamics=await api('/api/admin/dynamics');},'动态已安排定时发布');}
+
+  private contentStatus(item:Article|Dynamic){return item.status==='published'&&item.published_at&&new Date(item.published_at).getTime()>Date.now()?'scheduled':item.status;}
 
   private async deleteDynamic(id: string) {
     if (!confirm('确定删除这条动态？')) return;

@@ -195,6 +195,9 @@ async fn subscribe_inner(
     headers: &HeaderMap,
     input: SubscribeRequest,
 ) -> Result<(), AppError> {
+    if !mail_enabled() {
+        return Err(AppError::Unavailable("邮件订阅暂未开放，请使用 RSS"));
+    }
     auth::verify_public_origin(&state.auth, headers)?;
     let email = input.email.trim().to_lowercase();
     let target = email_rate_key(&email);
@@ -274,6 +277,10 @@ async fn subscribe_inner(
     queue_confirmation(&transaction, subscriber.id).await?;
     transaction.commit().await?;
     Ok(())
+}
+
+pub(crate) fn mail_enabled() -> bool {
+    std::env::var("YUKILOG_MAIL_ENABLED").as_deref() == Ok("true")
 }
 
 pub async fn confirm(

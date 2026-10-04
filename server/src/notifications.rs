@@ -352,7 +352,7 @@ fn email_plan(
         NotificationKind::ArticleLike => account.notify_on_likes,
     };
     email_plan_for(
-        global_mail_enabled(),
+        crate::subscriptions::mail_enabled(),
         account.email_notifications_enabled,
         account.notification_email.is_some(),
         kind_enabled,
@@ -379,10 +379,6 @@ fn email_plan_for(
         _ => return ("suppressed".to_owned(), None),
     };
     ("pending".to_owned(), Some(due_at))
-}
-
-fn global_mail_enabled() -> bool {
-    std::env::var("YUKILOG_MAIL_ENABLED").as_deref() == Ok("true")
 }
 
 impl From<admin_notifications::Model> for NotificationResponse {

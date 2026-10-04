@@ -215,6 +215,11 @@ pub struct ArticleResponse {
     tag_ids: Vec<Uuid>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct PublishWrite {
+    published_at: Option<DateTime<FixedOffset>>,
+}
+
 pub async fn list_articles(
     State(state): State<AppState>,
     jar: CookieJar,
@@ -324,22 +329,28 @@ pub async fn publish_article(
     Path(id): Path<Uuid>,
     headers: HeaderMap,
     jar: CookieJar,
+    input: Option<Json<PublishWrite>>,
 ) -> Result<Json<ArticleResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
+    let publish_at = resolve_publish_at(input.map(|Json(input)| input), Utc::now().fixed_offset());
     let transaction = state.database.begin().await?;
     let model = articles::Entity::find_by_id(id)
         .lock_exclusive()
         .one(&transaction)
         .await?
         .ok_or(AppError::NotFound)?;
-    let model = if model.status == "published" {
+    let model = if model.status == "published"
+        && model
+            .published_at
+            .is_some_and(|published_at| published_at <= Utc::now().fixed_offset())
+    {
         model
     } else {
         let mut active = model.into_active_model();
         active.status = Set("published".to_owned());
-        active.published_at = Set(Some(Utc::now().fixed_offset()));
+        active.published_at = Set(Some(publish_at));
         let model = active.update(&transaction).await?;
-        queue_article_delivery(&transaction, id).await?;
+        queue_article_delivery(&transaction, id, publish_at).await?;
         model
     };
     transaction.commit().await?;
@@ -472,22 +483,28 @@ pub async fn publish_dynamic(
     Path(id): Path<Uuid>,
     headers: HeaderMap,
     jar: CookieJar,
+    input: Option<Json<PublishWrite>>,
 ) -> Result<Json<DynamicResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
+    let publish_at = resolve_publish_at(input.map(|Json(input)| input), Utc::now().fixed_offset());
     let transaction = state.database.begin().await?;
     let model = dynamics::Entity::find_by_id(id)
         .lock_exclusive()
         .one(&transaction)
         .await?
         .ok_or(AppError::NotFound)?;
-    let model = if model.status == "published" {
+    let model = if model.status == "published"
+        && model
+            .published_at
+            .is_some_and(|published_at| published_at <= Utc::now().fixed_offset())
+    {
         model
     } else {
         let mut active = model.into_active_model();
         active.status = Set("published".to_owned());
-        active.published_at = Set(Some(Utc::now().fixed_offset()));
+        active.published_at = Set(Some(publish_at));
         let model = active.update(&transaction).await?;
-        queue_dynamic_delivery(&transaction, id).await?;
+        queue_dynamic_delivery(&transaction, id, publish_at).await?;
         model
     };
     transaction.commit().await?;
@@ -765,25 +782,29 @@ async fn article_response(
 async fn queue_article_delivery(
     transaction: &DatabaseTransaction,
     article_id: Uuid,
+    publish_at: DateTime<FixedOffset>,
 ) -> Result<(), AppError> {
+    if !crate::subscriptions::mail_enabled() {
+        return Ok(());
+    }
     transaction
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-INSERT INTO email_deliveries (subscriber_id, kind, article_id)
-SELECT id, 'article_published', $1
+INSERT INTO email_deliveries (subscriber_id, kind, article_id, next_attempt_at)
+SELECT id, 'article_published', $1, $2
 FROM subscribers
 WHERE status = 'active' AND subscribe_articles
 ON CONFLICT (subscriber_id, article_id) WHERE article_id IS NOT NULL
 DO UPDATE SET status = 'pending',
               attempt_count = 0,
-              next_attempt_at = now(),
+              next_attempt_at = EXCLUDED.next_attempt_at,
               locked_at = NULL,
               last_error = NULL,
               sent_at = NULL
-WHERE email_deliveries.status = 'cancelled'
+WHERE email_deliveries.status IN ('cancelled', 'pending', 'failed')
 "#,
-            [article_id.into()],
+            [article_id.into(), publish_at.into()],
         ))
         .await?;
     Ok(())
@@ -792,25 +813,29 @@ WHERE email_deliveries.status = 'cancelled'
 async fn queue_dynamic_delivery(
     transaction: &DatabaseTransaction,
     dynamic_id: Uuid,
+    publish_at: DateTime<FixedOffset>,
 ) -> Result<(), AppError> {
+    if !crate::subscriptions::mail_enabled() {
+        return Ok(());
+    }
     transaction
         .execute(Statement::from_sql_and_values(
             DatabaseBackend::Postgres,
             r#"
-INSERT INTO email_deliveries (subscriber_id, kind, dynamic_id)
-SELECT id, 'dynamic_published', $1
+INSERT INTO email_deliveries (subscriber_id, kind, dynamic_id, next_attempt_at)
+SELECT id, 'dynamic_published', $1, $2
 FROM subscribers
 WHERE status = 'active' AND subscribe_dynamics
 ON CONFLICT (subscriber_id, dynamic_id) WHERE dynamic_id IS NOT NULL
 DO UPDATE SET status = 'pending',
               attempt_count = 0,
-              next_attempt_at = now(),
+              next_attempt_at = EXCLUDED.next_attempt_at,
               locked_at = NULL,
               last_error = NULL,
               sent_at = NULL
-WHERE email_deliveries.status = 'cancelled'
+WHERE email_deliveries.status IN ('cancelled', 'pending', 'failed')
 "#,
-            [dynamic_id.into()],
+            [dynamic_id.into(), publish_at.into()],
         ))
         .await?;
     Ok(())
@@ -843,6 +868,13 @@ fn validate_http_url(value: &str) -> Result<(), AppError> {
         return Err(AppError::InvalidRequest("友链 URL 必须使用 http 或 https"));
     }
     Ok(())
+}
+
+fn resolve_publish_at(
+    input: Option<PublishWrite>,
+    now: DateTime<FixedOffset>,
+) -> DateTime<FixedOffset> {
+    input.and_then(|input| input.published_at).unwrap_or(now)
 }
 
 impl From<categories::Model> for CategoryResponse {
@@ -922,5 +954,21 @@ mod tests {
         assert!(validate_http_url("https://example.com/path").is_ok());
         assert!(validate_http_url("javascript:alert(1)").is_err());
         assert!(validate_http_url("/relative").is_err());
+    }
+
+    #[test]
+    fn publish_time_defaults_to_now_and_accepts_future_time() {
+        let now = Utc::now().fixed_offset();
+        assert_eq!(resolve_publish_at(None, now), now);
+        let future = now + chrono::Duration::hours(2);
+        assert_eq!(
+            resolve_publish_at(
+                Some(PublishWrite {
+                    published_at: Some(future),
+                }),
+                now,
+            ),
+            future
+        );
     }
 }

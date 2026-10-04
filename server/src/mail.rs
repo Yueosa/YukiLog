@@ -40,7 +40,7 @@ pub struct MailWorker {
 
 impl MailWorker {
     pub fn from_env(database: DatabaseConnection) -> Result<Self, WorkerError> {
-        if env::var("YUKILOG_MAIL_ENABLED").as_deref() != Ok("true") {
+        if !crate::subscriptions::mail_enabled() {
             return Err(
                 "mail delivery is disabled; set YUKILOG_MAIL_ENABLED=true explicitly".into(),
             );
