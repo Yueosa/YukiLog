@@ -130,9 +130,12 @@ curl -fsS -H 'Host: blog.yeastar.xin' \
     || fail "current 未指向源 release"
 
 echo "== 创建演练管理员 =="
-printf '%s\n%s\n' \
-    'Rehearsal-Only-Password-2026!' \
-    'Rehearsal-Only-Password-2026!' \
+{
+    sleep 1
+    printf '%s\n%s\n' \
+        'Rehearsal-Only-Password-2026!' \
+        'Rehearsal-Only-Password-2026!'
+} \
     | script -qec \
         "bash -c 'set -a; source /etc/yukilog/yukilog.env; set +a; exec /var/www/yukilog/current/bin/yukilog-admin create-admin rehearsal Rehearsal'" \
         /dev/null

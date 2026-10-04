@@ -34,9 +34,12 @@ if runuser -u postgres -- psql -tAc \
 fi
 runuser -u postgres -- dropdb --if-exists "$RESTORE_DB"
 runuser -u postgres -- createdb --owner=yukilog "$RESTORE_DB"
+# The backup directory is intentionally root-only because it also contains
+# yukilog.env. Open the dump as root, then pass the read-only descriptor to
+# pg_restore running as postgres.
 if ! runuser -u postgres -- pg_restore \
     --exit-on-error --no-owner --no-acl \
-    --dbname="$RESTORE_DB" "$BACKUP/database.dump"; then
+    --dbname="$RESTORE_DB" < "$BACKUP/database.dump"; then
     runuser -u postgres -- dropdb --if-exists "$RESTORE_DB"
     exit 1
 fi

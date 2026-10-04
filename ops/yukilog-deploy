@@ -114,6 +114,10 @@ for _ in {1..30}; do
         healthy=true
         break
     fi
+    if [[ "$(systemctl show yukilog-server.service \
+        --property=Result --value)" != "success" ]]; then
+        break
+    fi
     sleep 1
 done
 
