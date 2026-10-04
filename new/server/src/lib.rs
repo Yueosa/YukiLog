@@ -5,6 +5,7 @@ pub mod database;
 pub mod entities;
 pub mod error;
 mod http;
+pub mod layout;
 pub mod media;
 
 use axum::Router;

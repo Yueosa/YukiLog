@@ -200,11 +200,22 @@ Slug 历史表。
 | `avatar_media_id` | 个人头像媒体。 |
 | `social_links` | 社交链接 JSON 数组。 |
 | `theme` | 当前颜色、字体和视觉 token JSON 对象。 |
-| `home_layout` | 首页已注册组件及其顺序 JSON 数组。 |
+| `shell_layout` | 全局导航、页宽和外壳组件 JSON 对象。 |
 | `updated_at` | 最近配置时间；触发器维护。 |
 
 JSONB 只承载变化快且整体读取的界面配置。数据库检查顶层类型，后端按照已注册
 组件 schema 校验内部结构，不允许保存脚本。
+
+### `page_layouts`
+
+| 字段 | 含义与读写 |
+| --- | --- |
+| `page_key` | 页面类型键，例如 `article_list`、`article_detail`、`dynamics`。 |
+| `layout` | 由已注册组件、容器和响应式规则组成的 JSON 布局树。 |
+| `updated_at` | 最近调整布局的时间；触发器维护。 |
+
+每个页面类型只有一份当前布局，不建立历史版本表。主题 Token 与布局树分别保存；
+Askama 和 Lit 只渲染代码中注册过的组件，不执行数据库中的 HTML 或脚本。
 
 ### `subscribers`
 

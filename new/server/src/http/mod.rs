@@ -15,7 +15,7 @@ use tower_http::{
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
-    use crate::content::{admin, public};
+    use crate::content::{admin, design, public};
 
     let media_files = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::overriding(
@@ -106,6 +106,11 @@ pub fn router(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max(
                     crate::media::MAX_UPLOAD_BYTES + 1024 * 1024,
                 )),
+        )
+        .route("/api/admin/layouts", get(design::list_layouts))
+        .route(
+            "/api/admin/layouts/{page_key}",
+            get(design::get_layout).put(design::put_layout),
         )
         .route(
             "/api/articles/{id}/comments",

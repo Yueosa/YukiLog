@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod design;
 pub mod public;
 
 use std::{

@@ -360,7 +360,7 @@ CREATE TABLE site_settings (
     avatar_media_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
     social_links jsonb NOT NULL DEFAULT '[]'::jsonb,
     theme jsonb NOT NULL DEFAULT '{}'::jsonb,
-    home_layout jsonb NOT NULL DEFAULT '[]'::jsonb,
+    shell_layout jsonb NOT NULL DEFAULT '{}'::jsonb,
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT site_settings_single_row CHECK (singleton),
     CONSTRAINT site_settings_title_length
@@ -373,8 +373,18 @@ CREATE TABLE site_settings (
         CHECK (jsonb_typeof(social_links) = 'array'),
     CONSTRAINT site_settings_theme_object
         CHECK (jsonb_typeof(theme) = 'object'),
-    CONSTRAINT site_settings_home_layout_array
-        CHECK (jsonb_typeof(home_layout) = 'array')
+    CONSTRAINT site_settings_shell_layout_object
+        CHECK (jsonb_typeof(shell_layout) = 'object')
+);
+
+CREATE TABLE page_layouts (
+    page_key varchar(64) PRIMARY KEY,
+    layout jsonb NOT NULL,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT page_layouts_key_format
+        CHECK (page_key ~ '^[a-z][a-z0-9_-]{1,63}$'),
+    CONSTRAINT page_layouts_layout_object
+        CHECK (jsonb_typeof(layout) = 'object')
 );
 
 CREATE TABLE subscribers (
@@ -485,6 +495,10 @@ CREATE TRIGGER site_settings_set_updated_at
 BEFORE UPDATE ON site_settings
 FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
 
+CREATE TRIGGER page_layouts_set_updated_at
+BEFORE UPDATE ON page_layouts
+FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
+
 CREATE TRIGGER subscribers_set_updated_at
 BEFORE UPDATE ON subscribers
 FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
@@ -492,6 +506,7 @@ FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
 
 const DOWN_SQL: &str = r#"
 DROP TRIGGER IF EXISTS subscribers_set_updated_at ON subscribers;
+DROP TRIGGER IF EXISTS page_layouts_set_updated_at ON page_layouts;
 DROP TRIGGER IF EXISTS site_settings_set_updated_at ON site_settings;
 DROP TRIGGER IF EXISTS friend_links_set_updated_at ON friend_links;
 DROP TRIGGER IF EXISTS dynamics_set_updated_at ON dynamics;
@@ -501,6 +516,7 @@ DROP TRIGGER IF EXISTS admin_accounts_set_updated_at ON admin_accounts;
 
 DROP TABLE IF EXISTS email_deliveries;
 DROP TABLE IF EXISTS subscribers;
+DROP TABLE IF EXISTS page_layouts;
 DROP TABLE IF EXISTS site_settings;
 DROP TABLE IF EXISTS friend_links;
 DROP TRIGGER IF EXISTS article_likes_update_count ON article_likes;
