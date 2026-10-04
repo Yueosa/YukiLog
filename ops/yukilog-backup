@@ -18,7 +18,9 @@ source "$ENV_FILE"
 set +a
 : "${DATABASE_URL:?DATABASE_URL 未配置}"
 
-readonly BACKUP_ID="$(date -u +%Y%m%dT%H%M%SZ)"
+# Nanoseconds prevent two sequential deployments in the same second from
+# selecting the same backup directory.
+readonly BACKUP_ID="$(date -u +%Y%m%dT%H%M%SZ-%N)"
 readonly STAGE="$BACKUP_ROOT/.${BACKUP_ID}.partial"
 readonly FINAL="$BACKUP_ROOT/$BACKUP_ID"
 

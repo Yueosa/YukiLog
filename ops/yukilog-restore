@@ -10,7 +10,7 @@ readonly DATA_ROOT="/var/lib/yukilog"
 readonly BACKUP="$BACKUP_ROOT/$BACKUP_ID"
 
 [[ $EUID -eq 0 ]] || { echo "请以 root 运行" >&2; exit 1; }
-[[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] \
+[[ "$BACKUP_ID" =~ ^[0-9]{8}T[0-9]{6}Z(-[0-9]{9})?$ ]] \
     || { echo "用法：yukilog-restore <备份ID> --confirm-restore" >&2; exit 2; }
 [[ "$CONFIRM" == "--confirm-restore" ]] \
     || { echo "恢复会替换当前数据库与媒体，请显式确认" >&2; exit 2; }
@@ -62,7 +62,7 @@ chown -R yukilog:yukilog "$DATA_ROOT/media"
 rm -rf -- "$MEDIA_STAGE"
 
 systemctl start yukilog-server.service
-if grep -q '^YUKILOG_SMTP_HOST=.\+' /etc/yukilog/yukilog.env; then
+if [[ "${YUKILOG_MAIL_ENABLED:-false}" == "true" ]]; then
     systemctl start yukilog-mailer.service
 fi
 

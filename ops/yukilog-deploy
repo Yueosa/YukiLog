@@ -79,6 +79,11 @@ rollback_release() {
         [[ "${YUKILOG_MAIL_ENABLED:-false}" != "true" ]] \
             || systemctl restart yukilog-mailer.service
         echo "应用切换失败，已恢复上一版本：$PREVIOUS" >&2
+    else
+        rm -f -- "$CURRENT"
+        systemctl stop yukilog-mailer.service yukilog-server.service \
+            2>/dev/null || true
+        echo "首次应用切换失败，已移除无效 current 链接" >&2
     fi
 }
 
