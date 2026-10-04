@@ -14,10 +14,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = AppConfig::from_env()?;
     let database = database::connect(&config.database_url).await?;
-    let state = AppState::new(database.clone(), config.public_origin).await?;
-    let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+    let listen_addr = config.listen_addr;
+    let state = AppState::new(database.clone(), config.public_origin, config.media_dir).await?;
+    let listener = tokio::net::TcpListener::bind(listen_addr).await?;
 
-    tracing::info!(address = %config.listen_addr, "YukiLog server started");
+    tracing::info!(address = %listen_addr, "YukiLog server started");
     axum::serve(
         listener,
         app(state).into_make_service_with_connect_info::<SocketAddr>(),

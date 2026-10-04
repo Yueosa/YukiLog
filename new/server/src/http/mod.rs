@@ -6,13 +6,22 @@ use axum::{
     http::{HeaderName, HeaderValue},
     routing::{get, post, put},
 };
+use tower::ServiceBuilder;
 use tower_http::{
-    compression::CompressionLayer, set_header::SetResponseHeaderLayer, trace::TraceLayer,
+    compression::CompressionLayer, services::ServeDir, set_header::SetResponseHeaderLayer,
+    trace::TraceLayer,
 };
 
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
+    let media_files = ServiceBuilder::new()
+        .layer(SetResponseHeaderLayer::overriding(
+            HeaderName::from_static("cache-control"),
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        ))
+        .service(ServeDir::new(state.media.public_dir()));
+
     Router::new()
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
@@ -23,6 +32,13 @@ pub fn router(state: AppState) -> Router {
             "/api/admin/auth/password",
             put(crate::auth::change_password),
         )
+        .route(
+            "/api/admin/media",
+            post(crate::media::upload).layer(DefaultBodyLimit::max(
+                crate::media::MAX_UPLOAD_BYTES + 1024 * 1024,
+            )),
+        )
+        .nest_service("/media", media_files)
         .layer(DefaultBodyLimit::max(256 * 1024))
         .layer(CompressionLayer::new())
         .layer(SetResponseHeaderLayer::if_not_present(
@@ -47,9 +63,11 @@ pub fn router(state: AppState) -> Router {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use axum::{
         body::Body,
-        http::{Request, StatusCode},
+        http::{Request, StatusCode, header},
     };
     use http_body_util::BodyExt;
     use tower::ServiceExt;
@@ -115,5 +133,34 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn media_service_supports_byte_ranges() {
+        let target_dir =
+            PathBuf::from(std::env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".into()));
+        let media_dir = target_dir.join(format!("yukilog-range-test-{}", std::process::id()));
+        tokio::fs::create_dir_all(&media_dir).await.unwrap();
+        tokio::fs::write(media_dir.join("sample.mp4"), b"0123456789")
+            .await
+            .unwrap();
+
+        let response = ServeDir::new(&media_dir)
+            .oneshot(
+                Request::builder()
+                    .uri("/sample.mp4")
+                    .header(header::RANGE, "bytes=2-5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.into_body().collect().await.unwrap().to_bytes(),
+            "2345"
+        );
+
+        tokio::fs::remove_dir_all(media_dir).await.unwrap();
     }
 }

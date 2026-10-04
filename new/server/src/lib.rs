@@ -4,6 +4,7 @@ pub mod database;
 pub mod entities;
 pub mod error;
 mod http;
+pub mod media;
 
 use axum::Router;
 use sea_orm::DatabaseConnection;
@@ -12,15 +13,22 @@ use sea_orm::DatabaseConnection;
 pub struct AppState {
     pub(crate) database: DatabaseConnection,
     pub(crate) auth: auth::AuthState,
+    pub(crate) media: media::MediaStorage,
 }
 
 impl AppState {
     pub async fn new(
         database: DatabaseConnection,
         public_origin: String,
+        media_dir: std::path::PathBuf,
     ) -> Result<Self, error::AppError> {
         let auth = auth::AuthState::new(public_origin).await?;
-        Ok(Self { database, auth })
+        let media = media::MediaStorage::new(media_dir).await?;
+        Ok(Self {
+            database,
+            auth,
+            media,
+        })
     }
 
     #[cfg(test)]
@@ -28,6 +36,7 @@ impl AppState {
         Self {
             database: DatabaseConnection::Disconnected,
             auth: auth::AuthState::for_test(),
+            media: media::MediaStorage::for_test(),
         }
     }
 }

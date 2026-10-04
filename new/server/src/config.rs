@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr};
+use std::{env, net::SocketAddr, path::PathBuf};
 
 use axum::http::Uri;
 use thiserror::Error;
@@ -10,6 +10,7 @@ pub struct AppConfig {
     pub listen_addr: SocketAddr,
     pub database_url: String,
     pub public_origin: String,
+    pub media_dir: PathBuf,
 }
 
 #[derive(Debug, Error)]
@@ -22,6 +23,8 @@ pub enum ConfigError {
     MissingPublicOrigin,
     #[error("YUKILOG_PUBLIC_ORIGIN 必须是无路径的 http(s) origin：{value}")]
     InvalidPublicOrigin { value: String },
+    #[error("缺少 YUKILOG_MEDIA_DIR")]
+    MissingMediaDir,
 }
 
 impl AppConfig {
@@ -30,13 +33,15 @@ impl AppConfig {
             env::var("YUKILOG_LISTEN_ADDR").unwrap_or_else(|_| DEFAULT_LISTEN_ADDR.to_owned());
         let database_url = env::var("DATABASE_URL").unwrap_or_default();
         let public_origin = env::var("YUKILOG_PUBLIC_ORIGIN").unwrap_or_default();
-        Self::from_values(&listen_addr, &database_url, &public_origin)
+        let media_dir = env::var("YUKILOG_MEDIA_DIR").unwrap_or_default();
+        Self::from_values(&listen_addr, &database_url, &public_origin, &media_dir)
     }
 
     fn from_values(
         listen_addr: &str,
         database_url: &str,
         public_origin: &str,
+        media_dir: &str,
     ) -> Result<Self, ConfigError> {
         let listen_addr = listen_addr
             .parse()
@@ -50,10 +55,14 @@ impl AppConfig {
             return Err(ConfigError::MissingPublicOrigin);
         }
         let public_origin = normalize_origin(public_origin)?;
+        if media_dir.trim().is_empty() {
+            return Err(ConfigError::MissingMediaDir);
+        }
         Ok(Self {
             listen_addr,
             database_url: database_url.to_owned(),
             public_origin,
+            media_dir: PathBuf::from(media_dir),
         })
     }
 }
@@ -90,11 +99,13 @@ mod tests {
             "127.0.0.1:8080",
             "postgresql://localhost/yukilog",
             "https://blog.yeastar.xin/",
+            "/var/lib/yukilog/media",
         )
         .unwrap();
         assert_eq!(config.listen_addr.to_string(), "127.0.0.1:8080");
         assert_eq!(config.database_url, "postgresql://localhost/yukilog");
         assert_eq!(config.public_origin, "https://blog.yeastar.xin");
+        assert_eq!(config.media_dir, PathBuf::from("/var/lib/yukilog/media"));
     }
 
     #[test]
@@ -104,6 +115,7 @@ mod tests {
                 "localhost",
                 "postgresql://localhost/yukilog",
                 "https://blog.yeastar.xin",
+                "/var/lib/yukilog/media",
             )
             .is_err()
         );
@@ -111,7 +123,15 @@ mod tests {
 
     #[test]
     fn rejects_missing_database_url() {
-        assert!(AppConfig::from_values("127.0.0.1:3000", "", "https://blog.yeastar.xin").is_err());
+        assert!(
+            AppConfig::from_values(
+                "127.0.0.1:3000",
+                "",
+                "https://blog.yeastar.xin",
+                "/var/lib/yukilog/media",
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -121,6 +141,20 @@ mod tests {
                 "127.0.0.1:3000",
                 "postgresql://localhost/yukilog",
                 "https://blog.yeastar.xin/admin",
+                "/var/lib/yukilog/media",
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn rejects_missing_media_directory() {
+        assert!(
+            AppConfig::from_values(
+                "127.0.0.1:3000",
+                "postgresql://localhost/yukilog",
+                "https://blog.yeastar.xin",
+                "",
             )
             .is_err()
         );

@@ -169,6 +169,15 @@ struct AuthenticatedAdmin {
     session: admin_sessions::Model,
 }
 
+pub(crate) async fn authorize_write(
+    state: &AppState,
+    headers: &HeaderMap,
+    jar: &CookieJar,
+) -> Result<(), AppError> {
+    let authenticated = authenticate(state, jar).await?;
+    verify_csrf(&state.auth, headers, jar, &authenticated.session)
+}
+
 pub async fn login(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,

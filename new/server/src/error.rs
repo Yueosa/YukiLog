@@ -19,6 +19,12 @@ pub enum AppError {
     Forbidden,
     #[error("too many authentication attempts")]
     RateLimited,
+    #[error("upload exceeds the configured size limit")]
+    PayloadTooLarge,
+    #[error("unsupported or malformed media")]
+    UnsupportedMedia,
+    #[error("filesystem operation failed")]
+    Io(#[from] std::io::Error),
     #[error("internal operation failed: {0}")]
     Internal(&'static str),
 }
@@ -49,7 +55,17 @@ impl IntoResponse for AppError {
                 "rate_limited",
                 "尝试次数过多，请稍后再试",
             ),
-            Self::Internal(_) => (
+            Self::PayloadTooLarge => (
+                StatusCode::PAYLOAD_TOO_LARGE,
+                "payload_too_large",
+                "上传文件过大",
+            ),
+            Self::UnsupportedMedia => (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "unsupported_media",
+                "不支持或无法识别该媒体文件",
+            ),
+            Self::Io(_) | Self::Internal(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
                 "服务器内部错误",
