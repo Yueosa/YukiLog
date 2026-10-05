@@ -213,8 +213,12 @@ export class AdmMedia extends AdmView {
     const order = ['站点头像', '首屏背景', '刊头背景', '站点资源', '文章封面', '动态配图', '图床 · 未引用'];
     const map = new Map<string, MediaAsset[]>();
     for (const item of this.store.media) {
-      const key = this.groupOf(item);
-      map.set(key, [...(map.get(key) ?? []), item]);
+      // 一图多用：出现在每个用途分组里（卡片上会带全部用途徽章）
+      const usages = this.usagesOf(item);
+      const keys = usages.length ? usages : ['图床 · 未引用'];
+      for (const key of keys) {
+        map.set(key, [...(map.get(key) ?? []), item]);
+      }
     }
     return order
       .filter((key) => map.has(key))

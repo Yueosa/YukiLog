@@ -57,6 +57,9 @@ pub struct ThemeTokens {
     /// 首屏背景对齐（center/top/bottom/left/right），None 为 center。
     #[serde(default)]
     pub hero_background_position: Option<String>,
+    /// 首屏背景适应（cover/contain/stretch），None 为 cover。
+    #[serde(default)]
+    pub hero_background_fit: Option<String>,
     /// 刊头背景对齐，None 为 center。
     #[serde(default)]
     pub masthead_position: Option<String>,
@@ -255,9 +258,17 @@ impl SiteSettingsWrite {
                 }
             }
         }
-        if let Some(fit) = &self.theme.masthead_fit {
-            if !["cover", "contain", "stretch"].contains(&fit.as_str()) {
-                return Err(AppError::InvalidRequest("刊头背景适应必须是 cover/contain/stretch"));
+        for (fit, name) in [
+            (&self.theme.masthead_fit, "刊头背景适应"),
+            (&self.theme.hero_background_fit, "首屏背景适应"),
+        ] {
+            if let Some(fit) = fit {
+                if !["cover", "contain", "stretch"].contains(&fit.as_str()) {
+                    return Err(AppError::InvalidRequest(match name {
+                        "刊头背景适应" => "刊头背景适应必须是 cover/contain/stretch",
+                        _ => "首屏背景适应必须是 cover/contain/stretch",
+                    }));
+                }
             }
         }
         if let Some(quote) = &self.hero_quote {

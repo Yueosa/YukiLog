@@ -5682,10 +5682,17 @@ export class YukiApp extends LitElement {
       position: absolute;
       inset: 0;
       background-position: var(--hero-pos, center);
-      background-size: cover;
+      background-size: var(--hero-fit, cover);
       background-repeat: no-repeat;
       opacity: 0;
       transition: opacity 1400ms ease;
+    }
+
+    /* contain 适应：同图模糊填充底层，避免信箱黑边 */
+    .hero-bg-layer.blur {
+      background-size: cover;
+      scale: 1.08;
+      filter: blur(42px) brightness(0.72);
     }
 
     .hero-bg-layer.active {
@@ -6615,6 +6622,9 @@ export class YukiApp extends LitElement {
       style['--masthead-tint'] = `${Math.round(overlay * 100)}%`;
     }
     if (theme?.heroBackgroundPosition) style['--hero-pos'] = theme.heroBackgroundPosition;
+    if (theme?.heroBackgroundFit) {
+      style['--hero-fit'] = theme.heroBackgroundFit === 'stretch' ? '100% 100%' : theme.heroBackgroundFit;
+    }
     if (theme?.mastheadPosition) style['--masthead-pos'] = theme.mastheadPosition;
     if (theme?.mastheadFit) {
       style['--masthead-fit'] = theme.mastheadFit === 'stretch' ? '100% 100%' : theme.mastheadFit;
@@ -7039,8 +7049,17 @@ export class YukiApp extends LitElement {
           : hasMedia
             ? html`
                 <div class="hero-background hero-bg-stack" role="img" aria-label="首屏背景">
-                  ${heroBackgrounds.map(
-                    (url, index) => html`
+                  ${heroBackgrounds.map((url, index) => {
+                    const contain =
+                      this.store.site.data?.theme?.heroBackgroundFit === 'contain';
+                    return html`
+                      ${contain
+                        ? html`<div
+                            class="hero-bg-layer blur${index === this.heroBgIndex ? ' active' : ''}"
+                            style=${styleMap({ backgroundImage: `url("${url}")` })}
+                            aria-hidden="true"
+                          ></div>`
+                        : nothing}
                       <div
                         class="hero-bg-layer${index === this.heroBgIndex ? ' active' : ''}"
                         style=${styleMap({
@@ -7048,8 +7067,8 @@ export class YukiApp extends LitElement {
                           backgroundPosition,
                         })}
                       ></div>
-                    `,
-                  )}
+                    `;
+                  })}
                 </div>
               `
             : nothing}

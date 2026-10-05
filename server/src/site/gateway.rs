@@ -288,6 +288,7 @@ mod tests {
             scale: 1.0,
             masthead_tint: 58,
             hero_position: "center".to_owned(),
+            hero_fit: "cover".to_owned(),
             masthead_position: "center".to_owned(),
             masthead_fit: "cover".to_owned(),
         }

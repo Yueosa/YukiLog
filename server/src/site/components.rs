@@ -117,9 +117,8 @@ fn render_hero(node: &LayoutNode, context: &RenderContext<'_>) -> String {
         String::new()
     } else {
         format!(
-            r#"<div class="hero-background" role="img" aria-label="首页背景" style="background-image:url(&quot;{}&quot;);background-position:{}"></div>"#,
-            escape_html(background_url),
-            "var(--hero-pos, center)".to_owned()
+            r#"<div class="hero-background" role="img" aria-label="首页背景" style="background-image:url(&quot;{}&quot;);background-position:var(--hero-pos, center);background-size:var(--hero-fit, cover)"></div>"#,
+            escape_html(background_url)
         )
     };
     if background_urls.len() > 1 {
@@ -613,6 +612,7 @@ mod tests {
             scale: 1.0,
             masthead_tint: 58,
             hero_position: "center".to_owned(),
+            hero_fit: "cover".to_owned(),
             masthead_position: "center".to_owned(),
             masthead_fit: "cover".to_owned(),
         }

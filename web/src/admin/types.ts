@@ -123,6 +123,8 @@ export type ThemeTokens = {
   mastheadOverlay?: number | null;
   /** 首屏背景对齐。 */
   heroBackgroundPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
+  /** 首屏背景适应。 */
+  heroBackgroundFit?: 'cover' | 'contain' | 'stretch' | null;
   /** 刊头背景对齐。 */
   mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
   /** 刊头背景适应。 */

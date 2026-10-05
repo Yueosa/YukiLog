@@ -74,6 +74,7 @@ struct SiteView {
     scale: f32,
     masthead_tint: u8,
     hero_position: String,
+    hero_fit: String,
     masthead_position: String,
     masthead_fit: String,
 }
@@ -268,7 +269,7 @@ struct HomeStats {
   <title data-away="唔, 不看我了吗...Ծ‸Ծ">{{ page_title }} · {{ site.title }}</title>
   <script>(()=>{const d=document.documentElement;try{if(window.sessionStorage.getItem('yukilog.splash'))return}catch{return}d.classList.add('splash-run','is-intro')})();</script>
   <style>
-    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--masthead-tint:{{ site.masthead_tint }}%;--hero-pos:{{ site.hero_position }};--masthead-pos:{{ site.masthead_position }};--masthead-fit:{{ site.masthead_fit }};--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
+    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--masthead-tint:{{ site.masthead_tint }}%;--hero-pos:{{ site.hero_position }};--hero-fit:{{ site.hero_fit }};--masthead-pos:{{ site.masthead_position }};--masthead-fit:{{ site.masthead_fit }};--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
     *{box-sizing:border-box}
     @view-transition{navigation:auto}
     ::view-transition-old(root),::view-transition-new(root){animation-duration:240ms;animation-timing-function:cubic-bezier(.22,.61,.36,1)}
@@ -1312,6 +1313,11 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
             .theme
             .hero_background_position
             .unwrap_or_else(|| "center".to_owned()),
+        hero_fit: match settings.theme.hero_background_fit.as_deref() {
+            Some("contain") => "contain".to_owned(),
+            Some("stretch") => "100% 100%".to_owned(),
+            _ => "cover".to_owned(),
+        },
         masthead_position: settings
             .theme
             .masthead_position
@@ -1786,6 +1792,7 @@ mod tests {
             scale: 1.0,
             masthead_tint: 58,
             hero_position: "center".to_owned(),
+            hero_fit: "cover".to_owned(),
             masthead_position: "center".to_owned(),
             masthead_fit: "cover".to_owned(),
         }
