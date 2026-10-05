@@ -187,9 +187,14 @@ pub async fn delete_tag(
     Ok(())
 }
 
+// deny_unknown_fields：拼错或用 camelCase 的字段必须立刻 422，不能静默丢弃——
+// 生产事故根因：客户端发 coverMediaId 时被 serde 忽略，cover_media_id 落为
+// None，每次保存都把已绑定的封面清成 NULL 且返回 200。
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ArticleWrite {
     category_id: Uuid,
+    #[serde(alias = "coverMediaId")]
     cover_media_id: Option<Uuid>,
     title: String,
     slug: String,
@@ -620,6 +625,7 @@ pub struct CommentResponse {
     email: Option<String>,
     website: Option<String>,
     content: String,
+    user_agent: Option<String>,
     status: String,
     created_at: DateTime<FixedOffset>,
 }
@@ -1140,6 +1146,7 @@ impl From<comments::Model> for CommentResponse {
             email: model.email,
             website: model.website,
             content: model.content,
+            user_agent: model.user_agent,
             status: model.status,
             created_at: model.created_at,
         }
@@ -1224,5 +1231,44 @@ mod tests {
             assert_eq!(model.media_id.clone().unwrap(), media_ids[position]);
             assert_eq!(model.position.clone().unwrap(), position as i16);
         }
+    }
+
+    fn article_write_payload() -> serde_json::Value {
+        serde_json::json!({
+            "category_id": Uuid::from_u128(1),
+            "cover_media_id": null,
+            "title": "标题",
+            "slug": "hello",
+            "summary": null,
+            "body_markdown": "正文",
+            "allow_comments": true,
+            "tag_ids": []
+        })
+    }
+
+    #[test]
+    fn article_write_accepts_snake_and_camel_cover_keys() {
+        let mut payload = article_write_payload();
+        payload["cover_media_id"] = serde_json::json!(Uuid::from_u128(42));
+        let parsed: ArticleWrite = serde_json::from_value(payload).unwrap();
+        assert_eq!(parsed.cover_media_id, Some(Uuid::from_u128(42)));
+
+        // 回归：camelCase 客户端的 coverMediaId 不得再被静默丢弃
+        let mut payload = article_write_payload();
+        payload.as_object_mut().unwrap().remove("cover_media_id");
+        payload["coverMediaId"] = serde_json::json!(Uuid::from_u128(42));
+        let parsed: ArticleWrite = serde_json::from_value(payload).unwrap();
+        assert_eq!(parsed.cover_media_id, Some(Uuid::from_u128(42)));
+    }
+
+    #[test]
+    fn article_write_rejects_unknown_fields_instead_of_silently_dropping() {
+        let mut payload = article_write_payload();
+        payload["coverMediaid"] = serde_json::json!(Uuid::from_u128(42));
+        assert!(serde_json::from_value::<ArticleWrite>(payload).is_err());
+
+        let mut payload = article_write_payload();
+        payload["cover_media_ids"] = serde_json::json!(Uuid::from_u128(42));
+        assert!(serde_json::from_value::<ArticleWrite>(payload).is_err());
     }
 }

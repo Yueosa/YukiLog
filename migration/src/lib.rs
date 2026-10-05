@@ -1,6 +1,7 @@
 pub use sea_orm_migration::prelude::*;
 
 mod baseline;
+mod hero_rotation;
 mod site_appearance;
 
 pub struct Migrator;
@@ -10,6 +11,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(baseline::Migration),
             Box::new(site_appearance::Migration),
+            Box::new(hero_rotation::Migration),
         ]
     }
 }

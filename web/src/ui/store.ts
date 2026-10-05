@@ -356,7 +356,8 @@ export class PublicStore {
     const home = this.homeFeeds.get('featured')?.data ?? this.homeFeeds.get('recent')?.data;
     return {
       articles: home?.total ?? (this.archive.status === 'ready' ? this.archive.data?.total : null) ?? null,
-      dynamics: this.dynamics.data?.total ?? null,
+      // 动态数优先用站点接口的 dynamicCount，与动态列表请求解耦
+      dynamics: this.site.data?.dynamicCount ?? this.dynamics.data?.total ?? null,
       friends: this.friends.data?.length ?? null,
       views: null,
     };

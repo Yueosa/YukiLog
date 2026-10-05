@@ -80,13 +80,17 @@ export class AdmArticles extends AdmView {
       }
 
       .cover {
+        position: relative;
         aspect-ratio: 16 / 9;
+        overflow: hidden;
         background: var(--surface-muted);
         display: grid;
         place-items: center;
       }
 
       .cover img {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;

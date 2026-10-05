@@ -264,6 +264,8 @@ mod tests {
             owner_bio: String::new(),
             avatar_url: String::new(),
             masthead_url: String::new(),
+            hero_backgrounds: Vec::new(),
+            hero_quote: String::new(),
             favicon_url: "/media/ab/favicon.png".to_owned(),
             origin: "https://blog.example.com".to_owned(),
             social_links: Vec::new(),

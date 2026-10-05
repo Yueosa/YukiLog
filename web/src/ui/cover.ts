@@ -21,8 +21,10 @@ export function paletteFor(seed: string): string {
 /**
  * 统一封面组件：
  * - 横屏图 object-fit cover 填满容器（默认 16:9）；
- * - 竖屏/接近方形图走「模糊填充」：同一张图做 cover + blur + 压暗的背景层，
- *   前景层 object-fit contain 完整显示，不再被裁成细条；
+ * - 竖屏/接近方形图可走「模糊填充」（fit=auto）：同一张图做 cover + blur + 压暗
+ *   的背景层，前景层 object-fit contain 完整显示；
+ * - adaptive-ratio 模式：容器比例跟随图片朝向——竖图（<0.8）3:4、方图（0.8-1.25）
+ *   1:1、横图 16:9，图片 cover 裁切量最小；load 前保持渐变占位，load 后淡入；
  * - adaptive 模式（文章详情头图）按自然比例自适应高度，并设最大高度；
  * - 加载失败回退到兜底渐变。
  */
@@ -35,6 +37,8 @@ export class YukiCover extends LitElement {
   @property() fit: 'auto' | 'cover' = 'auto';
   /** 详情头图模式：容器跟随自然比例，max-height 限高。 */
   @property({ type: Boolean }) adaptive = false;
+  /** 容器比例自适应图片朝向：竖 3:4 / 方 1:1 / 横 16:9。 */
+  @property({ type: Boolean, attribute: 'adaptive-ratio' }) adaptiveRatio = false;
   @property() maxHeight = '72vh';
   @property() seed = '';
 
@@ -110,17 +114,26 @@ export class YukiCover extends LitElement {
     }
     const ratio = naturalWidth / naturalHeight;
     this.naturalRatio = ratio;
-    this.phase = this.fit === 'cover' || ratio >= 1.25 ? 'landscape' : 'portrait';
+    this.phase =
+      this.fit === 'cover' || this.adaptiveRatio || ratio >= 1.25 ? 'landscape' : 'portrait';
   };
 
   private readonly handleError = () => {
     this.phase = 'broken';
   };
 
+  /** 容器比例：adaptive-ratio 时按图片朝向挑 3:4 / 1:1 / 16:9。 */
+  private containerRatio(): string {
+    if (!this.adaptiveRatio || this.naturalRatio <= 0) return this.ratio;
+    if (this.naturalRatio < 0.8) return '3 / 4';
+    if (this.naturalRatio <= 1.25) return '1 / 1';
+    return '16 / 9';
+  }
+
   protected render() {
     const clamped = Math.min(Math.max(this.naturalRatio, 0.45), 2.4);
     const frameStyle: Record<string, string> = {
-      '--cover-ratio': this.ratio,
+      '--cover-ratio': this.containerRatio(),
       '--cover-fallback': paletteFor(this.seed || this.src || this.alt || 'yukilog'),
       '--cover-max-h': this.maxHeight,
     };

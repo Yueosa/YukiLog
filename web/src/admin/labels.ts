@@ -101,11 +101,35 @@ export const articleCardLabel: Record<string, string> = {
 
 export const heroBackgroundLabel: Record<string, string> = {
   title: '沉浸式首屏背景',
-  note: '首页顶部沉浸式首屏的背景图，与布局工作室里首屏组件的背景是同一项，改动即时保存。',
-  missing: '当前首页布局里没有沉浸式首屏组件，请先到',
-  missingLink: '布局工作室',
-  missingTail: '添加。',
-  unset: '未设置',
+  note: '访客每次进入首页随机展示一张，列表顺序即轮换顺序。',
+  addImages: '添加图片',
+  clearAll: '清空',
+  unset: '还没有首屏背景图',
+  migration: '检测到旧版单图背景（写在首页布局里）：把图片加入上方列表并保存后由新机制接管，布局里的旧值仅作回退。',
+  quoteLabel: '首屏语录',
+  quotePlaceholder: '不填则显示站点说明',
+};
+
+export const mediaPickerModalLabel: Record<string, string> = {
+  title: '选择图片',
+  searchPlaceholder: '搜索文件名…',
+  confirm: '使用这张图',
+  cancel: '取消',
+  groupAll: '全部',
+  groupUnused: '未引用',
+  groupArticleCover: '文章封面',
+  groupDynamic: '动态配图',
+  groupSite: '站点素材',
+  empty: '没有符合条件的图片',
+  emptyHint: '换个筛选或搜索词，或点上方「上传新图」',
+  nonePicked: '点一张图片选中，双击直接使用',
+  pickedCount: '已选',
+};
+
+export const taxonomyLabel: Record<string, string> = {
+  searchTags: '搜索标签名称或 slug…',
+  expandAll: '展开全部',
+  collapse: '收起',
 };
 
 export function enumLabel(map: Record<string, string>, value: string): string {

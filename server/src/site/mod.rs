@@ -51,6 +51,8 @@ struct SiteView {
     owner_bio: String,
     avatar_url: String,
     masthead_url: String,
+    hero_backgrounds: Vec<String>,
+    hero_quote: String,
     favicon_url: String,
     origin: String,
     social_links: Vec<SocialLink>,
@@ -1217,6 +1219,10 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         avatar_media_id: model.avatar_media_id,
         avatar_external_url: model.avatar_external_url,
         masthead_media_id: model.masthead_media_id,
+        hero_background_media_ids: crate::ops::media::hero_background_ids(
+            &model.hero_background_media_ids,
+        )?,
+        hero_quote: model.hero_quote,
         social_links: serde_json::from_value(model.social_links)
             .map_err(|_| AppError::Internal("decode social links"))?,
         theme: serde_json::from_value(model.theme)
@@ -1227,6 +1233,9 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
     settings
         .validate()
         .map_err(|_| AppError::Internal("stored site settings failed validation"))?;
+    let hero_backgrounds =
+        crate::ops::media::image_media_urls(&state.database, &settings.hero_background_media_ids)
+            .await?;
     let avatar_media_url = media_url(state, settings.avatar_media_id).await?;
     let avatar_external_url = settings.avatar_external_url.clone().unwrap_or_default();
     let avatar_url = if avatar_media_url.is_empty() {
@@ -1272,6 +1281,8 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         owner_bio: settings.owner_bio,
         avatar_url,
         masthead_url,
+        hero_backgrounds,
+        hero_quote: settings.hero_quote.unwrap_or_default(),
         favicon_url,
         origin: state.auth.public_origin().to_owned(),
         social_links: settings.social_links,
@@ -1733,6 +1744,8 @@ mod tests {
             owner_bio: String::new(),
             avatar_url: "/media/ab/avatar.png".to_owned(),
             masthead_url: String::new(),
+            hero_backgrounds: Vec::new(),
+            hero_quote: String::new(),
             favicon_url: String::new(),
             origin: "https://blog.example.com".to_owned(),
             social_links: Vec::new(),

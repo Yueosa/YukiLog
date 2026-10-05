@@ -1,14 +1,20 @@
 import { css, html, nothing } from 'lit';
-import { property } from 'lit/decorators.js';
+import { property, state } from 'lit/decorators.js';
 import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
+import { api } from '../api.js';
 import { contentStatusLabel, formatRelative } from '../labels.js';
 import type { Dynamic } from '../types.js';
 
-/** 动态列表：内容摘录 + 心情/配图/状态徽标，点击进编辑器。 */
+const THUMB_LIMIT = 4;
+
+/** 动态列表：卡片流——正文截断、心情/状态徽标、配图缩略、评论/喜欢数、编辑删除。 */
 export class AdmDynamics extends AdmView {
   @property() articleId: string | null = null;
   @property() dynamicId: string | null = null;
+
+  @state() private likes = new Map<string, number | null>();
+  private likesRequested = new Set<string>();
 
   static styles = [
     adminTheme,
@@ -23,64 +29,171 @@ export class AdmDynamics extends AdmView {
         justify-content: flex-end;
       }
 
-      .list {
+      .cards {
         display: grid;
-        gap: 2px;
+        gap: 14px;
       }
 
-      .row {
+      .card {
+        display: grid;
+        gap: 10px;
+        padding: 16px 18px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--surface);
+        transition:
+          border-color 220ms ease,
+          translate 220ms ease;
+      }
+
+      .card:hover {
+        border-color: var(--primary);
+        translate: 0 -1px;
+      }
+
+      .head {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 12px;
-        padding: 12px 12px;
-        border-radius: 10px;
+        gap: 8px;
       }
 
-      .row:hover {
-        background: var(--surface-muted);
+      .head time {
+        color: var(--faint);
+        font-size: 11.5px;
       }
 
-      .row .excerpt {
+      .head .spacer {
         flex: 1;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+      }
+
+      .text {
+        margin: 0;
         color: var(--ink);
         font-size: 13.5px;
+        line-height: 1.75;
+        white-space: pre-wrap;
+        word-break: break-word;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+      }
+
+      a.text {
         text-decoration: none;
       }
 
-      .row .excerpt:hover {
+      a.text:hover {
         color: var(--primary-d);
       }
 
-      .row .meta {
-        display: inline-flex;
-        align-items: center;
+      .thumbs {
+        display: flex;
+        flex-wrap: wrap;
         gap: 8px;
-        flex: none;
       }
 
-      .row .pics {
+      .thumbs img {
+        width: 64px;
+        height: 64px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        object-fit: cover;
+        display: block;
+      }
+
+      .thumbs .more {
+        width: 64px;
+        height: 64px;
+        border: 1px dashed var(--line);
+        border-radius: 10px;
+        display: grid;
+        place-items: center;
         color: var(--faint);
         font-size: 12px;
-        white-space: nowrap;
       }
 
-      .row time {
-        width: 96px;
-        flex: none;
+      .foot {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        padding-top: 9px;
+        border-top: 1px solid var(--surface-muted);
         color: var(--faint);
+        font-size: 12px;
+      }
+
+      .foot .stats {
+        font-family: var(--mono);
         font-size: 11.5px;
-        text-align: right;
+      }
+
+      .foot .spacer {
+        flex: 1;
+      }
+
+      .foot .ops {
+        display: inline-flex;
+        gap: 8px;
+      }
+
+      .foot .ops a {
+        text-decoration: none;
       }
     `,
   ];
 
-  private excerpt(item: Dynamic): string {
-    const text = item.content_markdown.replace(/\s+/g, ' ').trim();
-    return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+  private commentCount(item: Dynamic): number {
+    return this.store.comments.filter((comment) => comment.dynamic_id === item.id).length;
+  }
+
+  /** 已发布动态按需拉取喜欢数（公开 metrics 接口不支持草稿）。 */
+  private ensureLikes(item: Dynamic) {
+    if (item.status !== 'published' || this.likesRequested.has(item.id)) return;
+    this.likesRequested.add(item.id);
+    void api<{ like_count: number }>(`/api/dynamics/${item.id}/metrics`)
+      .then((data) => {
+        this.likes = new Map(this.likes).set(item.id, data.like_count);
+      })
+      .catch(() => {
+        this.likes = new Map(this.likes).set(item.id, null);
+      });
+  }
+
+  private renderCard(item: Dynamic) {
+    const comments = this.commentCount(item);
+    const likes = this.likes.get(item.id);
+    const thumbs = item.media.slice(0, THUMB_LIMIT);
+    this.ensureLikes(item);
+    return html`
+      <article class="card">
+        <div class="head">
+          ${item.mood ? html`<span class="badge warn">${item.mood}</span>` : nothing}
+          <span class="badge ${item.status === 'published' ? 'ok' : ''}">${contentStatusLabel(item)}</span>
+          <span class="spacer"></span>
+          <time title=${item.published_at ?? item.created_at}>
+            ${formatRelative(item.published_at ?? item.created_at)}
+          </time>
+        </div>
+        <a class="text" href=${`#/dynamics/${item.id}`} title=${item.content_markdown}>${item.content_markdown.trim() || '（无内容）'}</a>
+        ${item.media.length
+          ? html`<div class="thumbs">
+              ${thumbs.map((media) => html`<img src=${media.url} alt=${media.original_name} loading="lazy" />`)}
+              ${item.media.length > THUMB_LIMIT ? html`<span class="more">+${item.media.length - THUMB_LIMIT}</span>` : nothing}
+            </div>`
+          : nothing}
+        <div class="foot">
+          <span class="stats">${comments} 评论${likes != null ? html` · ${likes} 喜欢` : nothing}</span>
+          <span class="spacer"></span>
+          <span class="ops">
+            <a class="btn secondary small" href=${`#/dynamics/${item.id}`}>编辑</a>
+            <button class="btn danger small" @click=${() => this.store.deleteDynamic(item.id)}>删除</button>
+          </span>
+        </div>
+      </article>
+    `;
   }
 
   protected render() {
@@ -90,26 +203,9 @@ export class AdmDynamics extends AdmView {
         <button class="btn primary" @click=${() => (location.hash = '#/dynamics/new')}>＋ 新动态</button>
       </div>
 
-      <section class="panel">
-        <h2 class="panel-title">全部动态</h2>
-        ${items.length
-          ? html`<div class="list">
-              ${items.map(
-                (item) => html`
-                  <div class="row">
-                    <a class="excerpt" href=${`#/dynamics/${item.id}`} title=${item.content_markdown}>${this.excerpt(item)}</a>
-                    <span class="meta">
-                      ${item.mood ? html`<span class="badge warn">${item.mood}</span>` : nothing}
-                      ${item.media.length ? html`<span class="pics">🖼 ${item.media.length}</span>` : nothing}
-                      <span class="badge ${item.status === 'published' ? 'ok' : ''}">${contentStatusLabel(item)}</span>
-                    </span>
-                    <time>${formatRelative(item.published_at ?? item.created_at)}</time>
-                  </div>
-                `,
-              )}
-            </div>`
-          : html`<adm-empty text="还没有动态" hint="点右上角「＋ 新动态」写下第一条"></adm-empty>`}
-      </section>
+      ${items.length
+        ? html`<div class="cards">${items.map((item) => this.renderCard(item))}</div>`
+        : html`<adm-empty text="还没有动态" hint="点右上角「＋ 新动态」写下第一条"></adm-empty>`}
     `;
   }
 }

@@ -530,15 +530,17 @@ async fn ensure_visible_parent<C: ConnectionTrait>(
     let Some(parent_id) = parent_id else {
         return Ok(());
     };
-    let exists = comments::Entity::find_by_id(parent_id)
+    let parent = comments::Entity::find_by_id(parent_id)
         .filter(comments::Column::ArticleId.eq(article_id))
         .filter(comments::Column::DynamicId.eq(dynamic_id))
         .filter(comments::Column::Status.eq("visible"))
         .one(connection)
-        .await?
-        .is_some();
-    if !exists {
+        .await?;
+    let Some(parent) = parent else {
         return Err(AppError::InvalidRequest("回复的评论不存在或尚未公开"));
+    };
+    if parent.parent_id.is_some() {
+        return Err(AppError::InvalidRequest("只能回复一级评论"));
     }
     Ok(())
 }

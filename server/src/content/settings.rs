@@ -8,7 +8,8 @@ use axum::{
 use axum_extra::extract::cookie::CookieJar;
 use chrono::{DateTime, FixedOffset};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, EntityTrait, IntoActiveModel, Set, prelude::Uuid,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, EntityTrait, IntoActiveModel, QueryFilter,
+    Set, prelude::Uuid,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +29,8 @@ pub struct SiteSettingsWrite {
     pub avatar_media_id: Option<Uuid>,
     pub avatar_external_url: Option<String>,
     pub masthead_media_id: Option<Uuid>,
+    pub hero_background_media_ids: Vec<Uuid>,
+    pub hero_quote: Option<String>,
     pub social_links: Vec<SocialLink>,
     pub theme: ThemeTokens,
     pub shell_layout: ShellLayout,
@@ -159,6 +162,9 @@ pub async fn put_settings(
     settings.validate()?;
     validate_avatar(&state, settings.avatar_media_id).await?;
     validate_masthead(&state, settings.masthead_media_id).await?;
+    validate_hero_backgrounds(&state, &settings.hero_background_media_ids).await?;
+    let hero_background_media_ids = serde_json::to_value(&settings.hero_background_media_ids)
+        .map_err(|_| AppError::Internal("serialize hero backgrounds"))?;
     let social_links = serde_json::to_value(&settings.social_links)
         .map_err(|_| AppError::Internal("serialize social links"))?;
     let theme =
@@ -178,6 +184,8 @@ pub async fn put_settings(
         active.avatar_media_id = Set(settings.avatar_media_id);
         active.avatar_external_url = Set(settings.avatar_external_url);
         active.masthead_media_id = Set(settings.masthead_media_id);
+        active.hero_background_media_ids = Set(hero_background_media_ids);
+        active.hero_quote = Set(settings.hero_quote);
         active.social_links = Set(social_links);
         active.theme = Set(theme);
         active.shell_layout = Set(shell_layout);
@@ -192,6 +200,8 @@ pub async fn put_settings(
             avatar_media_id: Set(settings.avatar_media_id),
             avatar_external_url: Set(settings.avatar_external_url),
             masthead_media_id: Set(settings.masthead_media_id),
+            hero_background_media_ids: Set(hero_background_media_ids),
+            hero_quote: Set(settings.hero_quote),
             social_links: Set(social_links),
             theme: Set(theme),
             shell_layout: Set(shell_layout),
@@ -210,6 +220,14 @@ impl SiteSettingsWrite {
         }
         if self.social_links.len() > 12 {
             return Err(AppError::InvalidRequest("社交链接不能超过 12 个"));
+        }
+        if self.hero_background_media_ids.len() > 12 {
+            return Err(AppError::InvalidRequest("首屏背景图不能超过 12 张"));
+        }
+        if let Some(quote) = &self.hero_quote {
+            if quote.chars().count() > 120 {
+                return Err(AppError::InvalidRequest("首屏语录不能超过 120 字"));
+            }
         }
         if let Some(url) = &self.avatar_external_url {
             let valid = url.len() <= 512
@@ -278,6 +296,10 @@ impl TryFrom<site_settings::Model> for SiteSettingsResponse {
             avatar_media_id: model.avatar_media_id,
             avatar_external_url: model.avatar_external_url,
             masthead_media_id: model.masthead_media_id,
+            hero_background_media_ids: crate::ops::media::hero_background_ids(
+                &model.hero_background_media_ids,
+            )?,
+            hero_quote: model.hero_quote,
             social_links,
             theme,
             shell_layout,
@@ -298,6 +320,26 @@ async fn validate_avatar(state: &AppState, id: Option<Uuid>) -> Result<(), AppEr
 
 async fn validate_masthead(state: &AppState, id: Option<Uuid>) -> Result<(), AppError> {
     validate_image_media(state, id, "刊头媒体不存在", "刊头媒体必须是图片").await
+}
+
+async fn validate_hero_backgrounds(state: &AppState, ids: &[Uuid]) -> Result<(), AppError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let assets = media_assets::Entity::find()
+        .filter(media_assets::Column::Id.is_in(ids.iter().copied()))
+        .all(&state.database)
+        .await?;
+    for id in ids {
+        let media = assets
+            .iter()
+            .find(|media| &media.id == id)
+            .ok_or(AppError::InvalidRequest("首屏背景媒体不存在"))?;
+        if !media.media_type.starts_with("image/") {
+            return Err(AppError::InvalidRequest("首屏背景媒体必须是图片"));
+        }
+    }
+    Ok(())
 }
 
 async fn validate_image_media(
@@ -350,6 +392,8 @@ mod tests {
             "avatarMediaId": null,
             "avatarExternalUrl": null,
             "mastheadMediaId": null,
+            "heroBackgroundMediaIds": ["b8f4d9e2-9c1a-4e3b-8f2d-5a6c7d8e9f01"],
+            "heroQuote": "夜色温柔，慢慢写。",
             "socialLinks": [
                 {"label": "GitHub", "url": "https://github.com/example"},
                 {"label": "Mail", "url": "mailto:hello@example.com"}
@@ -411,5 +455,37 @@ mod tests {
         let mut input = settings();
         input.avatar_external_url = Some(format!("https://example.com/{}", "a".repeat(512)));
         assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn validates_hero_rotation_shape() {
+        let mut input = settings();
+        input.hero_background_media_ids = (0..=12).map(Uuid::from_u128).collect();
+        assert!(input.validate().is_err());
+
+        let mut input = settings();
+        input.hero_background_media_ids = (0..12).map(Uuid::from_u128).collect();
+        assert!(input.validate().is_ok());
+
+        let mut input = settings();
+        input.hero_quote = Some("很".repeat(121));
+        assert!(input.validate().is_err());
+
+        let mut input = settings();
+        input.hero_quote = Some("很".repeat(120));
+        assert!(input.validate().is_ok());
+
+        let mut input = settings();
+        input.hero_quote = None;
+        assert!(input.validate().is_ok());
+    }
+
+    #[test]
+    fn hero_fields_round_trip_through_stored_json() {
+        let input = settings();
+        let stored = serde_json::to_value(&input.hero_background_media_ids).unwrap();
+        let decoded = crate::ops::media::hero_background_ids(&stored).unwrap();
+        assert_eq!(decoded, input.hero_background_media_ids);
+        assert!(crate::ops::media::hero_background_ids(&serde_json::json!({"bad": 1})).is_err());
     }
 }

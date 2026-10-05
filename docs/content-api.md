@@ -9,14 +9,18 @@
 - `/api/admin/categories`：分类列表与创建；
 - `/api/admin/categories/{id}`：分类修改与删除；
 - `/api/admin/tags`、`/api/admin/tags/{id}`：标签 CRUD；
-- `/api/admin/articles`、`/api/admin/articles/{id}`：文章 CRUD；
+- `/api/admin/articles`、`/api/admin/articles/{id}`：文章 CRUD；写请求体严格校验
+  字段名（未知字段直接 422，不再静默丢弃），封面字段接受 `cover_media_id`，
+  并兼容 camelCase 别名 `coverMediaId`；
 - `/api/admin/articles/{id}/publish|withdraw`：发布与撤回；
 - `PUT /api/admin/articles/{id}/featured`：设置或取消精选，请求体
   `{ "featured": true|false }`，响应中的文章带 `featured_at`；撤回文章会同时清空精选；
 - `/api/admin/dynamics`、`/api/admin/dynamics/{id}`：动态 CRUD；
 - `/api/admin/dynamics/{id}/publish|withdraw`：发布与撤回；
 - `/api/admin/comments`、`/api/admin/comments/{id}`：审核与删除；状态只接受
-  `pending` / `visible` / `hidden`，非法值返回 `400`；
+  `pending` / `visible` / `hidden`，非法值返回 `400`；列表响应含
+  `parent_id`（楼中楼父评论）、`email`、`website`、`user_agent`（评论表不存
+  IP，无从返回）；
 - `/api/admin/friend-links`、`/api/admin/friend-links/{id}`：友链 CRUD；
 - `GET /api/admin/media`：媒体选择列表；
 - `DELETE /api/admin/media/{id}`：删除媒体记录并尝试删除磁盘文件。仍被引用时
@@ -25,8 +29,10 @@
   `friend_link_avatar`）；
 - `GET|PUT /api/admin/settings`：站点资料、主题 Token 与页面外壳；站点资料另含
   `avatarExternalUrl`（可选外部头像 URL，仅 `http(s)` 且不超过 512 字符，本地头像
-  为空时作为公开头像与 favicon 回退）与 `mastheadMediaId`（可选刊头背景图片，
-  校验媒体存在且为 `image/*`）；
+  为空时作为公开头像与 favicon 回退）、`mastheadMediaId`（可选刊头背景图片，
+  校验媒体存在且为 `image/*`）、`heroBackgroundMediaIds`（首屏背景轮换图
+  UUID 数组，最多 12 张，每个 id 必须是存在的 `image/*` 媒体）与
+  `heroQuote`（可选首屏语录，不超过 120 字）；
 - `GET /api/admin/layouts`、`GET|PUT /api/admin/layouts/{page_key}`：页面布局；
 - `GET /api/admin/subscribers`：订阅者列表；
 - `DELETE /api/admin/subscribers/{id}`：硬删除订阅者，其投递记录随外键级联删除；
@@ -68,12 +74,15 @@ UUID 必须存在于媒体库，数组顺序即 `position` 展示顺序，传 `[
 
 - `GET /api/public/site` → `{ siteTitle, siteDescription, ownerName, ownerBio,
   avatarUrl, mastheadUrl, socialLinks: [{ label, url }], mailEnabled,
-  articleCount, dynamicCount, friendCount, totalViews, theme,
+  articleCount, dynamicCount, friendCount, totalViews,
+  heroBackgrounds: [url], heroQuote | null, theme,
   shellLayout }`。`avatarUrl` 本地头像媒体优先、为空回退外部头像 URL；
   `theme`/`shellLayout` 与 `GET /api/admin/settings` 同形；
   `articleCount`/`dynamicCount` 只计已发布且到点内容、`friendCount` 只计
   可见友链、`totalViews` 是 `article_metrics.view_count` 合计，四格口径与
-  SSR 首页统计卡一致；
+  SSR 首页统计卡一致；`heroBackgrounds` 是首屏轮换图的媒体 URL 数组（按配置
+  顺序、只含存在的 `image/*`，媒体 URL 保持 `/media/...` 相对路径），
+  `heroQuote` 为首屏语录，为空时前端回退站点说明；
 - `GET /api/public/articles?sort=featured|popular|recent&category=<slug>&tag=<slug>&page=N&pageSize=M`：
   默认 `sort=featured`、`page=1`、`pageSize=10`；`pageSize` 上限 20、`page` 上限
   10000；非法 `sort` 返回 422；只返回已发布文章。排序口径与 SSR 一致：featured
@@ -87,8 +96,9 @@ UUID 必须存在于媒体库，数组顺序即 `position` 展示顺序，传 `[
   next: { slug, title } | null }`；`prev` 是发布时间更晚（较新）的一篇、`next` 是
   更早的一篇；不存在或未发布返回 404；
 - `GET /api/public/articles/{slug}/comments` → `{ items: [CommentItem], total }`，
-  只含 visible、按时间升序；`CommentItem = { displayName, avatarUrl,
-  website | null, contentHtml, createdAt }`，`contentHtml` 是转义后的纯文本；
+  只含 visible、按时间升序；`CommentItem = { id, parentId | null, displayName,
+  avatarUrl, website | null, contentHtml, createdAt }`，`contentHtml` 是转义后
+  的纯文本；列表保持平铺，前端按 `parentId` 自行组树（最多两层）；
 - `GET /api/public/dynamics?page=N&pageSize=M`（分页规则同上）→ `{ items: [{ id,
   contentHtml, mood | null, mediaUrls: [], likes, commentCount, createdAt }], page,
   totalPages, total }`；`createdAt` 取发布时间；`commentCount` 只计 visible 评论；
@@ -116,6 +126,10 @@ HTML；找不到 manifest 时所有访客回退 SSR。
 - `POST /api/friend-link-applications`
 - `GET|POST /api/articles/{id}/comments`
 - `GET|POST /api/dynamics/{id}/comments`
+
+评论 POST 接受可选 `parent_id` 实现楼中楼回复：父评论必须存在、已
+`visible`、同属当前文章/动态，且父评论本身不能再有父评论（只支持两层，
+违反返回 422）。
 - `GET /api/articles/{id}/metrics`
 - `POST /api/articles/{id}/view`
 - `PUT|DELETE /api/articles/{id}/like`

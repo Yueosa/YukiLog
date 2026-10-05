@@ -13,8 +13,8 @@ use axum::{
 use axum_extra::extract::cookie::CookieJar;
 use rand::{RngCore, rngs::OsRng};
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, EntityTrait, QueryFilter, Set,
-    prelude::Uuid,
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter,
+    Set, prelude::Uuid,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -432,6 +432,33 @@ fn random_suffix() -> String {
     let mut bytes = [0_u8; 16];
     OsRng.fill_bytes(&mut bytes);
     hex_lower(&bytes)
+}
+
+/// Decode the hero background id list stored on `site_settings`.
+pub(crate) fn hero_background_ids(value: &serde_json::Value) -> Result<Vec<Uuid>, AppError> {
+    serde_json::from_value(value.clone())
+        .map_err(|_| AppError::Internal("decode hero background media ids"))
+}
+
+/// Resolve media ids to public `/media/{storage_key}` URLs, keeping id order and
+/// skipping ids that are missing or not images.
+pub(crate) async fn image_media_urls<C: ConnectionTrait>(
+    connection: &C,
+    ids: &[Uuid],
+) -> Result<Vec<String>, AppError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let assets = media_assets::Entity::find()
+        .filter(media_assets::Column::Id.is_in(ids.iter().copied()))
+        .all(connection)
+        .await?;
+    Ok(ids
+        .iter()
+        .filter_map(|id| assets.iter().find(|media| &media.id == id))
+        .filter(|media| media.media_type.starts_with("image/"))
+        .map(|media| format!("/media/{}", media.storage_key))
+        .collect())
 }
 
 fn hex_lower(bytes: &[u8]) -> String {

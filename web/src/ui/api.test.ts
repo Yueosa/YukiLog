@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, errorMessage, fetchArticles, isNotFound, submitArticleComment } from './api.js';
+import {
+  ApiError,
+  applyFriendLink,
+  errorMessage,
+  fetchArticles,
+  fetchDynamics,
+  isNotFound,
+  submitArticleComment,
+  subscribe,
+} from './api.js';
 
 function mockResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -65,12 +74,48 @@ describe('api request wrapper', () => {
       email: null,
       website: 'https://yeastar.xin',
       content: '欢迎回来。',
+      parent_id: 'c-0',
     });
     expect(calls[0].url).toBe('/api/articles/art-1/comments');
     expect(calls[0].init?.method).toBe('POST');
     expect(JSON.parse(String(calls[0].init?.body))).toMatchObject({
       display_name: '远岸',
       website: 'https://yeastar.xin',
+      parent_id: 'c-0',
     });
+  });
+
+  it('normalizes malformed list responses to empty items instead of undefined', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => mockResponse(200, { page: 1 })));
+    const list = await fetchDynamics(1);
+    expect(list.items).toEqual([]);
+    expect(list.totalPages).toBe(1);
+  });
+
+  it('posts subscription and friend-link payloads to their legacy endpoints', async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), body: JSON.parse(String(init?.body ?? '{}')) });
+        return mockResponse(200, { status: 'pending' });
+      }),
+    );
+    await subscribe('a@b.co', true, false);
+    expect(calls[0].url).toBe('/api/subscriptions');
+    expect(calls[0].body).toMatchObject({
+      email: 'a@b.co',
+      subscribe_articles: true,
+      subscribe_dynamics: false,
+    });
+    await applyFriendLink({
+      name: '星港',
+      url: 'https://yeastar.xin',
+      email: 'a@b.co',
+      description: null,
+      avatar_url: null,
+    });
+    expect(calls[1].url).toBe('/api/friend-link-applications');
+    expect(calls[1].body).toMatchObject({ name: '星港', url: 'https://yeastar.xin' });
   });
 });

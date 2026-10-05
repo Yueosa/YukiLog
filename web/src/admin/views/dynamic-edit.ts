@@ -17,6 +17,7 @@ export class AdmDynamicEdit extends AdmView {
   @state() private mood = '';
   @state() private allowComments = true;
   @state() private mediaIds: string[] = [];
+  @state() private pickerOpen = false;
 
   /** 已同步进表单的 dynamic id；防止 store 刷新覆盖未保存的编辑。 */
   private syncedFor: string | null | undefined = undefined;
@@ -114,9 +115,13 @@ export class AdmDynamicEdit extends AdmView {
     `,
   ];
 
+  connectedCallback() {
+    super.connectedCallback();
+    void this.store.refreshMedia();
+  }
+
   protected willUpdate() {
-    if (this.syncedFor === this.dynamicId) return;
-    if (this.dynamicId) {
+    if (this.syncedFor === this.dynamicId) return;    if (this.dynamicId) {
       const item = this.store.dynamics.find((entry) => entry.id === this.dynamicId);
       if (!item) return;
       this.content = item.content_markdown;
@@ -143,12 +148,21 @@ export class AdmDynamicEdit extends AdmView {
     return fromStore?.url ?? null;
   }
 
-  private onUpload(event: CustomEvent<{ media: MediaAsset }>) {
+  private addMedia(id: string) {
     if (this.mediaIds.length >= MAX_MEDIA) {
       this.store.toast(`最多只能配 ${MAX_MEDIA} 张图`, 'info');
       return;
     }
-    this.mediaIds = [...this.mediaIds, event.detail.media.id];
+    this.mediaIds = [...this.mediaIds, id];
+  }
+
+  private onUpload(event: CustomEvent<{ media: MediaAsset }>) {
+    this.addMedia(event.detail.media.id);
+  }
+
+  private onPick(event: CustomEvent<{ media: MediaAsset }>) {
+    this.pickerOpen = false;
+    if (!this.mediaIds.includes(event.detail.media.id)) this.addMedia(event.detail.media.id);
   }
 
   private removeMedia(id: string) {
@@ -171,7 +185,11 @@ export class AdmDynamicEdit extends AdmView {
   private async publishNow() {
     const saved = await this.save();
     const id = this.dynamicId ?? saved?.id;
-    if (id) await this.store.dynamicAction(id, 'publish');
+    if (!id) return;
+    await this.store.dynamicAction(id, 'publish');
+    if (this.store.dynamics.find((item) => item.id === id)?.status === 'published') {
+      location.hash = '#/dynamics';
+    }
   }
 
   private async schedule() {
@@ -189,7 +207,11 @@ export class AdmDynamicEdit extends AdmView {
     }
     const saved = await this.save();
     const id = this.dynamicId ?? saved?.id;
-    if (id) await this.store.dynamicAction(id, 'publish', at.toISOString());
+    if (!id) return;
+    await this.store.dynamicAction(id, 'publish', at.toISOString());
+    if (this.store.dynamics.find((item) => item.id === id)?.status === 'published') {
+      location.hash = '#/dynamics';
+    }
   }
 
   private async removeDynamic() {
@@ -266,6 +288,11 @@ export class AdmDynamicEdit extends AdmView {
             text=${this.mediaIds.length ? '继续添加图片' : '点击或拖拽添加图片'}
             @adm-upload=${this.onUpload}
           ></adm-upload>
+          <div style="margin-top: 8px">
+            <button class="btn secondary small" type="button" @click=${() => (this.pickerOpen = true)}>
+              从媒体库选择
+            </button>
+          </div>
         </div>
 
         <div style="margin-top: 14px">
@@ -299,6 +326,12 @@ export class AdmDynamicEdit extends AdmView {
             : nothing}
         </div>
       </section>
+      <adm-media-picker
+        ?open=${this.pickerOpen}
+        .selectedId=${null}
+        @adm-pick=${this.onPick}
+        @adm-close=${() => (this.pickerOpen = false)}
+      ></adm-media-picker>
     `;
   }
 }

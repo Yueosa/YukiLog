@@ -46,6 +46,8 @@ pub struct PublicSiteResponse {
     dynamic_count: i64,
     friend_count: i64,
     total_views: i64,
+    hero_backgrounds: Vec<String>,
+    hero_quote: Option<String>,
     theme: serde_json::Value,
     shell_layout: serde_json::Value,
 }
@@ -112,6 +114,8 @@ pub struct ArticleDetailResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommentItem {
+    id: Uuid,
+    parent_id: Option<Uuid>,
     display_name: String,
     avatar_url: String,
     website: Option<String>,
@@ -254,6 +258,10 @@ pub async fn site(State(state): State<AppState>) -> Result<Json<PublicSiteRespon
         avatar_media_id: model.avatar_media_id,
         avatar_external_url: model.avatar_external_url,
         masthead_media_id: model.masthead_media_id,
+        hero_background_media_ids: crate::ops::media::hero_background_ids(
+            &model.hero_background_media_ids,
+        )?,
+        hero_quote: model.hero_quote,
         social_links: serde_json::from_value(model.social_links)
             .map_err(|_| AppError::Internal("decode social links"))?,
         theme: serde_json::from_value(model.theme)
@@ -264,6 +272,9 @@ pub async fn site(State(state): State<AppState>) -> Result<Json<PublicSiteRespon
     settings
         .validate()
         .map_err(|_| AppError::Internal("stored site settings failed validation"))?;
+    let hero_backgrounds =
+        crate::ops::media::image_media_urls(&state.database, &settings.hero_background_media_ids)
+            .await?;
     let avatar_media_url = media_url(&state, settings.avatar_media_id).await?;
     let avatar_external_url = settings.avatar_external_url.clone().unwrap_or_default();
     let avatar_url = if avatar_media_url.is_empty() {
@@ -306,6 +317,8 @@ pub async fn site(State(state): State<AppState>) -> Result<Json<PublicSiteRespon
         dynamic_count,
         friend_count,
         total_views,
+        hero_backgrounds,
+        hero_quote: settings.hero_quote,
         theme: serde_json::to_value(&settings.theme)
             .map_err(|_| AppError::Internal("serialize theme"))?,
         shell_layout: serde_json::to_value(&settings.shell_layout)
@@ -771,6 +784,8 @@ async fn dynamic_items(
 
 fn comment_item(model: comments::Model) -> CommentItem {
     CommentItem {
+        id: model.id,
+        parent_id: model.parent_id,
         display_name: model.display_name,
         avatar_url: crate::content::public::comment_avatar_url(
             model.website.as_deref(),

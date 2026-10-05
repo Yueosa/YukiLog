@@ -99,14 +99,21 @@ fn render_hero(node: &LayoutNode, context: &RenderContext<'_>) -> String {
             )
         })
         .collect::<String>();
-    let background_url = node
-        .props
-        .get("backgroundMediaId")
-        .and_then(Value::as_str)
-        .and_then(|id| context.media_urls.get(id))
-        .map(String::as_str)
-        .unwrap_or_default();
-    let background = if background_url.is_empty() {
+    // 首屏背景：站点设置的轮换列表优先；布局节点的 backgroundMediaId 已弃用，
+    // 仅在列表为空时作回退。
+    let mut background_urls = context.site.hero_backgrounds.clone();
+    if background_urls.is_empty() {
+        if let Some(url) = node
+            .props
+            .get("backgroundMediaId")
+            .and_then(Value::as_str)
+            .and_then(|id| context.media_urls.get(id))
+        {
+            background_urls.push(url.clone());
+        }
+    }
+    let background_url = background_urls.first().map(String::as_str).unwrap_or_default();
+    let mut background = if background_url.is_empty() {
         String::new()
     } else {
         format!(
@@ -115,6 +122,12 @@ fn render_hero(node: &LayoutNode, context: &RenderContext<'_>) -> String {
             escape_html(text_prop_or(node, "backgroundPosition", "center"))
         )
     };
+    if background_urls.len() > 1 {
+        let images = serde_json::to_string(&background_urls).unwrap_or_default();
+        background.push_str(&format!(
+            r#"<script>(()=>{{const images={images};if(images.length<2)return;try{{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return}}catch(_){{}}const base=document.currentScript.previousElementSibling;if(!base||!base.classList.contains('hero-background'))return;base.style.transition='opacity 1.2s ease';let index=0;images.slice(1).forEach((src)=>{{const preload=new Image();preload.src=src}});window.setInterval(()=>{{index=(index+1)%images.length;base.style.opacity='0';window.setTimeout(()=>{{base.style.backgroundImage='url("'+images[index]+'")';base.style.opacity='1'}},1200)}},8000)}})();</script>"#
+        ));
+    }
     let mut socials = String::new();
     if bool_prop(node, "showSocials") {
         let colors = [
@@ -155,13 +168,21 @@ fn render_hero(node: &LayoutNode, context: &RenderContext<'_>) -> String {
         " has-media"
     };
 
+    // 语录卡：hero_quote 优先，空则站点说明，再空回退布局节点的 lead。
+    let quote = if !context.site.hero_quote.is_empty() {
+        context.site.hero_quote.as_str()
+    } else if !context.site.description.is_empty() {
+        context.site.description.as_str()
+    } else {
+        text_prop(node, "lead")
+    };
     format!(
         r#"<section id="{}" class="hero hero-{} overlay-{}{}">{background}<div class="hero-inner"><h1>{title_characters}</h1><div class="hero-info"><div class="welcome-quote"><span class="quote-text">{}</span>{socials}</div></div></div>{enter}</section>"#,
         escape_html(&node.id),
         escape_html(text_prop_or(node, "variant", "cinematic")),
         escape_html(text_prop_or(node, "overlay", "medium")),
         media_class,
-        escape_html(text_prop(node, "lead")),
+        escape_html(quote),
     )
 }
 
@@ -551,5 +572,114 @@ fn placement_class(node: &LayoutNode) -> Option<&'static str> {
         Some("span 8 / span 5") => Some("area-8-5"),
         Some("span 9 / span 7") => Some("area-9-7"),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Map;
+
+    use super::*;
+    use crate::site::HomeStats;
+
+    fn site_view() -> SiteView {
+        SiteView {
+            title: "YukiLog".to_owned(),
+            description: "站点说明".to_owned(),
+            owner_name: "Sakurine".to_owned(),
+            owner_bio: String::new(),
+            avatar_url: String::new(),
+            masthead_url: String::new(),
+            hero_backgrounds: Vec::new(),
+            hero_quote: String::new(),
+            favicon_url: String::new(),
+            origin: "https://blog.example.com".to_owned(),
+            social_links: Vec::new(),
+            navigation_class: "topbar",
+            navigation_options: "",
+            page_width_class: "width-wide",
+            show_search: true,
+            mail_enabled: false,
+            font_class: "font-system",
+            background: "#ffffff".to_owned(),
+            surface: "#ffffff".to_owned(),
+            surface_muted: "#f2f4f8".to_owned(),
+            text: "#20232a".to_owned(),
+            text_muted: "#667085".to_owned(),
+            primary: "#3278d4".to_owned(),
+            secondary: "#ef78ac".to_owned(),
+            border: "#dfe3ea".to_owned(),
+            radius: 16,
+            scale: 1.0,
+        }
+    }
+
+    fn hero_node() -> LayoutNode {
+        let mut props = Map::new();
+        props.insert("title".to_owned(), Value::String("夜航".to_owned()));
+        props.insert("lead".to_owned(), Value::String("节点 lead".to_owned()));
+        LayoutNode {
+            id: "hero".to_owned(),
+            component_type: ComponentType::Hero,
+            props,
+            responsive: HashMap::new(),
+            children: Vec::new(),
+        }
+    }
+
+    fn context<'a>(site: &'a SiteView, media_urls: &'a HashMap<String, String>) -> RenderContext<'a> {
+        RenderContext {
+            site,
+            articles: &[],
+            dynamics: &[],
+            stats: &HomeStats { articles: 0, dynamics: 0, friends: 0, views: 0 },
+            media_urls,
+            home_content_id: "content",
+            sort: ArticleSort::Featured,
+        }
+    }
+
+    #[test]
+    fn hero_uses_first_background_and_rotates_the_rest() {
+        let mut site = site_view();
+        site.hero_backgrounds = vec![
+            "/media/aa/one.png".to_owned(),
+            "/media/bb/two.png".to_owned(),
+        ];
+        site.hero_quote = "语录文本".to_owned();
+        let media_urls = HashMap::new();
+        let html = render_hero(&hero_node(), &context(&site, &media_urls));
+        assert!(html.contains("background-image:url(&quot;/media/aa/one.png&quot;)"));
+        assert!(html.contains(r#"const images=["/media/aa/one.png","/media/bb/two.png"]"#));
+        assert!(html.contains("},8000)"));
+        assert!(html.contains("prefers-reduced-motion"));
+        assert!(html.contains("has-media"));
+        assert!(html.contains("<span class=\"quote-text\">语录文本</span>"));
+    }
+
+    #[test]
+    fn hero_without_rotation_list_falls_back_to_layout_node_media() {
+        let site = site_view();
+        let mut media_urls = HashMap::new();
+        media_urls.insert("media-1".to_owned(), "/media/cc/legacy.png".to_owned());
+        let mut node = hero_node();
+        node.props
+            .insert("backgroundMediaId".to_owned(), Value::String("media-1".to_owned()));
+        let html = render_hero(&node, &context(&site, &media_urls));
+        assert!(html.contains("background-image:url(&quot;/media/cc/legacy.png&quot;)"));
+        assert!(!html.contains("<script"));
+        // hero_quote 为空时回退站点说明
+        assert!(html.contains("<span class=\"quote-text\">站点说明</span>"));
+    }
+
+    #[test]
+    fn hero_quote_falls_back_to_node_lead_when_site_texts_empty() {
+        let mut site = site_view();
+        site.description = String::new();
+        let media_urls = HashMap::new();
+        let html = render_hero(&hero_node(), &context(&site, &media_urls));
+        assert!(!html.contains("hero-background"));
+        assert!(!html.contains("has-media"));
+        assert!(html.contains("<span class=\"quote-text\">节点 lead</span>"));
     }
 }

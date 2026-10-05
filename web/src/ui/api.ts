@@ -53,6 +53,11 @@ function get<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
+/** 列表字段兜底：响应形状漂移时降级为空列表而不是 undefined（避免骨架屏卡死）。 */
+function itemsOf<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
 function send<T>(method: string, path: string, body?: unknown): Promise<T> {
   return request<T>(path, {
     method,
@@ -95,6 +100,12 @@ export interface PublicSite {
   mailEnabled: boolean;
   theme: SiteTheme | null;
   shellLayout: ShellLayout | null;
+  /** 动态总数（统计卡使用，独立于动态列表请求）。 */
+  dynamicCount?: number;
+  /** 首屏背景图池：多张时冷进入随机抽一张并每 8 秒淡切。 */
+  heroBackgrounds?: string[];
+  /** 首屏语录卡文本；为空时回退 siteDescription。 */
+  heroQuote?: string | null;
 }
 
 export interface PublicTerm {
@@ -142,6 +153,9 @@ export interface ArticleDetail extends ArticleSummary {
 }
 
 export interface PublicComment {
+  id: string;
+  /** 平铺下发的父评论 id；顶层为 null。 */
+  parentId: string | null;
   displayName: string;
   avatarUrl: string;
   website: string | null;
@@ -241,7 +255,12 @@ export function fetchArticles(query: ArticleQuery = {}): Promise<ArticleList> {
   if (query.page && query.page > 1) params.set('page', String(query.page));
   if (query.pageSize) params.set('pageSize', String(query.pageSize));
   const search = params.toString();
-  return get(`/api/public/articles${search ? `?${search}` : ''}`);
+  return get<ArticleList>(`/api/public/articles${search ? `?${search}` : ''}`).then((list) => ({
+    page: Number(list?.page) || 1,
+    totalPages: Number(list?.totalPages) || 1,
+    total: Number(list?.total) || 0,
+    items: itemsOf<ArticleSummary>(list?.items),
+  }));
 }
 
 export function fetchArticle(slug: string): Promise<ArticleDetail> {
@@ -249,28 +268,48 @@ export function fetchArticle(slug: string): Promise<ArticleDetail> {
 }
 
 export function fetchArticleComments(slug: string): Promise<CommentList> {
-  return get(`/api/public/articles/${encodeURIComponent(slug)}/comments`);
+  return get<CommentList>(`/api/public/articles/${encodeURIComponent(slug)}/comments`).then(
+    (list) => ({ items: itemsOf<PublicComment>(list?.items), total: Number(list?.total) || 0 }),
+  );
 }
 
 export function fetchDynamics(page = 1, pageSize = 10): Promise<DynamicList> {
   const params = new URLSearchParams();
   if (page > 1) params.set('page', String(page));
   params.set('pageSize', String(pageSize));
-  return get(`/api/public/dynamics?${params.toString()}`);
+  return get<DynamicList>(`/api/public/dynamics?${params.toString()}`).then((list) => ({
+    page: Number(list?.page) || page,
+    totalPages: Number(list?.totalPages) || 1,
+    total: Number(list?.total) || 0,
+    items: itemsOf<DynamicItem>(list?.items),
+  }));
 }
 
 export function fetchDynamicComments(id: string): Promise<CommentList> {
-  return get(`/api/public/dynamics/${encodeURIComponent(id)}/comments`);
+  return get<CommentList>(`/api/public/dynamics/${encodeURIComponent(id)}/comments`).then(
+    (list) => ({ items: itemsOf<PublicComment>(list?.items), total: Number(list?.total) || 0 }),
+  );
 }
 
 export function fetchFriends(): Promise<FriendList> {
-  return get('/api/public/friends');
+  return get<FriendList>('/api/public/friends').then((list) => ({
+    items: itemsOf<FriendLinkItem>(list?.items),
+  }));
 }
 
 export function fetchSearch(q: string, page = 1): Promise<SearchResults> {
   const params = new URLSearchParams({ q });
   if (page > 1) params.set('page', String(page));
-  return get(`/api/public/search?${params.toString()}`);
+  return get<SearchResults>(`/api/public/search?${params.toString()}`).then((results) => ({
+    articles: {
+      items: itemsOf<ArticleSummary>(results?.articles?.items),
+      total: Number(results?.articles?.total) || 0,
+    },
+    dynamics: {
+      items: itemsOf<DynamicItem>(results?.dynamics?.items),
+      total: Number(results?.dynamics?.total) || 0,
+    },
+  }));
 }
 
 export function fetchHitokoto(): Promise<Hitokoto> {

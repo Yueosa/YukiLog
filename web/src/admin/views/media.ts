@@ -55,6 +55,7 @@ export class AdmMedia extends AdmView {
         border-radius: 14px;
         background: var(--surface);
         display: grid;
+        grid-template-rows: auto 1fr auto;
         transition:
           border-color 220ms ease,
           translate 220ms ease;
@@ -66,13 +67,17 @@ export class AdmMedia extends AdmView {
       }
 
       .thumb {
-        aspect-ratio: 16 / 10;
+        position: relative;
+        aspect-ratio: 4 / 3;
+        overflow: hidden;
         background: var(--surface-muted);
         display: grid;
         place-items: center;
       }
 
       .thumb img {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;

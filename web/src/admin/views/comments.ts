@@ -44,8 +44,33 @@ export class AdmComments extends AdmView {
       .head {
         display: flex;
         flex-wrap: wrap;
-        align-items: baseline;
+        align-items: center;
         gap: 8px 12px;
+      }
+
+      .avatar {
+        width: 34px;
+        height: 34px;
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: color-mix(in srgb, var(--primary) 22%, var(--surface));
+        color: var(--primary-d);
+        font-family: var(--serif);
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .ua {
+        max-width: 260px;
+        overflow: hidden;
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .name {
@@ -175,10 +200,12 @@ export class AdmComments extends AdmView {
     return html`
       <article class="card ${comment.status === 'pending' ? 'pending' : ''}">
         <header class="head">
+          <span class="avatar" aria-hidden="true">${(comment.display_name.trim()[0] ?? '客').toUpperCase()}</span>
           ${comment.website
             ? html`<a class="name" href=${comment.website} target="_blank" rel="noopener noreferrer">${comment.display_name}</a>`
             : html`<span class="name">${comment.display_name}</span>`}
           ${comment.email ? html`<span class="email mono">${comment.email}</span>` : nothing}
+          ${comment.user_agent ? html`<span class="ua" title=${comment.user_agent}>${comment.user_agent}</span>` : nothing}
           <time title=${comment.created_at}>${formatRelative(comment.created_at)}</time>
           <span class="badge ${comment.status === 'pending' ? 'warn' : comment.status === 'visible' ? 'ok' : ''}">
             ${enumLabel(commentStatusLabel, comment.status)}
@@ -205,7 +232,11 @@ export class AdmComments extends AdmView {
   }
 
   protected render() {
-    const comments = [...this.store.comments].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const comments = [...this.store.comments].sort(
+      (a, b) =>
+        Number(b.status === 'pending') - Number(a.status === 'pending') ||
+        b.created_at.localeCompare(a.created_at),
+    );
     const count = (status: string) => this.store.comments.filter((item) => item.status === status).length;
     const byTab = this.tab === 'all' ? comments : comments.filter((item) => item.status === this.tab);
     const filtered =

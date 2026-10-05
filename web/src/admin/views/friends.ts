@@ -82,16 +82,77 @@ export class AdmFriends extends AdmView {
         font-size: 12px;
       }
 
-      .friend-cell {
+      .friends-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 14px;
+      }
+
+      .friend-card {
+        display: grid;
+        align-content: start;
+        gap: 9px;
+        padding: 14px 16px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--surface);
+        transition:
+          border-color 220ms ease,
+          translate 220ms ease;
+      }
+
+      .friend-card:hover {
+        border-color: var(--primary);
+        translate: 0 -2px;
+      }
+
+      .friend-card .friend-head {
         display: flex;
         align-items: center;
         gap: 10px;
         min-width: 0;
       }
 
+      .friend-card .name {
+        overflow: hidden;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .friend-card .desc {
+        margin: 0;
+        min-height: 1.6em;
+        color: var(--muted);
+        font-size: 12.5px;
+        line-height: 1.6;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+      }
+
+      .friend-card .friend-foot {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 9px;
+        border-top: 1px solid var(--surface-muted);
+      }
+
+      .friend-card .sort {
+        color: var(--faint);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+
+      .friend-card .friend-foot .spacer {
+        flex: 1;
+      }
+
       .avatar {
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
         flex: none;
         border: 1px solid var(--line);
         border-radius: 50%;
@@ -101,8 +162,8 @@ export class AdmFriends extends AdmView {
 
       .avatar-fallback {
         display: inline-flex;
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
         flex: none;
         align-items: center;
         justify-content: center;
@@ -110,22 +171,15 @@ export class AdmFriends extends AdmView {
         background: color-mix(in srgb, var(--primary) 22%, var(--surface));
         color: var(--primary-d);
         font-family: var(--serif);
-        font-size: 14px;
+        font-size: 15px;
         font-weight: 700;
-      }
-
-      .friend-cell .name {
-        overflow: hidden;
-        font-weight: 600;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
 
       .ext-link {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        max-width: 240px;
+        max-width: 100%;
         color: var(--primary-d);
         font-size: 12.5px;
         text-decoration: none;
@@ -139,12 +193,6 @@ export class AdmFriends extends AdmView {
 
       .ext-link:hover {
         text-decoration: underline;
-      }
-
-      .desc-cell {
-        max-width: 240px;
-        color: var(--muted);
-        font-size: 12.5px;
       }
 
       .ops {
@@ -266,51 +314,38 @@ export class AdmFriends extends AdmView {
         </div>
         <div style="height: 14px"></div>
         ${items.length
-          ? html`
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>友链</th><th>URL</th><th>说明</th><th>排序</th><th>可见</th><th>操作</th></tr>
-                  </thead>
-                  <tbody>
-                    ${items.map(
-                      (item) => html`
-                        <tr>
-                          <td>
-                            <span class="friend-cell">
-                              ${this.avatar(item)}
-                              <span class="name">${item.name}</span>
-                            </span>
-                          </td>
-                          <td>
-                            <a class="ext-link" href=${item.url} target="_blank" rel="noopener">
-                              <span class="mono">${this.hostOf(item.url) ?? item.url}</span>
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
-                                <path d="M2 8 8 2M3.5 2H8v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
-                              </svg>
-                            </a>
-                          </td>
-                          <td class="desc-cell">${item.description || html`<span class="faint">—</span>`}</td>
-                          <td class="mono">${item.sort_order}</td>
-                          <td>
-                            <adm-toggle
-                              .checked=${item.is_visible}
-                              @adm-change=${(e: CustomEvent<{ checked: boolean }>) => this.toggleVisible(item, e.detail.checked)}
-                            ></adm-toggle>
-                          </td>
-                          <td>
-                            <span class="ops">
-                              <button class="btn secondary small" @click=${() => this.editFriend(item)}>编辑</button>
-                              <button class="btn danger small" @click=${() => this.store.deleteFriend(item.id)}>删除</button>
-                            </span>
-                          </td>
-                        </tr>
-                      `,
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            `
+          ? html`<div class="friends-grid">
+              ${items.map(
+                (item) => html`
+                  <article class="friend-card">
+                    <div class="friend-head">
+                      ${this.avatar(item)}
+                      <span class="name" title=${item.name}>${item.name}</span>
+                    </div>
+                    <a class="ext-link" href=${item.url} target="_blank" rel="noopener">
+                      <span class="mono">${this.hostOf(item.url) ?? item.url}</span>
+                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+                        <path d="M2 8 8 2M3.5 2H8v4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </a>
+                    <p class="desc">${item.description || '—'}</p>
+                    <div class="friend-foot">
+                      <span class="sort">排序 ${item.sort_order}</span>
+                      <span class="spacer"></span>
+                      <adm-toggle
+                        label="可见"
+                        .checked=${item.is_visible}
+                        @adm-change=${(e: CustomEvent<{ checked: boolean }>) => this.toggleVisible(item, e.detail.checked)}
+                      ></adm-toggle>
+                    </div>
+                    <div class="ops">
+                      <button class="btn secondary small" @click=${() => this.editFriend(item)}>编辑</button>
+                      <button class="btn danger small" @click=${() => this.store.deleteFriend(item.id)}>删除</button>
+                    </div>
+                  </article>
+                `,
+              )}
+            </div>`
           : html`<adm-empty text="还没有友链" hint="点击右上角「添加友链」收录第一个朋友"></adm-empty>`}
       </section>
     `;

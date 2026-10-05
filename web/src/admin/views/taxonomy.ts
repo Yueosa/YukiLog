@@ -1,9 +1,12 @@
-import { css, html } from 'lit';
+import { css, html, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
 import { generateSlug, isValidSlug } from '../slugify.js';
+import { taxonomyLabel } from '../labels.js';
 import type { Category, Tag } from '../types.js';
+
+const TAG_COLLAPSE_AT = 20;
 
 /** 分类与标签：左右两栏，内联创建 + 表格管理。 */
 export class AdmTaxonomy extends AdmView {
@@ -18,6 +21,8 @@ export class AdmTaxonomy extends AdmView {
 
   @state() private newTagName = '';
   @state() private newTagSlug = '';
+  @state() private tagQuery = '';
+  @state() private tagsExpanded = false;
   private tagSlugTouched = false;
 
   static styles = [
@@ -29,7 +34,7 @@ export class AdmTaxonomy extends AdmView {
 
       .columns {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 4fr) minmax(0, 5fr);
         gap: 18px;
         align-items: start;
       }
@@ -38,6 +43,41 @@ export class AdmTaxonomy extends AdmView {
         .columns {
           grid-template-columns: 1fr;
         }
+      }
+
+      .tag-tools {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .tag-tools .search {
+        flex: 1;
+        min-width: 160px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--ink);
+        font: inherit;
+        font-size: 13px;
+      }
+
+      .tag-tools .search:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+      }
+
+      .tag-tools .count {
+        color: var(--faint);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      .tag-more {
+        margin-top: 10px;
       }
 
       .create-form {
@@ -66,7 +106,7 @@ export class AdmTaxonomy extends AdmView {
       }
 
       .desc-cell {
-        max-width: 220px;
+        max-width: 150px;
         color: var(--muted);
         font-size: 12.5px;
       }
@@ -205,7 +245,13 @@ export class AdmTaxonomy extends AdmView {
   }
 
   private renderTagPanel() {
-    const items = [...this.store.tags].sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+    const query = this.tagQuery.trim().toLowerCase();
+    const sorted = [...this.store.tags].sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+    const matched = query
+      ? sorted.filter((item) => item.name.toLowerCase().includes(query) || item.slug.toLowerCase().includes(query))
+      : sorted;
+    const collapsed = !query && !this.tagsExpanded && matched.length > TAG_COLLAPSE_AT;
+    const items = collapsed ? matched.slice(0, TAG_COLLAPSE_AT) : matched;
     return html`
       <section class="panel">
         <h2 class="panel-title">标签</h2>
@@ -239,31 +285,52 @@ export class AdmTaxonomy extends AdmView {
             <button class="btn primary" ?disabled=${this.store.busy} @click=${this.addTag}>添加标签</button>
           </div>
         </div>
-        ${items.length
+        ${sorted.length
           ? html`
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>名称</th><th>slug</th><th>操作</th></tr>
-                  </thead>
-                  <tbody>
-                    ${items.map(
-                      (item) => html`
-                        <tr>
-                          <td><b>${item.name}</b></td>
-                          <td class="mono">${item.slug}</td>
-                          <td>
-                            <span class="ops">
-                              <button class="btn secondary small" @click=${() => this.editTag(item)}>编辑</button>
-                              <button class="btn danger small" @click=${() => this.store.removeTaxonomy('tags', item.id)}>删除</button>
-                            </span>
-                          </td>
-                        </tr>
-                      `,
-                    )}
-                  </tbody>
-                </table>
+              <div class="tag-tools">
+                <input
+                  class="search"
+                  type="search"
+                  placeholder=${taxonomyLabel.searchTags}
+                  .value=${this.tagQuery}
+                  @input=${(e: InputEvent) => (this.tagQuery = (e.currentTarget as HTMLInputElement).value)}
+                />
+                <span class="count">${matched.length} / ${sorted.length}</span>
               </div>
+              ${items.length
+                ? html`
+                    <div class="table-wrap">
+                      <table>
+                        <thead>
+                          <tr><th>名称</th><th>slug</th><th>操作</th></tr>
+                        </thead>
+                        <tbody>
+                          ${items.map(
+                            (item) => html`
+                              <tr>
+                                <td><b>${item.name}</b></td>
+                                <td class="mono">${item.slug}</td>
+                                <td>
+                                  <span class="ops">
+                                    <button class="btn secondary small" @click=${() => this.editTag(item)}>编辑</button>
+                                    <button class="btn danger small" @click=${() => this.store.removeTaxonomy('tags', item.id)}>删除</button>
+                                  </span>
+                                </td>
+                              </tr>
+                            `,
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    ${collapsed || (!query && this.tagsExpanded && matched.length > TAG_COLLAPSE_AT)
+                      ? html`<div class="tag-more">
+                          <button class="btn secondary small" @click=${() => (this.tagsExpanded = !this.tagsExpanded)}>
+                            ${collapsed ? `${taxonomyLabel.expandAll}（共 ${matched.length} 个）` : taxonomyLabel.collapse}
+                          </button>
+                        </div>`
+                      : nothing}
+                  `
+                : html`<adm-empty text="没有匹配的标签" hint="换个搜索词试试"></adm-empty>`}
             `
           : html`<adm-empty text="还没有标签" hint="用上方表单创建第一个标签"></adm-empty>`}
       </section>

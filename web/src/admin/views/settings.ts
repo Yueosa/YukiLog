@@ -19,6 +19,8 @@ const colorFields: Array<{ key: keyof ThemeTokens['colors']; label: string }> = 
 
 const fontOptions: Array<ThemeTokens['typography']['body']> = ['system', 'serif', 'rounded', 'mono'];
 
+const HERO_BACKGROUND_MAX = 12;
+
 const navigationLabel: Record<NavigationVariant, string> = {
   topbar: '顶栏',
   sidebar: '侧栏',
@@ -36,6 +38,8 @@ export class AdmSettings extends AdmView {
   @property() dynamicId: string | null = null;
 
   @state() private draft: SiteSettings | null = null;
+  @state() private pickerTarget: 'avatar' | 'masthead' | 'hero' | null = null;
+  @state() private avatarBrokenUrl: string | null = null;
   private source: SiteSettings | null = null;
   private dirty = false;
 
@@ -119,6 +123,80 @@ export class AdmSettings extends AdmView {
         margin: 10px 0 0;
         color: var(--faint);
         font-size: 12px;
+      }
+
+      .picker-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .count {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        font-weight: 400;
+      }
+
+      .hero-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .hero-item {
+        width: 132px;
+        display: grid;
+        gap: 5px;
+      }
+
+      .hero-item img,
+      .hero-item .hero-missing {
+        width: 100%;
+        aspect-ratio: 3 / 2;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        object-fit: cover;
+        display: grid;
+        place-items: center;
+        background: var(--surface-muted);
+        color: var(--faint);
+        font-size: 11px;
+      }
+
+      .hero-ops {
+        display: flex;
+        gap: 4px;
+      }
+
+      .hero-ops button {
+        flex: 1;
+        padding: 2px 0;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .hero-ops button:hover:not(:disabled) {
+        border-color: var(--primary);
+        color: var(--ink);
+      }
+
+      .hero-ops button:disabled {
+        cursor: not-allowed;
+        opacity: 0.4;
+      }
+
+      .quote-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .quote-row input {
+        flex: 1;
       }
 
       .links {
@@ -284,6 +362,8 @@ export class AdmSettings extends AdmView {
       avatarMediaId: draft.avatarMediaId,
       avatarExternalUrl: draft.avatarExternalUrl?.trim() || null,
       mastheadMediaId: draft.mastheadMediaId,
+      heroBackgroundMediaIds: [...(draft.heroBackgroundMediaIds ?? [])],
+      heroQuote: draft.heroQuote?.trim() || null,
       socialLinks: draft.socialLinks.filter((link) => link.label.trim() || link.url.trim()),
       theme: structuredClone(draft.theme),
       shellLayout: structuredClone(draft.shellLayout),
@@ -295,7 +375,7 @@ export class AdmSettings extends AdmView {
   private renderInfo(draft: SiteSettings) {
     const avatar = draft.avatarMediaId ? this.store.media.find((item) => item.id === draft.avatarMediaId) : null;
     const avatarUrl = avatar?.url ?? draft.avatarExternalUrl ?? null;
-    const images = this.store.media.filter((item) => item.media_type.startsWith('image/'));
+    const showAvatar = avatarUrl !== null && this.avatarBrokenUrl !== avatarUrl;
     return html`
       <section class="panel">
         <h2 class="panel-title">站点信息</h2>
@@ -330,24 +410,22 @@ export class AdmSettings extends AdmView {
         <div style="margin-top: 14px">
           <div class="field" style="margin-bottom: 8px"><span>站点头像</span></div>
           <div class="avatar-row">
-            <div class="avatar">${avatarUrl ? html`<img src=${avatarUrl} alt="站点头像" />` : html`无`}</div>
+            <div class="avatar">
+              ${showAvatar
+                ? html`<img src=${avatarUrl} alt="站点头像" @error=${() => (this.avatarBrokenUrl = avatarUrl)} />`
+                : html`无`}
+            </div>
             <div class="avatar-side">
-              <adm-upload
-                accept="image/*"
-                compact
-                text="上传新头像"
-                @adm-upload=${(e: CustomEvent<{ media: { id: string } }>) => this.setField('avatarMediaId', e.detail.media.id)}
-              ></adm-upload>
-              <label class="field">
-                <span>从媒体库选择</span>
-                <select
-                  .value=${draft.avatarMediaId ?? ''}
-                  @change=${(e: Event) => this.setField('avatarMediaId', (e.currentTarget as HTMLSelectElement).value || null)}
-                >
-                  <option value="">无</option>
-                  ${images.map((item) => html`<option value=${item.id} ?selected=${item.id === draft.avatarMediaId}>${item.original_name}</option>`)}
-                </select>
-              </label>
+              <div class="picker-actions">
+                <button class="btn secondary small" type="button" @click=${() => (this.pickerTarget = 'avatar')}>
+                  ${mediaPickerLabel.selectFromLibrary}
+                </button>
+                ${draft.avatarMediaId
+                  ? html`<button class="btn secondary small" type="button" @click=${() => this.setField('avatarMediaId', null)}>
+                      ${mediaPickerLabel.clear}
+                    </button>`
+                  : nothing}
+              </div>
               <label class="field">
                 <span>头像外链 URL</span>
                 <input
@@ -370,7 +448,6 @@ export class AdmSettings extends AdmView {
     const current = draft.mastheadMediaId
       ? this.store.media.find((item) => item.id === draft.mastheadMediaId)
       : null;
-    const images = this.store.media.filter((item) => item.media_type.startsWith('image/'));
     return html`
       <section class="panel">
         <h2 class="panel-title">刊头背景</h2>
@@ -379,29 +456,16 @@ export class AdmSettings extends AdmView {
             ${current ? html`<img src=${current.url} alt="刊头背景预览" />` : html`未设置`}
           </div>
           <div class="avatar-side">
-            <adm-upload
-              accept="image/*"
-              compact
-              text=${mediaPickerLabel.upload}
-              @adm-upload=${(e: CustomEvent<{ media: { id: string } }>) => this.setField('mastheadMediaId', e.detail.media.id)}
-            ></adm-upload>
-            <label class="field">
-              <span>${mediaPickerLabel.selectFromLibrary}</span>
-              <select
-                .value=${draft.mastheadMediaId ?? ''}
-                @change=${(e: Event) => this.setField('mastheadMediaId', (e.currentTarget as HTMLSelectElement).value || null)}
-              >
-                <option value="">${mediaPickerLabel.none}</option>
-                ${images.map((item) => html`<option value=${item.id} ?selected=${item.id === draft.mastheadMediaId}>${item.original_name}</option>`)}
-              </select>
-            </label>
-            ${draft.mastheadMediaId
-              ? html`<div>
-                  <button class="btn secondary small" type="button" @click=${() => this.setField('mastheadMediaId', null)}>
+            <div class="picker-actions">
+              <button class="btn secondary small" type="button" @click=${() => (this.pickerTarget = 'masthead')}>
+                ${mediaPickerLabel.selectFromLibrary}
+              </button>
+              ${draft.mastheadMediaId
+                ? html`<button class="btn secondary small" type="button" @click=${() => this.setField('mastheadMediaId', null)}>
                     ${mediaPickerLabel.clear}
-                  </button>
-                </div>`
-              : nothing}
+                  </button>`
+                : nothing}
+            </div>
           </div>
         </div>
         <p class="note">全站文章 / 动态 / 友链 / 搜索页刊头的背景图。</p>
@@ -418,73 +482,115 @@ export class AdmSettings extends AdmView {
     return null;
   }
 
-  private homeHero(): LayoutNode | null {
-    const record = this.store.layouts.find((item) => item.pageKey === 'home');
-    return record ? this.findNode(record.layout.root, (node) => node.type === 'hero') : null;
-  }
-
-  /** 首屏背景走布局通道：改写当前首页布局 hero 节点的 backgroundMediaId 并即时保存。 */
-  private async setHeroBackground(mediaId: string | null) {
+  /** 旧版单图背景（布局 hero 节点 backgroundMediaId），仅用于迁移提示。 */
+  private legacyHeroBackground(): string | null {
     const record = this.store.layouts.find((item) => item.pageKey === 'home');
     const hero = record ? this.findNode(record.layout.root, (node) => node.type === 'hero') : null;
-    if (!record || !hero) return;
-    const layout = structuredClone(record.layout);
-    const target = this.findNode(layout.root, (node) => node.id === hero.id);
-    if (!target) return;
-    if (mediaId) target.props.backgroundMediaId = mediaId;
-    else delete target.props.backgroundMediaId;
-    await this.store.saveHomeLayout(layout);
+    const value = hero?.props.backgroundMediaId;
+    return typeof value === 'string' ? value : null;
   }
 
-  private renderHeroBackground() {
-    const hero = this.homeHero();
-    if (!hero) {
-      return html`
-        <section class="panel">
-          <h2 class="panel-title">${heroBackgroundLabel.title}</h2>
-          <p class="note">
-            ${heroBackgroundLabel.missing}<a href="#/studio">${heroBackgroundLabel.missingLink}</a>${heroBackgroundLabel.missingTail}
-          </p>
-        </section>
-      `;
+  private pickerSelectedId(): string | null {
+    if (this.pickerTarget === 'avatar') return this.draft?.avatarMediaId ?? null;
+    if (this.pickerTarget === 'masthead') return this.draft?.mastheadMediaId ?? null;
+    return null;
+  }
+
+  private onPickerPick(event: CustomEvent<{ media: { id: string }; mediaList: Array<{ id: string }> }>) {
+    const target = this.pickerTarget;
+    this.pickerTarget = null;
+    if (target === 'avatar') this.setField('avatarMediaId', event.detail.media.id);
+    else if (target === 'masthead') this.setField('mastheadMediaId', event.detail.media.id);
+    else if (target === 'hero') this.addHeroImages(event.detail.mediaList.map((item) => item.id));
+  }
+
+  private addHeroImages(mediaIds: string[]) {
+    if (!this.draft) return;
+    const ids = [...(this.draft.heroBackgroundMediaIds ?? [])];
+    for (const id of mediaIds) {
+      if (ids.length >= HERO_BACKGROUND_MAX) break;
+      if (!ids.includes(id)) ids.push(id);
     }
-    const mediaId = typeof hero.props.backgroundMediaId === 'string' ? hero.props.backgroundMediaId : null;
-    const current = mediaId ? this.store.media.find((item) => item.id === mediaId) : null;
-    const images = this.store.media.filter((item) => item.media_type.startsWith('image/'));
+    if (mediaIds.length && ids.length >= HERO_BACKGROUND_MAX) {
+      this.store.toast(`首屏背景最多 ${HERO_BACKGROUND_MAX} 张`, 'info');
+    }
+    this.setField('heroBackgroundMediaIds', ids);
+  }
+
+  private moveHeroImage(index: number, direction: -1 | 1) {
+    if (!this.draft) return;
+    const ids = [...(this.draft.heroBackgroundMediaIds ?? [])];
+    const target = index + direction;
+    if (target < 0 || target >= ids.length) return;
+    [ids[index], ids[target]] = [ids[target], ids[index]];
+    this.setField('heroBackgroundMediaIds', ids);
+  }
+
+  private removeHeroImage(index: number) {
+    if (!this.draft) return;
+    this.setField(
+      'heroBackgroundMediaIds',
+      (this.draft.heroBackgroundMediaIds ?? []).filter((_, i) => i !== index),
+    );
+  }
+
+  private renderHeroBackground(draft: SiteSettings) {
+    const ids = draft.heroBackgroundMediaIds ?? [];
+    const legacy = this.legacyHeroBackground();
     return html`
       <section class="panel">
-        <h2 class="panel-title">${heroBackgroundLabel.title}</h2>
-        <div class="masthead-row">
-          <div class="masthead-preview">
-            ${current ? html`<img src=${current.url} alt="首屏背景预览" />` : html`${heroBackgroundLabel.unset}`}
-          </div>
-          <div class="avatar-side">
-            <adm-upload
-              accept="image/*"
-              compact
-              text=${mediaPickerLabel.upload}
-              @adm-upload=${(e: CustomEvent<{ media: { id: string } }>) => void this.setHeroBackground(e.detail.media.id)}
-            ></adm-upload>
-            <label class="field">
-              <span>${mediaPickerLabel.selectFromLibrary}</span>
-              <select
-                .value=${mediaId ?? ''}
-                @change=${(e: Event) => void this.setHeroBackground((e.currentTarget as HTMLSelectElement).value || null)}
-              >
-                <option value="">${mediaPickerLabel.none}</option>
-                ${images.map((item) => html`<option value=${item.id} ?selected=${item.id === mediaId}>${item.original_name}</option>`)}
-              </select>
-            </label>
-            ${mediaId
-              ? html`<div>
-                  <button class="btn secondary small" type="button" ?disabled=${this.store.busy} @click=${() => void this.setHeroBackground(null)}>
-                    ${mediaPickerLabel.clear}
-                  </button>
-                </div>`
-              : nothing}
-          </div>
+        <h2 class="panel-title">
+          ${heroBackgroundLabel.title}
+          <span class="faint count">${ids.length}/${HERO_BACKGROUND_MAX}</span>
+        </h2>
+        ${ids.length
+          ? html`<div class="hero-list">
+              ${ids.map((id, index) => {
+                const media = this.store.media.find((item) => item.id === id);
+                return html`
+                  <div class="hero-item">
+                    ${media
+                      ? html`<img src=${media.url} alt=${media.original_name} loading="lazy" />`
+                      : html`<span class="hero-missing">已删除</span>`}
+                    <div class="hero-ops">
+                      <button type="button" aria-label="上移" title="上移" ?disabled=${index === 0} @click=${() => this.moveHeroImage(index, -1)}>↑</button>
+                      <button type="button" aria-label="下移" title="下移" ?disabled=${index === ids.length - 1} @click=${() => this.moveHeroImage(index, 1)}>↓</button>
+                      <button type="button" aria-label="移除" title="移除" @click=${() => this.removeHeroImage(index)}>×</button>
+                    </div>
+                  </div>
+                `;
+              })}
+            </div>`
+          : html`<p class="note" style="margin-top: 0">${heroBackgroundLabel.unset}</p>`}
+        <div class="picker-actions" style="margin-top: 12px">
+          <button
+            class="btn secondary small"
+            type="button"
+            ?disabled=${ids.length >= HERO_BACKGROUND_MAX}
+            @click=${() => (this.pickerTarget = 'hero')}
+          >
+            ${heroBackgroundLabel.addImages}
+          </button>
+          ${ids.length
+            ? html`<button class="btn secondary small" type="button" @click=${() => this.setField('heroBackgroundMediaIds', [])}>
+                ${heroBackgroundLabel.clearAll}
+              </button>`
+            : nothing}
         </div>
+        ${!ids.length && legacy ? html`<p class="note">${heroBackgroundLabel.migration}</p>` : nothing}
         <p class="note">${heroBackgroundLabel.note}</p>
+        <label class="field" style="margin-top: 12px">
+          <span>${heroBackgroundLabel.quoteLabel}</span>
+          <span class="quote-row">
+            <input
+              maxlength="120"
+              placeholder=${heroBackgroundLabel.quotePlaceholder}
+              .value=${draft.heroQuote ?? ''}
+              @input=${(e: InputEvent) => this.setField('heroQuote', (e.currentTarget as HTMLInputElement).value || null)}
+            />
+            <span class="faint count">${(draft.heroQuote ?? '').length}/120</span>
+          </span>
+        </label>
       </section>
     `;
   }
@@ -704,7 +810,7 @@ export class AdmSettings extends AdmView {
     return html`
       ${this.renderInfo(draft)}
       ${this.renderMasthead(draft)}
-      ${this.renderHeroBackground()}
+      ${this.renderHeroBackground(draft)}
       ${this.renderLinks(draft)}
       ${this.renderTheme(draft)}
       ${this.renderLayout(draft)}
@@ -712,6 +818,13 @@ export class AdmSettings extends AdmView {
         <span class="faint">改动在保存后生效</span>
         <button class="btn primary" type="button" ?disabled=${this.store.busy} @click=${this.save}>保存站点设置</button>
       </div>
+      <adm-media-picker
+        ?open=${this.pickerTarget !== null}
+        ?multiple=${this.pickerTarget === 'hero'}
+        .selectedId=${this.pickerSelectedId()}
+        @adm-pick=${this.onPickerPick}
+        @adm-close=${() => (this.pickerTarget = null)}
+      ></adm-media-picker>
     `;
   }
 }

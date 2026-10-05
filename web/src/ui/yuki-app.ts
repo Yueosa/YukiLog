@@ -27,6 +27,7 @@ import type {
 import * as api from './api.js';
 import { paletteFor } from './cover.js';
 import './cover.js';
+import { buildCommentTree, type CommentNode } from './comment-tree.js';
 import { loadCommenter, saveCommenter, type Commenter } from './commenter.js';
 import {
   excerpt,
@@ -159,6 +160,8 @@ interface SiteView extends PublicSiteData {
   mastheadUrl: string;
   /** null = 站点信息还没加载完成 */
   mailEnabled: boolean | null;
+  heroBackgrounds: string[];
+  heroQuote: string | null;
 }
 
 const emptySiteView: SiteView = {
@@ -170,6 +173,8 @@ const emptySiteView: SiteView = {
   mastheadUrl: '',
   socialLinks: [],
   mailEnabled: null,
+  heroBackgrounds: [],
+  heroQuote: null,
 };
 
 function toSiteView(site: api.PublicSite): SiteView {
@@ -182,6 +187,8 @@ function toSiteView(site: api.PublicSite): SiteView {
     mastheadUrl: site.mastheadUrl ?? '',
     socialLinks: site.socialLinks ?? [],
     mailEnabled: site.mailEnabled === true,
+    heroBackgrounds: Array.isArray(site.heroBackgrounds) ? site.heroBackgrounds : [],
+    heroQuote: typeof site.heroQuote === 'string' && site.heroQuote.trim() ? site.heroQuote : null,
   };
 }
 
@@ -269,6 +276,18 @@ export class YukiApp extends LitElement {
   private readonly scrollPositions = new Map<string, number>();
   private pendingScrollRestore: number | null = null;
   private hashHandled = '';
+  private heroBgIndex = 0;
+  private heroBgSeeded = false;
+  private heroBgTimer: number | null = null;
+  private splashActive = false;
+  private splashDone = false;
+  private splashStarted = false;
+  private splashTimers: number[] = [];
+  private labVisible = false;
+  private lightboxImages: string[] = [];
+  private lightboxIndex = 0;
+  private commentReplyTo: { id: string; name: string } | null = null;
+  private readonly momentReplyTo = new Map<string, { id: string; name: string }>();
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private revealObserver: IntersectionObserver | null = null;
 
@@ -315,6 +334,221 @@ export class YukiApp extends LitElement {
     this.requestUpdate();
   };
 
+  /** 布局工作室浮窗只给 ?preview=1 或持管理会话的访客；会话接口失败就当公开访客。 */
+  private async checkLabAccess() {
+    if (window.location.pathname.startsWith('/admin')) {
+      // 管理后台内嵌实例（工作室画布）不需要再验证
+      this.labVisible = true;
+      this.requestUpdate();
+      return;
+    }
+    try {
+      const response = await fetch('/api/admin/auth/session', { credentials: 'same-origin' });
+      this.labVisible = response.ok;
+    } catch {
+      this.labVisible = false;
+    }
+    this.requestUpdate();
+  }
+
+  /* ---------- 开屏动画（yukikoi 语义：每次冷进入播放，CSS 定时，JS 兜底） ---------- */
+
+  private startSplash() {
+    if (this.splashStarted) return;
+    this.splashStarted = true;
+    if (this.reducedMotion || window.location.pathname.startsWith('/admin')) return;
+    this.splashActive = true;
+    // 首帧前就把 is-intro 挂上，避免首屏入场动画抢跑
+    this.classList.add('is-intro');
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', this.handleSplashSkip, { once: true });
+    void this.updateComplete.then(() => this.armSplashTimers());
+  }
+
+  private splashPrelude(): HTMLElement | null {
+    return this.renderRoot.querySelector<HTMLElement>('.prelude');
+  }
+
+  private splashExitAnimation(prelude: HTMLElement): Animation | undefined {
+    return (prelude.getAnimations?.() ?? []).find((animation) =>
+      (animation as CSSAnimation).animationName?.startsWith('prelude-exit'),
+    );
+  }
+
+  private armSplashTimers() {
+    if (this.splashDone) return;
+    const prelude = this.splashPrelude();
+    if (!prelude) {
+      this.leaveSplash();
+      return;
+    }
+    prelude.addEventListener('click', this.handleSplashSkip);
+    // 兜底：CSS 不可用时 6s 强制进场
+    this.splashTimers.push(window.setTimeout(() => this.leaveSplash(), 6000));
+    const exit = this.splashExitAnimation(prelude);
+    exit?.ready.then(
+      () => {
+        if (this.splashDone) return;
+        const delay = Number(exit.effect?.getComputedTiming().delay ?? 0);
+        const current = Number(exit.currentTime ?? 0);
+        this.splashTimers.forEach((timer) => window.clearTimeout(timer));
+        this.splashTimers = [
+          window.setTimeout(() => this.leaveSplash(), Math.max(0, delay - current)),
+        ];
+      },
+      () => undefined,
+    );
+  }
+
+  private readonly handleSplashSkip = () => {
+    if (this.splashDone) return;
+    this.splashPrelude()?.classList.add('is-skipped');
+    this.leaveSplash();
+  };
+
+  private leaveSplash() {
+    if (this.splashDone) return;
+    this.splashDone = true;
+    this.splashTimers.forEach((timer) => window.clearTimeout(timer));
+    this.splashTimers = [];
+    window.removeEventListener('keydown', this.handleSplashSkip);
+    document.body.style.overflow = '';
+    const prelude = this.splashPrelude();
+    prelude?.classList.add('is-leaving');
+    // is-intro 解除 → 首屏入场动画开始（CSS），退场动画结束后移除开屏层
+    this.requestUpdate();
+    const exit = prelude ? this.splashExitAnimation(prelude) : undefined;
+    const done = () => {
+      this.splashActive = false;
+      this.requestUpdate();
+    };
+    if (exit) exit.finished.then(done, done);
+    else done();
+  }
+
+  private renderSplash() {
+    if (!this.splashActive) return nothing;
+    return html`
+      <div class="prelude" aria-hidden="true">
+        <div class="prelude-bloom"></div>
+        <div class="prelude-stage">
+          <p class="prelude-kicker">YukiLog — Night Flight</p>
+          <strong class="prelude-title">${this.siteData.siteTitle || 'YukiLog'}</strong>
+          <span class="prelude-flake">❄</span>
+        </div>
+        <div class="prelude-trace">
+          <svg viewBox="0 0 1200 60" preserveAspectRatio="none" focusable="false">
+            <path class="prelude-track" d="M0 30H1200" />
+            <path class="prelude-line" pathLength="1" d="M0 30H1200" />
+          </svg>
+        </div>
+        <span class="prelude-hint">点击或按任意键跳过</span>
+      </div>
+    `;
+  }
+
+  /* ---------- 灯箱 ---------- */
+
+  private openLightbox(images: string[], index: number) {
+    const valid = images.filter((url) => typeof url === 'string' && url !== '');
+    if (valid.length === 0) return;
+    this.lightboxImages = valid;
+    this.lightboxIndex = Math.min(Math.max(0, index), valid.length - 1);
+    document.body.style.overflow = 'hidden';
+    this.requestUpdate();
+  }
+
+  private closeLightbox() {
+    if (this.lightboxImages.length === 0) return;
+    this.lightboxImages = [];
+    document.body.style.overflow = '';
+    this.requestUpdate();
+  }
+
+  private stepLightbox(direction: -1 | 1) {
+    const count = this.lightboxImages.length;
+    if (count === 0) return;
+    this.lightboxIndex = (this.lightboxIndex + direction + count) % count;
+    this.requestUpdate();
+  }
+
+  private readonly handleLightboxKeydown = (event: KeyboardEvent) => {
+    if (this.lightboxImages.length === 0) return;
+    if (event.key === 'Escape') this.closeLightbox();
+    else if (event.key === 'ArrowLeft') this.stepLightbox(-1);
+    else if (event.key === 'ArrowRight') this.stepLightbox(1);
+  };
+
+  // 正文图片点击进灯箱：以全文所有图片为一组，支持左右切换。
+  private readonly handleProseClick = (event: Event) => {
+    const image = event
+      .composedPath()
+      .find((node): node is HTMLImageElement => node instanceof HTMLImageElement);
+    if (!image) return;
+    const prose = this.renderRoot.querySelector('.prose');
+    const images = prose
+      ? [...prose.querySelectorAll('img')]
+          .map((item) => item.currentSrc || item.src)
+          .filter((url) => url !== '')
+      : [];
+    const current = image.currentSrc || image.src;
+    const index = Math.max(0, images.indexOf(current));
+    this.openLightbox(images.length > 0 ? images : [current], index);
+  };
+
+  private renderLightbox() {
+    if (this.lightboxImages.length === 0) return nothing;
+    const count = this.lightboxImages.length;
+    const current = this.lightboxImages[this.lightboxIndex];
+    return html`
+      <div
+        class="lightbox"
+        role="dialog"
+        aria-modal="true"
+        aria-label="查看图片"
+        @click=${() => this.closeLightbox()}
+      >
+        <button class="lightbox-close" type="button" aria-label="关闭">×</button>
+        ${count > 1
+          ? html`<button
+                class="lightbox-nav prev"
+                type="button"
+                aria-label="上一张"
+                @click=${(event: Event) => {
+                  event.stopPropagation();
+                  this.stepLightbox(-1);
+                }}
+              >
+                ‹
+              </button>
+              <button
+                class="lightbox-nav next"
+                type="button"
+                aria-label="下一张"
+                @click=${(event: Event) => {
+                  event.stopPropagation();
+                  this.stepLightbox(1);
+                }}
+              >
+                ›
+              </button>`
+          : nothing}
+        ${keyed(
+          this.lightboxIndex,
+          html`<img
+            class="lightbox-image"
+            src=${current}
+            alt="查看原图"
+            @click=${(event: Event) => event.stopPropagation()}
+          />`,
+        )}
+        ${count > 1
+          ? html`<span class="lightbox-counter">${this.lightboxIndex + 1} / ${count}</span>`
+          : nothing}
+      </div>
+    `;
+  }
+
   /** 按当前地址同步数据：仅在公开运行时（非工作室、非预览）拉取。 */
   private syncRouteData() {
     if (this.previewOnly || this.studio) return;
@@ -346,6 +580,7 @@ export class YukiApp extends LitElement {
       if (slug) this.store.loadArticle(slug);
       this.commentFormOpen = false;
       this.commentError = '';
+      this.commentReplyTo = null;
       this.setTitle('文章');
       return;
     }
@@ -479,6 +714,7 @@ export class YukiApp extends LitElement {
     this.addEventListener('click', this.handleSiteClick);
     this.addEventListener('submit', this.handleSiteSubmit);
     window.addEventListener('keydown', this.handleStudioKeydown);
+    window.addEventListener('keydown', this.handleLightboxKeydown);
     window.addEventListener('message', this.handlePreviewMessage);
     if (!this.previewOnly) {
       // 滚动恢复由 SPA 自己管理，浏览器原生恢复会让列表页跳动。
@@ -487,6 +723,8 @@ export class YukiApp extends LitElement {
         this.syncDocumentTitle();
         this.requestUpdate();
       });
+      void this.checkLabAccess();
+      this.startSplash();
     }
     this.handleViewportScroll();
     this.syncRouteData();
@@ -498,6 +736,7 @@ export class YukiApp extends LitElement {
     this.removeEventListener('click', this.handleSiteClick);
     this.removeEventListener('submit', this.handleSiteSubmit);
     window.removeEventListener('keydown', this.handleStudioKeydown);
+    window.removeEventListener('keydown', this.handleLightboxKeydown);
     window.removeEventListener('message', this.handlePreviewMessage);
     this.revealObserver?.disconnect();
     this.revealObserver = null;
@@ -505,6 +744,13 @@ export class YukiApp extends LitElement {
     this.momentObserver = null;
     this.unsubscribeStore?.();
     this.unsubscribeStore = null;
+    if (this.heroBgTimer !== null) {
+      window.clearInterval(this.heroBgTimer);
+      this.heroBgTimer = null;
+    }
+    this.splashTimers.forEach((timer) => window.clearTimeout(timer));
+    this.splashTimers = [];
+    window.removeEventListener('keydown', this.handleSplashSkip);
     document.body.style.overflow = '';
     super.disconnectedCallback();
   }
@@ -602,10 +848,12 @@ export class YukiApp extends LitElement {
         email: email || null,
         website: website || null,
         content,
+        parent_id: this.momentReplyTo.get(id)?.id ?? null,
       });
       this.commenter = { display_name: displayName, email, website };
       saveCommenter(this.commenter);
       this.momentReplySent.add(id);
+      this.momentReplyTo.delete(id);
     } catch (error) {
       this.momentReplyError.set(id, api.errorMessage(error));
     } finally {
@@ -637,11 +885,13 @@ export class YukiApp extends LitElement {
         email: email || null,
         website: website || null,
         content,
+        parent_id: this.commentReplyTo?.id ?? null,
       });
       this.commenter = { display_name: displayName, email, website };
       saveCommenter(this.commenter);
       this.commentSentFor = detail.slug;
       this.commentFormOpen = false;
+      this.commentReplyTo = null;
     } catch (error) {
       this.commentError = api.errorMessage(error);
     } finally {
@@ -704,7 +954,9 @@ export class YukiApp extends LitElement {
               this.revealObserver?.unobserve(element);
             });
         },
-        { threshold: 0.1, rootMargin: '0px 0px -5% 0px' },
+        // threshold 必须是 0：长文正文（.prose 可达上万 px）永远到不了 0.1 的
+        // 可见比例，会一直停在 opacity:0（生产上长文渲染不出来的根因）。
+        { threshold: 0, rootMargin: '0px 0px -5% 0px' },
       );
     }
     this.renderRoot
@@ -717,6 +969,8 @@ export class YukiApp extends LitElement {
     this.observeReveals();
     this.scanToc();
     this.observeMomentExtras();
+    this.maybeSeedHeroBackgrounds();
+    this.classList.toggle('is-intro', this.splashActive && !this.splashDone);
     if (this.pendingScrollRestore !== null) {
       const y = this.pendingScrollRestore;
       this.pendingScrollRestore = null;
@@ -749,7 +1003,8 @@ export class YukiApp extends LitElement {
     this.tocObserver?.disconnect();
     this.tocObserver = null;
     const items = (detail?.headings ?? [])
-      .filter((heading) => heading.level === 2 || heading.level === 3)
+      // 与 SSR 一致：目录收录 h1–h3（SSR 模板直接渲染 rendered.headings 全量）
+      .filter((heading) => heading.level >= 1 && heading.level <= 3)
       .map((heading) => ({ id: heading.id, text: heading.text, level: heading.level }));
     this.tocItems = items;
     this.tocActive = items[0]?.id ?? '';
@@ -872,22 +1127,25 @@ export class YukiApp extends LitElement {
           <div class="moment-text">${unsafeHTML(item.contentHtml)}</div>
           ${images.length === 1
             ? html`<yuki-cover
-                class="m-media"
+                class="m-media zoomable"
                 src=${images[0]}
                 alt="动态配图"
                 seed=${item.id}
                 adaptive
                 max-height="62vh"
+                @click=${() => this.openLightbox(images, 0)}
               ></yuki-cover>`
             : images.length > 1
               ? html`<div class="m-grid count-${images.length}">
                   ${images.map(
                     (url, imageIndex) => html`<yuki-cover
+                      class="zoomable"
                       src=${url}
                       alt="动态配图 ${imageIndex + 1}"
                       seed=${`${item.id}-${imageIndex}`}
                       ratio="1 / 1"
                       fit="cover"
+                      @click=${() => this.openLightbox(images, imageIndex)}
                     ></yuki-cover>`,
                   )}
                 </div>`
@@ -932,7 +1190,9 @@ export class YukiApp extends LitElement {
                   >
                 </p>`
               : nothing}
-            ${comments.map((comment) => this.renderMomentComment(comment))}
+            ${buildCommentTree(comments).map((node) =>
+              this.renderMomentCommentNode(node, item.id),
+            )}
             ${this.momentReplySent.has(item.id)
               ? html`<p class="m-reply-sent">评论已寄出，审核通过后会显示在这里。</p>`
               : html`
@@ -940,6 +1200,21 @@ export class YukiApp extends LitElement {
                     class="m-reply"
                     @submit=${(event: SubmitEvent) => void this.submitMomentReply(event, item.id)}
                   >
+                    ${this.momentReplyTo.has(item.id)
+                      ? html`<div class="reply-banner">
+                          <span>正在回复 @${this.momentReplyTo.get(item.id)!.name}</span>
+                          <button
+                            type="button"
+                            aria-label="取消回复"
+                            @click=${() => {
+                              this.momentReplyTo.delete(item.id);
+                              this.requestUpdate();
+                            }}
+                          >
+                            取消
+                          </button>
+                        </div>`
+                      : nothing}
                     <input
                       name="content"
                       type="text"
@@ -994,6 +1269,17 @@ export class YukiApp extends LitElement {
                             ${this.momentReplyError.get(item.id) ??
                             '评论会在审核后显示；昵称和邮箱会公开展示。'}
                           </p>
+                          <button
+                            class="m-reply-collapse"
+                            type="button"
+                            @click=${() => {
+                              this.momentReplyOpen.delete(item.id);
+                              this.momentReplyTo.delete(item.id);
+                              this.requestUpdate();
+                            }}
+                          >
+                            收起评论框
+                          </button>
                         `
                       : nothing}
                   </form>
@@ -1004,7 +1290,18 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private renderMomentComment(comment: api.PublicComment): TemplateResult {
+  private startMomentReply(dynamicId: string, comment: api.PublicComment) {
+    this.momentReplyTo.set(dynamicId, { id: comment.id, name: comment.displayName });
+    this.momentReplyOpen.add(dynamicId);
+    this.requestUpdate();
+    void this.updateComplete.then(() => {
+      const form = this.renderRoot.querySelector<HTMLElement>(`.moment[data-dyn="${CSS.escape(dynamicId)}"]`);
+      form?.querySelector<HTMLInputElement>('input[name="content"]')?.focus();
+    });
+  }
+
+  private renderMomentCommentNode(node: CommentNode, dynamicId: string): TemplateResult {
+    const comment = node.comment;
     const host = comment.website
       ? comment.website.replace(/^https?:\/\//, '').split('/')[0]
       : '';
@@ -1023,9 +1320,26 @@ export class YukiApp extends LitElement {
                   >${comment.displayName}</a
                 >`
               : html`<span class="comment-name">${comment.displayName}</span>`}
+            ${node.replyToName
+              ? html`<span class="comment-reply-tag">回复 @${node.replyToName}</span>`
+              : nothing}
             <time title=${formatDateTime(comment.createdAt)}>${relTime(comment.createdAt)}</time>
+            ${comment.id
+              ? html`<button
+                  class="comment-reply-btn"
+                  type="button"
+                  @click=${() => this.startMomentReply(dynamicId, comment)}
+                >
+                  回复
+                </button>`
+              : nothing}
           </div>
           <div class="m-comment-content">${unsafeHTML(comment.contentHtml)}</div>
+          ${node.children.length > 0
+            ? html`<div class="m-children">
+                ${node.children.map((child) => this.renderMomentCommentNode(child, dynamicId))}
+              </div>`
+            : nothing}
         </div>
       </div>
     `;
@@ -2485,6 +2799,7 @@ export class YukiApp extends LitElement {
 
     .prose img {
       border-radius: 14px;
+      cursor: zoom-in;
     }
 
     /* 文末 */
@@ -2513,6 +2828,10 @@ export class YukiApp extends LitElement {
       flex-wrap: wrap;
       gap: 16px;
       margin-top: 36px;
+    }
+
+    .post-foot > :only-child {
+      margin-left: auto;
     }
 
     .post-tags {
@@ -3508,7 +3827,7 @@ export class YukiApp extends LitElement {
     .hero {
       position: relative;
       display: grid;
-      min-height: 100vh;
+      min-height: 100dvh;
       place-items: center;
       overflow: hidden;
       isolation: isolate;
@@ -3726,7 +4045,7 @@ export class YukiApp extends LitElement {
       margin-bottom: 44px;
     }
 
-    /* 刊头背景（如旧版的 gif 标题背景）：盖一层页面色保证文字可读 */
+    /* 刊头背景（如旧版的 gif 标题背景）：压一层页面色保证文字可读 */
     .masthead.has-bg {
       position: relative;
       overflow: hidden;
@@ -3740,11 +4059,23 @@ export class YukiApp extends LitElement {
       content: '';
       position: absolute;
       inset: 0;
-      background: color-mix(in srgb, var(--page) 82%, transparent);
+      background: color-mix(in srgb, var(--page) 58%, transparent);
+    }
+
+    .masthead.has-bg::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(
+        180deg,
+        transparent 56%,
+        color-mix(in srgb, var(--page) 88%, transparent)
+      );
     }
 
     .masthead.has-bg > * {
       position: relative;
+      z-index: 1;
     }
 
     .masthead-minimal.has-bg {
@@ -5240,13 +5571,343 @@ export class YukiApp extends LitElement {
       cursor: wait;
     }
 
-    /* ---------- 首屏一言 ---------- */
-    .quote-from {
-      margin-top: -8px;
-      color: rgb(255 255 255 / 55%);
+    /* ---------- 首屏背景轮播 ---------- */
+    .hero-bg-stack {
+      /* 几何沿用 .hero-background（top:-32%; height:132% 视差超幅），仅作图层容器 */
+    }
+
+    .hero-bg-layer {
+      position: absolute;
+      inset: 0;
+      background-position: center;
+      background-size: cover;
+      background-repeat: no-repeat;
+      opacity: 0;
+      transition: opacity 1400ms ease;
+    }
+
+    .hero-bg-layer.active {
+      opacity: 1;
+    }
+
+    /* ---------- 开屏动画（冷进入播放；is-intro 期间首屏入场待命） ---------- */
+    .hero-info,
+    .enter-button {
+      transition:
+        opacity 800ms cubic-bezier(0.22, 0.61, 0.36, 1),
+        translate 800ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+
+    .hero-info {
+      transition-delay: 150ms;
+    }
+
+    .enter-button {
+      transition-delay: 350ms;
+    }
+
+    :host(.is-intro) .hero-character {
+      animation-play-state: paused;
+    }
+
+    :host(.is-intro) .hero-info,
+    :host(.is-intro) .enter-button {
+      opacity: 0;
+    }
+
+    :host(.is-intro) .hero-info {
+      translate: 0 22px;
+    }
+
+    :host(.is-intro) .enter-button {
+      translate: -50% 22px;
+    }
+
+    .prelude {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: grid;
+      grid-template-rows: 1fr auto;
+      overflow: hidden;
+      background: var(--page);
+      animation: prelude-exit 0.9s cubic-bezier(0.22, 0.7, 0.2, 1) 2.3s forwards;
+    }
+
+    .prelude.is-skipped {
+      animation-name: prelude-exit-now;
+      animation-delay: 0s;
+    }
+
+    .prelude.is-leaving {
+      pointer-events: none;
+    }
+
+    .prelude-bloom {
+      position: absolute;
+      top: 46%;
+      left: 50%;
+      width: min(60vw, 560px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(
+        circle,
+        color-mix(in srgb, var(--secondary) 18%, transparent),
+        color-mix(in srgb, var(--primary) 7%, transparent) 46%,
+        transparent 72%
+      );
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.8);
+      animation: prelude-bloom 1.9s ease-out 1.15s;
+    }
+
+    .prelude-stage {
+      position: relative;
+      display: grid;
+      place-content: center;
+      justify-items: center;
+      gap: 18px;
+      padding: 6vw;
+      text-align: center;
+    }
+
+    .prelude-kicker {
+      margin: 0;
+      color: var(--secondary-d);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.42em;
+      text-transform: uppercase;
+      animation: prelude-arrive 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    .prelude-title {
+      color: var(--ink);
       font-family: var(--serif);
-      font-size: 12.5px;
-      letter-spacing: 0.1em;
+      font-size: clamp(48px, 10vw, 104px);
+      font-weight: 700;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      animation: prelude-arrive 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.12s both;
+    }
+
+    .prelude-flake {
+      color: var(--primary-d);
+      font-size: 22px;
+      line-height: 1;
+      opacity: 0;
+      transform: scale(0.4);
+      animation: prelude-flake 0.7s cubic-bezier(0.18, 0.82, 0.22, 1) 1.15s forwards;
+    }
+
+    .prelude-trace {
+      position: relative;
+      height: 80px;
+      margin: 0 8vw 9vh;
+    }
+
+    .prelude-trace svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .prelude-track {
+      fill: none;
+      stroke: var(--ink);
+      stroke-width: 1;
+      opacity: 0.08;
+    }
+
+    .prelude-line {
+      fill: none;
+      stroke: var(--primary-d);
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      opacity: 0.6;
+      animation: prelude-trace 1.5s cubic-bezier(0.3, 0.05, 0.25, 1) 0.2s forwards;
+    }
+
+    .prelude-hint {
+      position: absolute;
+      right: 24px;
+      bottom: 16px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.2em;
+    }
+
+    @keyframes prelude-exit {
+      to {
+        opacity: 0;
+        filter: blur(3px);
+        transform: scale(1.015);
+        visibility: hidden;
+      }
+    }
+
+    @keyframes prelude-exit-now {
+      to {
+        opacity: 0;
+        filter: blur(3px);
+        transform: scale(1.015);
+        visibility: hidden;
+      }
+    }
+
+    @keyframes prelude-arrive {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+    }
+
+    @keyframes prelude-bloom {
+      0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+      }
+      22% {
+        opacity: 0.85;
+        transform: translate(-50%, -50%) scale(1.02);
+      }
+      58% {
+        opacity: 0.3;
+        transform: translate(-50%, -50%) scale(1.1);
+      }
+      100% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(1.22);
+      }
+    }
+
+    @keyframes prelude-flake {
+      to {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    @keyframes prelude-trace {
+      0% {
+        stroke-dashoffset: 1;
+      }
+      70% {
+        stroke-dashoffset: 0;
+        opacity: 0.6;
+      }
+      100% {
+        stroke-dashoffset: 0;
+        opacity: 0.25;
+      }
+    }
+
+    /* ---------- 灯箱 ---------- */
+    .lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 400;
+      display: grid;
+      place-items: center;
+      background: rgb(6 12 22 / 88%);
+      cursor: zoom-out;
+      backdrop-filter: blur(10px);
+      animation: lightbox-in 220ms ease both;
+    }
+
+    @keyframes lightbox-in {
+      from {
+        opacity: 0;
+      }
+    }
+
+    .lightbox-image {
+      max-width: 92vw;
+      max-height: 88vh;
+      border-radius: 10px;
+      object-fit: contain;
+      box-shadow: 0 30px 90px rgb(0 0 0 / 45%);
+      cursor: default;
+      animation: lightbox-img-in 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+    }
+
+    @keyframes lightbox-img-in {
+      from {
+        opacity: 0;
+        scale: 0.96;
+      }
+    }
+
+    .lightbox-close {
+      position: fixed;
+      top: 22px;
+      right: 26px;
+      display: grid;
+      width: 42px;
+      height: 42px;
+      padding: 0;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: rgb(255 255 255 / 12%);
+      color: #fff;
+      font-size: 22px;
+      line-height: 1;
+      transition: background 200ms ease;
+    }
+
+    .lightbox-close:hover {
+      background: rgb(255 255 255 / 24%);
+    }
+
+    .lightbox-nav {
+      position: fixed;
+      top: 50%;
+      display: grid;
+      width: 46px;
+      height: 46px;
+      padding: 0;
+      place-items: center;
+      translate: 0 -50%;
+      border: 0;
+      border-radius: 50%;
+      background: rgb(255 255 255 / 10%);
+      color: #fff;
+      font-size: 26px;
+      line-height: 1;
+      transition: background 200ms ease;
+    }
+
+    .lightbox-nav:hover {
+      background: rgb(255 255 255 / 22%);
+    }
+
+    .lightbox-nav.prev {
+      left: 18px;
+    }
+
+    .lightbox-nav.next {
+      right: 18px;
+    }
+
+    .lightbox-counter {
+      position: fixed;
+      bottom: 22px;
+      left: 50%;
+      color: rgb(255 255 255 / 72%);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.18em;
+      translate: -50%;
+    }
+
+    yuki-cover.zoomable {
+      cursor: zoom-in;
     }
 
     /* ---------- 动态补充样式 ---------- */
@@ -5273,6 +5934,103 @@ export class YukiApp extends LitElement {
       margin-top: 18px;
     }
 
+    .strip-note {
+      margin: 8px 0 0;
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    .strip-note a {
+      color: var(--primary-d);
+    }
+
+    /* 评论回复 */
+    .comment-reply-tag {
+      color: var(--faint);
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .comment-reply-btn {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--faint);
+      font-size: 12px;
+      cursor: pointer;
+      transition: color 250ms ease;
+    }
+
+    .comment-reply-btn:hover {
+      color: var(--primary-d);
+    }
+
+    .reply-banner {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--primary) 10%, var(--surface));
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    .reply-banner button {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--faint);
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    .reply-banner button:hover {
+      color: var(--ink);
+    }
+
+    .m-reply .reply-banner {
+      flex-basis: 100%;
+      margin-bottom: 0;
+    }
+
+    .m-reply-collapse {
+      order: 5;
+      flex-basis: 100%;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--faint);
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .m-reply-collapse:hover {
+      color: var(--primary-d);
+    }
+
+    /* 搜索结果封面 */
+    .result {
+      display: grid;
+      grid-template-columns: 132px minmax(0, 1fr);
+      gap: 18px;
+      align-items: center;
+    }
+
+    .result-copy:only-child {
+      grid-column: 1 / -1;
+    }
+
+    .result-cover {
+      border-radius: 10px;
+    }
+
+    .post-head .post-tags {
+      margin-top: 18px;
+    }
+
     .results-cap {
       max-width: 760px;
       margin: 40px auto 8px;
@@ -5281,7 +6039,7 @@ export class YukiApp extends LitElement {
       letter-spacing: 0.18em;
     }
 
-    /* 列表页刊头背景：盖一层页面色保证文字可读（与 .masthead.has-bg 同一处理） */
+    /* 列表页刊头背景：轻压一层页面色 + 底部渐变加深，保证文字对比 */
     .page-head.has-bg {
       position: relative;
       overflow: hidden;
@@ -5296,12 +6054,23 @@ export class YukiApp extends LitElement {
       position: absolute;
       inset: 0;
       content: '';
-      background: color-mix(in srgb, var(--page) 82%, transparent);
-      backdrop-filter: blur(6px);
+      background: color-mix(in srgb, var(--page) 58%, transparent);
+    }
+
+    .page-head.has-bg::after {
+      position: absolute;
+      inset: 0;
+      content: '';
+      background: linear-gradient(
+        180deg,
+        transparent 56%,
+        color-mix(in srgb, var(--page) 88%, transparent)
+      );
     }
 
     .page-head.has-bg > * {
       position: relative;
+      z-index: 1;
     }
 
     /* ---------- 响应式 ---------- */
@@ -5441,6 +6210,11 @@ export class YukiApp extends LitElement {
     @media (max-width: 640px) {
       .post-nav {
         grid-template-columns: 1fr;
+      }
+
+      .result {
+        grid-template-columns: 96px minmax(0, 1fr);
+        gap: 14px;
       }
 
       .post-nav-item.older {
@@ -5953,12 +6727,22 @@ export class YukiApp extends LitElement {
       case 'article-feed':
         return this.renderArticleFeed(node, base, click);
       case 'quote':
+        {
+          // 公开运行时语录卡显示一言（失败回退本地句库）；工作室里保持布局字面量。
+          const hitokoto = this.studio || this.previewOnly ? null : this.store.hitokotoQuote();
+          const quoteText = hitokoto ? hitokoto.text : String(node.props.text ?? '');
+          const quoteFrom = hitokoto
+            ? hitokoto.from
+              ? `—— ${hitokoto.from}`
+              : ''
+            : String(node.props.attribution ?? '');
         return html`
           <aside class="${base} quote-card" data-label="引语" data-reveal @click=${click}>
-            ${String(node.props.text ?? '')}
-            <cite>${String(node.props.attribution ?? '')}</cite>
+            ${quoteText}
+            ${quoteFrom ? html`<cite>${quoteFrom}</cite>` : nothing}
           </aside>
         `;
+        }
       case 'stats':
         {
           const fields = new Set((node.props.fields as string[]) ?? []);
@@ -5991,8 +6775,9 @@ export class YukiApp extends LitElement {
         {
           const limit = Number(node.props.limit ?? 3);
           const variant = String(node.props.variant ?? 'compact');
+          const dynSlice = this.previewOnly ? null : this.store.dynamics;
           const stripItems = (
-            this.previewOnly ? previewDynamics : (this.store.dynamics.data?.items ?? [])
+            this.previewOnly ? previewDynamics : (dynSlice?.data?.items ?? [])
           ).slice(0, Math.max(1, limit));
         return html`
             <section
@@ -6010,16 +6795,36 @@ export class YukiApp extends LitElement {
                 最近动态
                 <span class="strip-more" aria-hidden="true">更多 ›</span>
               </a>
-              ${stripItems.length === 0 && !this.previewOnly
+              ${!this.previewOnly &&
+              (dynSlice?.status === 'idle' || dynSlice?.status === 'loading') &&
+              stripItems.length === 0
                 ? html`<div class="skel skel-line" style="width: 78%"></div>
                     <div class="skel skel-line" style="width: 55%"></div>`
-                : stripItems.map(
-                    (item) =>
-                      html`<div class="dynamic-item">
-                        <time>${formatMonthDay(item.createdAt)}</time
-                        ><span>${excerpt(textFromHtml(item.contentHtml), 48)}</span>
-                      </div>`,
-                  )}
+                : nothing}
+              ${!this.previewOnly && dynSlice?.status === 'error'
+                ? html`<p class="strip-note">
+                    动态暂时加载不出来，
+                    <a
+                      href="/dynamics"
+                      @click=${(event: Event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.store.loadDynamics(1, true);
+                      }}
+                      >重试</a
+                    >
+                  </p>`
+                : nothing}
+              ${!this.previewOnly && dynSlice?.status === 'ready' && stripItems.length === 0
+                ? html`<p class="strip-note">还没有动态。</p>`
+                : nothing}
+              ${stripItems.map(
+                (item) =>
+                  html`<div class="dynamic-item">
+                    <time>${formatMonthDay(item.createdAt)}</time
+                    ><span>${excerpt(textFromHtml(item.contentHtml), 48)}</span>
+                  </div>`,
+              )}
           </section>
         `;
         }
@@ -6032,9 +6837,15 @@ export class YukiApp extends LitElement {
     const variant = String(node.props.variant ?? 'cinematic');
     const title = String(node.props.title ?? '');
     const accentChars = new Set(String(node.props.accent ?? ''));
-    const background = this.mediaLibrary.find(
+    const isStudioSurface = this.studio || this.previewOnly;
+    const studioBackground = this.mediaLibrary.find(
       (media) => media.id === String(node.props.backgroundMediaId ?? ''),
     );
+    // 公开运行时首屏背景来自站点设置的 heroBackgrounds 池（冷进入随机抽一张，
+    // 多张时每 8 秒淡切；reduced-motion 只随机不轮播）。工作室仍用媒体库注入图。
+    const heroBackgrounds = isStudioSurface ? [] : this.siteData.heroBackgrounds;
+    const activeBackground = isStudioSurface ? studioBackground : undefined;
+    const hasMedia = isStudioSurface ? Boolean(studioBackground) : heroBackgrounds.length > 0;
     const backgroundPosition = String(node.props.backgroundPosition ?? 'center');
     const overlay = String(node.props.overlay ?? 'medium');
     const socialLinks = [
@@ -6042,14 +6853,14 @@ export class YukiApp extends LitElement {
       { label: 'RSS', url: '/feed.xml' },
     ];
     const socialColors = ['#6e7f8d', '#e3a0ae', '#7eb6d9', '#8fafc4', '#e8a4b4', '#d6a1ae', '#f0a65a'];
-    // 首屏引语：公开运行时显示一言（失败回退本地句库）；工作室里保持布局字面量。
-    const quote = this.studio || this.previewOnly ? null : this.store.hitokotoQuote();
-    const quoteText = quote ? quote.text : String(node.props.lead ?? '');
-    const quoteFrom = quote?.from ?? '';
+    // 首屏语录卡：heroQuote → siteDescription → 布局字面量；工作室保持字面量。
+    const literalLead = String(node.props.lead ?? '');
+    const quoteText = isStudioSurface
+      ? literalLead
+      : (this.siteData.heroQuote ?? this.siteData.siteDescription ?? '') || literalLead;
     const details = html`
       <div class="welcome-quote">
         <span class="quote-text">${quoteText}</span>
-        ${quoteFrom ? html`<span class="quote-from">—— ${quoteFrom}</span>` : nothing}
         ${node.props.showSocials
           ? html`
               <nav class="social-row" aria-label="社交链接">
@@ -6075,24 +6886,42 @@ export class YukiApp extends LitElement {
     `;
     return html`
       <section
-        class="${base} hero hero-${variant} overlay-${overlay}${background ? ' has-media' : ''}"
+        class="${base} hero hero-${variant} overlay-${overlay}${hasMedia ? ' has-media' : ''}"
         data-label="沉浸式首屏"
         data-node-id="${node.id}"
         @click=${click}
       >
-        ${background
-          ? html`
-              <div
-                class="hero-background"
-                role="img"
-                aria-label=${background.name}
-                style=${styleMap({
-                  backgroundImage: `url(${JSON.stringify(background.url)})`,
-                  backgroundPosition,
-                })}
-              ></div>
-            `
-          : nothing}
+        ${isStudioSurface
+          ? activeBackground
+            ? html`
+                <div
+                  class="hero-background"
+                  role="img"
+                  aria-label=${activeBackground.name}
+                  style=${styleMap({
+                    backgroundImage: `url(${JSON.stringify(activeBackground.url)})`,
+                    backgroundPosition,
+                  })}
+                ></div>
+              `
+            : nothing
+          : hasMedia
+            ? html`
+                <div class="hero-background hero-bg-stack" role="img" aria-label="首屏背景">
+                  ${heroBackgrounds.map(
+                    (url, index) => html`
+                      <div
+                        class="hero-bg-layer${index === this.heroBgIndex ? ' active' : ''}"
+                        style=${styleMap({
+                          backgroundImage: `url("${url}")`,
+                          backgroundPosition,
+                        })}
+                      ></div>
+                    `,
+                  )}
+                </div>
+              `
+            : nothing}
         <div class="hero-inner">
           <h1>
             ${variant === 'cinematic'
@@ -6114,10 +6943,20 @@ export class YukiApp extends LitElement {
               aria-label="进入文章区域"
               @click=${(event: Event) => {
                 event.stopPropagation();
-                window.scrollTo({
-                  top: window.innerHeight,
-                  behavior: this.reducedMotion ? 'auto' : 'smooth',
-                });
+                // 滚到主内容区顶部：grid-identity 自带 scroll-margin-top，
+                // 个人卡片完整可见且不被悬浮导航遮挡（各视口高度通用）。
+                const target = this.renderRoot.querySelector<HTMLElement>('.grid-identity');
+                if (target) {
+                  target.scrollIntoView({
+                    behavior: this.reducedMotion ? 'auto' : 'smooth',
+                    block: 'start',
+                  });
+                } else {
+                  window.scrollTo({
+                    top: window.innerHeight,
+                    behavior: this.reducedMotion ? 'auto' : 'smooth',
+                  });
+                }
               }}
             >
               <span>ENTER</span>${icon('arrow-down')}
@@ -6125,6 +6964,28 @@ export class YukiApp extends LitElement {
           : nothing}
       </section>
     `;
+  }
+
+  // 首屏背景池：站点数据到达后随机抽一张并启动 8 秒淡切（仅公开运行时一次）。
+  private maybeSeedHeroBackgrounds() {
+    if (this.studio || this.previewOnly || this.heroBgSeeded) return;
+    const backgrounds = this.siteData.heroBackgrounds;
+    if (backgrounds.length === 0) return;
+    this.heroBgSeeded = true;
+    this.heroBgIndex = Math.floor(Math.random() * backgrounds.length);
+    backgrounds.forEach((url) => {
+      const preload = new Image();
+      preload.src = url;
+    });
+    if (backgrounds.length > 1 && !this.reducedMotion && this.heroBgTimer === null) {
+      this.heroBgTimer = window.setInterval(() => {
+        const count = this.siteData.heroBackgrounds.length;
+        if (count <= 1) return;
+        this.heroBgIndex = (this.heroBgIndex + 1) % count;
+        this.requestUpdate();
+      }, 8000);
+    }
+    this.requestUpdate();
   }
 
   private renderMasthead(node: LayoutNode, base: string, click: (event: Event) => void) {
@@ -6298,6 +7159,7 @@ export class YukiApp extends LitElement {
                       src=${article.coverUrl}
                       alt=${article.title}
                       seed=${article.slug}
+                      adaptive-ratio
                     ></yuki-cover
                   ></a>`
                 : nothing}
@@ -6491,7 +7353,7 @@ export class YukiApp extends LitElement {
                       src=${article.coverUrl}
                       alt=${`${article.title}的封面`}
                       seed=${article.slug}
-                      ratio="16 / 10"
+                      adaptive-ratio
                     ></yuki-cover>
                     <p class="archive-summary">${article.summary}</p>
                   </div>
@@ -6518,12 +7380,21 @@ export class YukiApp extends LitElement {
         ${items.map(
           (article) => html`
             <a class="result" data-reveal href=${`/articles/${article.slug}`}>
-              <div class="meta">
-                ${article.category ? html`<span class="cat">${article.category.name}</span>` : nothing}
-                <time>${formatDate(article.publishedAt)}</time>
+              <yuki-cover
+                class="result-cover"
+                src=${article.coverUrl}
+                alt=${article.title}
+                seed=${article.slug}
+                adaptive-ratio
+              ></yuki-cover>
+              <div class="result-copy">
+                <div class="meta">
+                  ${article.category ? html`<span class="cat">${article.category.name}</span>` : nothing}
+                  <time>${formatDate(article.publishedAt)}</time>
+                </div>
+                <h3>${this.highlight(article.title, query)}</h3>
+                <p>${this.highlight(article.summary, query)}</p>
               </div>
-              <h3>${this.highlight(article.title, query)}</h3>
-              <p>${this.highlight(article.summary, query)}</p>
             </a>
           `,
         )}
@@ -6537,11 +7408,13 @@ export class YukiApp extends LitElement {
         ${items.map(
           (item) => html`
             <a class="result" data-reveal href=${`/dynamics#dynamic-${item.id}`}>
-              <div class="meta">
-                <span class="cat">动态</span>
-                <time>${formatDateTime(item.createdAt)}</time>
+              <div class="result-copy">
+                <div class="meta">
+                  <span class="cat">动态</span>
+                  <time>${formatDateTime(item.createdAt)}</time>
+                </div>
+                <p>${this.highlight(excerpt(textFromHtml(item.contentHtml), 120), query)}</p>
               </div>
-              <p>${this.highlight(excerpt(textFromHtml(item.contentHtml), 120), query)}</p>
             </a>
           `,
         )}
@@ -6660,6 +7533,18 @@ export class YukiApp extends LitElement {
               <span aria-hidden="true">·</span>
               <span>约 ${readingMinutes(detail.html)} 分钟</span>
             </p>
+            ${detail.tags.length > 0
+              ? html`<div class="post-tags">
+                  ${detail.tags.map(
+                    (tag) =>
+                      html`<a
+                        class="post-tag"
+                        href=${`/search?tag=${encodeURIComponent(tag.slug)}`}
+                        >#${tag.name}</a
+                      >`,
+                  )}
+                </div>`
+              : nothing}
             ${detail.summary ? html`<p class="post-summary">${detail.summary}</p>` : nothing}
           </header>
           ${this.tocItems.length > 1
@@ -6685,17 +7570,9 @@ export class YukiApp extends LitElement {
                 ${this.tocItems.map(tocLink)}
               </details>`
             : nothing}
-          <div class="prose" data-reveal>${unsafeHTML(detail.html)}</div>
+          <div class="prose" data-reveal @click=${this.handleProseClick}>${unsafeHTML(detail.html)}</div>
           <p class="post-end" data-reveal>完</p>
           <footer class="post-foot" data-reveal>
-            <div class="post-tags">
-              ${detail.tags.map(
-                (tag) =>
-                  html`<a class="post-tag" href=${`/search?tag=${encodeURIComponent(tag.slug)}`}
-                    >#${tag.name}</a
-                  >`,
-              )}
-            </div>
             <button
               class="heart-button post-like${liked ? ' liked' : ''}"
               type="button"
@@ -6753,6 +7630,21 @@ export class YukiApp extends LitElement {
                 class="comment-form is-open"
                 @submit=${(event: SubmitEvent) => void this.submitArticleComment(event, detail)}
               >
+                ${this.commentReplyTo
+                  ? html`<div class="reply-banner">
+                      <span>正在回复 @${this.commentReplyTo.name}</span>
+                      <button
+                        type="button"
+                        aria-label="取消回复"
+                        @click=${() => {
+                          this.commentReplyTo = null;
+                          this.requestUpdate();
+                        }}
+                      >
+                        取消
+                      </button>
+                    </div>`
+                  : nothing}
                 <div class="comment-form-grid">
                   <label
                     >昵称<input
@@ -6845,14 +7737,26 @@ export class YukiApp extends LitElement {
           : nothing}
         ${comments.length > 0
           ? html`<ol class="comment-list">
-              ${comments.map((comment) => this.renderArticleComment(comment))}
+              ${buildCommentTree(comments).map((node) =>
+                this.renderArticleCommentNode(node, detail),
+              )}
             </ol>`
           : nothing}
       </section>
     `;
   }
 
-  private renderArticleComment(comment: api.PublicComment) {
+  private startArticleReply(comment: api.PublicComment) {
+    this.commentReplyTo = { id: comment.id, name: comment.displayName };
+    this.commentFormOpen = true;
+    this.requestUpdate();
+    void this.updateComplete.then(() => {
+      this.renderRoot.querySelector<HTMLTextAreaElement>('.comment-form textarea')?.focus();
+    });
+  }
+
+  private renderArticleCommentNode(node: CommentNode, detail: api.ArticleDetail): TemplateResult {
+    const comment = node.comment;
     const host = comment.website
       ? comment.website.replace(/^https?:\/\//, '').split('/')[0]
       : '';
@@ -6871,7 +7775,19 @@ export class YukiApp extends LitElement {
                     >${comment.displayName}</a
                   >`
                 : html`<span class="comment-name">${comment.displayName}</span>`}
+              ${node.replyToName
+                ? html`<span class="comment-reply-tag">回复 @${node.replyToName}</span>`
+                : nothing}
               <time>${formatDateTime(comment.createdAt)}</time>
+              ${comment.id && detail.allowComments
+                ? html`<button
+                    class="comment-reply-btn"
+                    type="button"
+                    @click=${() => this.startArticleReply(comment)}
+                  >
+                    回复
+                  </button>`
+                : nothing}
             </div>
             ${comment.website
               ? html`<div class="comment-meta">
@@ -6887,6 +7803,11 @@ export class YukiApp extends LitElement {
           </div>
         </header>
         <div class="comment-content-html">${unsafeHTML(comment.contentHtml)}</div>
+        ${node.children.length > 0
+          ? html`<ol class="comment-children">
+              ${node.children.map((child) => this.renderArticleCommentNode(child, detail))}
+            </ol>`
+          : nothing}
       </li>
     `;
   }
@@ -7649,21 +8570,27 @@ export class YukiApp extends LitElement {
   protected render() {
     if (this.previewOnly) return this.renderSite();
     return html`
-      <nav class="lab-bar" aria-label="布局实验室">
-        <span class="lab-title">夜航主题预览</span>
-        <span class="lab-spacer"></span>
-        <button
-          class="mode-button"
-          aria-pressed=${this.studio}
-          @click=${() => {
-            this.studio = !this.studio;
-            this.requestUpdate();
-          }}
-        >
-          ${this.studio ? '返回页面' : '布局工作室'}
-        </button>
-      </nav>
+      ${this.studio || this.labVisible
+        ? html`
+            <nav class="lab-bar" aria-label="布局实验室">
+              <span class="lab-title">夜航主题预览</span>
+              <span class="lab-spacer"></span>
+              <button
+                class="mode-button"
+                aria-pressed=${this.studio}
+                @click=${() => {
+                  this.studio = !this.studio;
+                  this.requestUpdate();
+                }}
+              >
+                ${this.studio ? '返回页面' : '布局工作室'}
+              </button>
+            </nav>
+          `
+        : nothing}
       ${this.studio ? this.renderStudio() : this.renderSite()}
+      ${this.renderSplash()}
+      ${this.renderLightbox()}
     `;
   }
 }

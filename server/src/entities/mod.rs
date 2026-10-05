@@ -430,6 +430,8 @@ pub mod site_settings {
         pub avatar_media_id: Option<Uuid>,
         pub avatar_external_url: Option<String>,
         pub masthead_media_id: Option<Uuid>,
+        pub hero_background_media_ids: Json,
+        pub hero_quote: Option<String>,
         pub social_links: Json,
         pub theme: Json,
         pub shell_layout: Json,

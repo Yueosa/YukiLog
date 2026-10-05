@@ -66,6 +66,7 @@ export type Comment = {
   display_name: string;
   email: string | null;
   website: string | null;
+  user_agent?: string | null;
   content: string;
   status: 'pending' | 'visible' | 'hidden';
   created_at: string;
@@ -128,6 +129,8 @@ export type SiteSettings = {
   avatarMediaId: string | null;
   avatarExternalUrl: string | null;
   mastheadMediaId: string | null;
+  heroBackgroundMediaIds: string[];
+  heroQuote: string | null;
   socialLinks: Array<{ label: string; url: string }>;
   theme: ThemeTokens;
   shellLayout: ShellLayout;

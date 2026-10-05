@@ -19,6 +19,7 @@ export class AdmArticleEdit extends AdmView {
   @state() private body = '';
   @state() private allowComments = true;
   @state() private tagIds: string[] = [];
+  @state() private coverPickerOpen = false;
 
   private slugTouched = false;
   private loadedId: string | null | undefined = undefined;
@@ -202,6 +203,11 @@ export class AdmArticleEdit extends AdmView {
     }
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    void this.store.refreshMedia();
+  }
+
   private get article(): Article | undefined {
     return this.articleId ? this.store.articles.find((item) => item.id === this.articleId) : undefined;
   }
@@ -273,6 +279,7 @@ export class AdmArticleEdit extends AdmView {
       return;
     }
     await this.store.articleAction(this.articleId, 'publish');
+    if (this.article?.status === 'published') location.hash = '#/articles';
   }
 
   private async schedule() {
@@ -293,6 +300,7 @@ export class AdmArticleEdit extends AdmView {
       return;
     }
     await this.store.articleAction(this.articleId, 'publish', time.toISOString());
+    if (this.article?.status === 'published') location.hash = '#/articles';
   }
 
   private async withdraw() {
@@ -314,9 +322,8 @@ export class AdmArticleEdit extends AdmView {
 
   private renderCover() {
     const cover = this.coverMediaId ? this.store.media.find((item) => item.id === this.coverMediaId) : undefined;
-    const images = this.store.media.filter((item) => item.media_type.startsWith('image/'));
     return html`
-      <label class="field">
+      <div class="field">
         <span>封面</span>
         <div class="cover">
           ${cover
@@ -324,23 +331,14 @@ export class AdmArticleEdit extends AdmView {
                 <img src=${cover.url} alt=${cover.original_name} />
                 <button class="btn small secondary" @click=${() => (this.coverMediaId = null)}>移除封面</button>
               </div>`
-            : html`<adm-upload
-                accept="image/*"
-                text="上传封面图"
-                compact
-                @adm-upload=${(e: CustomEvent<{ media: { id: string } }>) => (this.coverMediaId = e.detail.media.id)}
-              ></adm-upload>`}
-          <select
-            .value=${this.coverMediaId ?? ''}
-            @change=${(e: Event) => (this.coverMediaId = (e.currentTarget as HTMLSelectElement).value || null)}
-          >
-            <option value="">从媒体库选择封面…</option>
-            ${images.map(
-              (item) => html`<option value=${item.id} ?selected=${item.id === this.coverMediaId}>${item.original_name}</option>`,
-            )}
-          </select>
+            : nothing}
+          <div>
+            <button class="btn secondary small" type="button" @click=${() => (this.coverPickerOpen = true)}>
+              ${cover ? '更换封面' : '从媒体库选择封面'}
+            </button>
+          </div>
         </div>
-      </label>
+      </div>
     `;
   }
 
@@ -473,6 +471,15 @@ export class AdmArticleEdit extends AdmView {
         </div>
         <div class="side">${this.renderPreview()}</div>
       </div>
+      <adm-media-picker
+        ?open=${this.coverPickerOpen}
+        .selectedId=${this.coverMediaId}
+        @adm-pick=${(e: CustomEvent<{ media: { id: string } }>) => {
+          this.coverMediaId = e.detail.media.id;
+          this.coverPickerOpen = false;
+        }}
+        @adm-close=${() => (this.coverPickerOpen = false)}
+      ></adm-media-picker>
     `;
   }
 }

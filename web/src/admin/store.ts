@@ -42,6 +42,8 @@ export const defaultSettings: SiteSettings = {
   avatarMediaId: null,
   avatarExternalUrl: null,
   mastheadMediaId: null,
+  heroBackgroundMediaIds: [],
+  heroQuote: null,
   socialLinks: [],
   theme: {
     schemaVersion: 1,

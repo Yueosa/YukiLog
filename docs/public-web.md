@@ -30,7 +30,11 @@ JavaScript 也能通过 SSR 版本阅读首页、文章、动态、评论、友�
 通过 `/api/public/*` 获取同一口径的数据（见 docs/content-api.md）。
 
 - `/`：读取 `page_layouts.home` 并递归渲染注册组件；支持 `?sort=featured|popular|recent`
-  切换首页文章排序，默认 `featured`，非法值返回 `422`；
+  切换首页文章排序，默认 `featured`，非法值返回 `422`。首屏 hero：背景取站点设置
+  的 `hero_background_media_ids` 轮换列表第一张，多于一张时内联脚本每 8 秒淡切
+  （`prefers-reduced-motion` 时不启动轮换）；布局节点里的 `backgroundMediaId`
+  已弃用，仅在轮换列表为空时作回退。语录卡文本取 `hero_quote`，为空回退站点说明。
+  访客每次冷进入随机抽一张、顺序轮换与定时间隔属 SPA 前端行为，后端只存列表；
 - `/articles`：已发布文章列表；支持 `tag`、`category`、`year` 与 `page` 查询参数；
 - `/articles/{slug}`：文章正文和公开评论；
 - `/dynamics`：已发布动态；朋友圈形态卡片（头像 + 昵称 + 相对时间与可选心情、
