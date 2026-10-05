@@ -44,6 +44,8 @@ export class YukiCover extends LitElement {
 
   @state() private phase: 'loading' | 'landscape' | 'portrait' | 'broken' = 'loading';
   @state() private naturalRatio = 0;
+  /** 图片朝向（load 后确定），供父级布局用 :has() 响应。 */
+  @property({ reflect: true }) orientation: '' | 'portrait' | 'square' | 'landscape' = '';
 
   static styles = css`
     :host {
@@ -114,12 +116,14 @@ export class YukiCover extends LitElement {
     }
     const ratio = naturalWidth / naturalHeight;
     this.naturalRatio = ratio;
+    this.orientation = ratio < 0.8 ? 'portrait' : ratio <= 1.25 ? 'square' : 'landscape';
     this.phase =
       this.fit === 'cover' || this.adaptiveRatio || ratio >= 1.25 ? 'landscape' : 'portrait';
   };
 
   private readonly handleError = () => {
     this.phase = 'broken';
+    this.orientation = '';
   };
 
   /** 容器比例：adaptive-ratio 时按图片朝向挑 3:4 / 1:1 / 16:9。 */

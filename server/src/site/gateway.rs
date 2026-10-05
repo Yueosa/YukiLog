@@ -202,6 +202,7 @@ fn render_shell(site: &SiteView, assets: &ShellAssets, current: &str) -> String 
   {favicon}
   <title>{}</title>
   {css}
+  <style>html,body{{margin:0;padding:0;background:#f7f8f7}}</style>
   <script type="module" crossorigin src="{}"></script>
 </head>
 <body>
@@ -285,6 +286,7 @@ mod tests {
             border: "#dfe3ea".to_owned(),
             radius: 16,
             scale: 1.0,
+            masthead_tint: 58,
         }
     }
 

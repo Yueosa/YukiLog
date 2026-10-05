@@ -182,7 +182,7 @@ export class YukiAdmin extends LitElement {
       .brand span {
         color: #6d7f96;
         font-family: var(--mono);
-        font-size: 10.5px;
+        font-size: 12px;
       }
 
       nav {
@@ -198,7 +198,7 @@ export class YukiAdmin extends LitElement {
         padding: 9px 12px;
         border-radius: 10px;
         color: #9fb0c6;
-        font-size: 13.5px;
+        font-size: 14.5px;
         text-decoration: none;
         transition:
           background 200ms ease,
@@ -234,7 +234,7 @@ export class YukiAdmin extends LitElement {
         border-radius: 999px;
         background: var(--secondary-d);
         color: #fff;
-        font-size: 10.5px;
+        font-size: 12px;
         text-align: center;
       }
 

@@ -87,6 +87,8 @@ export interface SiteTheme {
     border: string;
   }>;
   shape?: Partial<{ radius: number; borderedCards: boolean }>;
+  /** 刊头背景蒙版强度（0-0.95），缺省前端用 0.58。 */
+  mastheadOverlay?: number | null;
 }
 
 export interface PublicSite {

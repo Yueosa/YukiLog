@@ -51,6 +51,9 @@ pub struct ThemeTokens {
     pub typography: ThemeTypography,
     pub shape: ThemeShape,
     pub motion: MotionLevel,
+    /// 刊头背景蒙版强度（0–0.95 压盖比例），None 时前端用默认 0.58。
+    #[serde(default)]
+    pub masthead_overlay: Option<f32>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -223,6 +226,11 @@ impl SiteSettingsWrite {
         }
         if self.hero_background_media_ids.len() > 12 {
             return Err(AppError::InvalidRequest("首屏背景图不能超过 12 张"));
+        }
+        if let Some(overlay) = self.theme.masthead_overlay {
+            if !(0.0..=0.95).contains(&overlay) {
+                return Err(AppError::InvalidRequest("刊头蒙版强度必须在 0–0.95 之间"));
+            }
         }
         if let Some(quote) = &self.hero_quote {
             if quote.chars().count() > 120 {

@@ -251,6 +251,7 @@ export class YukiApp extends LitElement {
   private navPastHero = false;
   private spaNavigated = false;
   private revealInstant = false;
+  private quoteRefreshBusy = false;
   private feedSort: api.FeedSort = 'featured';
   private commentFormOpen = false;
   private commentBusy = false;
@@ -329,25 +330,17 @@ export class YukiApp extends LitElement {
     this.mobileMenuOpen = false;
     document.body.style.overflow = '';
     if (this.spaNavigated) this.revealInstant = true;
+    this.classList.toggle('spa-return', this.spaNavigated);
     this.handleViewportScroll();
     this.syncRouteData();
     this.requestUpdate();
   };
 
-  /** 布局工作室浮窗只给 ?preview=1 或持管理会话的访客；会话接口失败就当公开访客。 */
-  private async checkLabAccess() {
-    if (window.location.pathname.startsWith('/admin')) {
-      // 管理后台内嵌实例（工作室画布）不需要再验证
-      this.labVisible = true;
-      this.requestUpdate();
-      return;
-    }
-    try {
-      const response = await fetch('/api/admin/auth/session', { credentials: 'same-origin' });
-      this.labVisible = response.ok;
-    } catch {
-      this.labVisible = false;
-    }
+  /** 布局工作室浮窗只给 ?preview=1 与管理后台内嵌实例；公开访客（含已登录管理员）一律不见。 */
+  private checkLabAccess() {
+    this.labVisible =
+      window.location.pathname.startsWith('/admin') ||
+      new URLSearchParams(window.location.search).get('preview') === '1';
     this.requestUpdate();
   }
 
@@ -519,7 +512,7 @@ export class YukiApp extends LitElement {
                   this.stepLightbox(-1);
                 }}
               >
-                ‹
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
               <button
                 class="lightbox-nav next"
@@ -530,7 +523,7 @@ export class YukiApp extends LitElement {
                   this.stepLightbox(1);
                 }}
               >
-                ›
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>`
           : nothing}
         ${keyed(
@@ -1199,6 +1192,8 @@ export class YukiApp extends LitElement {
                   <form
                     class="m-reply"
                     @submit=${(event: SubmitEvent) => void this.submitMomentReply(event, item.id)}
+                    @focusout=${(event: FocusEvent) =>
+                      this.maybeCollapseMomentReply(item.id, event.currentTarget as HTMLFormElement)}
                   >
                     ${this.momentReplyTo.has(item.id)
                       ? html`<div class="reply-banner">
@@ -1208,6 +1203,7 @@ export class YukiApp extends LitElement {
                             aria-label="取消回复"
                             @click=${() => {
                               this.momentReplyTo.delete(item.id);
+                              this.momentReplyOpen.delete(item.id);
                               this.requestUpdate();
                             }}
                           >
@@ -1290,8 +1286,33 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private startMomentReply(dynamicId: string, comment: api.PublicComment) {
-    this.momentReplyTo.set(dynamicId, { id: comment.id, name: comment.displayName });
+  /** 一言手动刷新：3 秒冷却，服务端缓存短（60s），失败静默回退本地句库。 */
+  private async refreshHitokoto() {
+    if (this.quoteRefreshBusy) return;
+    this.quoteRefreshBusy = true;
+    this.requestUpdate();
+    this.store.ensureHitokoto(true);
+    window.setTimeout(() => {
+      this.quoteRefreshBusy = false;
+      this.requestUpdate();
+    }, 3000);
+  }
+
+  /** 评论框自动收起：内容为空且焦点全部离开时折回单行态（昵称等记忆值不阻止）。 */
+  private maybeCollapseMomentReply(dynamicId: string, form: HTMLFormElement) {
+    window.setTimeout(() => {
+      const active = (this.renderRoot as ShadowRoot).activeElement;
+      if (active && form.contains(active)) return;
+      const content = form.querySelector<HTMLInputElement>('input[name="content"]');
+      if (content && content.value.trim() !== '') return;
+      if (!this.momentReplyOpen.has(dynamicId) && !this.momentReplyTo.has(dynamicId)) return;
+      this.momentReplyOpen.delete(dynamicId);
+      this.momentReplyTo.delete(dynamicId);
+      this.requestUpdate();
+    });
+  }
+
+  private startMomentReply(dynamicId: string, comment: api.PublicComment) {    this.momentReplyTo.set(dynamicId, { id: comment.id, name: comment.displayName });
     this.momentReplyOpen.add(dynamicId);
     this.requestUpdate();
     void this.updateComplete.then(() => {
@@ -1413,6 +1434,18 @@ export class YukiApp extends LitElement {
     :host {
       display: block;
       min-height: 100dvh;
+      --page: #f7f8f7;
+      --surface: #ffffff;
+      --surface-soft: #eef2f5;
+      --ink: #1c2733;
+      --muted: #6d7f90;
+      --faint: #a7b5c2;
+      --line: #dde5ec;
+      --primary: #7eb6d9;
+      --primary-d: #4a93c2;
+      --secondary: #e8a4b4;
+      --secondary-d: #d57f95;
+      --radius: 14px;
       color: var(--ink);
       background: var(--page);
       font-family:
@@ -2383,7 +2416,7 @@ export class YukiApp extends LitElement {
       box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
     }
 
-    .m-reply button {
+    .m-reply button[type='submit'] {
       flex: none;
       padding: 0 16px;
       border: 0;
@@ -2395,7 +2428,7 @@ export class YukiApp extends LitElement {
       transition: background 250ms ease;
     }
 
-    .m-reply button:hover {
+    .m-reply button[type='submit']:hover {
       background: var(--primary-d);
     }
 
@@ -3844,9 +3877,9 @@ export class YukiApp extends LitElement {
       content: '';
       background: linear-gradient(
         180deg,
-        rgb(6 14 26 / 55%),
-        rgb(6 14 26 / 18%) 45%,
-        rgb(9 17 30 / 66%) 100%
+        rgb(6 14 26 / 30%),
+        rgb(6 14 26 / 8%) 45%,
+        rgb(9 17 30 / 42%) 100%
       );
     }
 
@@ -3921,6 +3954,9 @@ export class YukiApp extends LitElement {
       display: inline-block;
       animation: hero-char-in 700ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
       animation-delay: calc(var(--char-index) * 55ms);
+    }
+    :host(.spa-return) .hero-character {
+      animation: none;
     }
 
     .hero-character.accent {
@@ -4059,7 +4095,7 @@ export class YukiApp extends LitElement {
       content: '';
       position: absolute;
       inset: 0;
-      background: color-mix(in srgb, var(--page) 58%, transparent);
+      background: color-mix(in srgb, var(--page) var(--masthead-tint, 58%), transparent);
     }
 
     .masthead.has-bg::after {
@@ -4228,11 +4264,20 @@ export class YukiApp extends LitElement {
       display: grid;
       grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
       gap: 32px;
-      align-items: center;
+      align-items: start;
     }
 
     .feed-alternating .article:nth-child(even) {
       grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    }
+
+    /* 竖屏封面：图列收窄、文字列放宽，卡片不再一半都是图（奇偶换侧沿用基础 order 规则） */
+    .feed-alternating .article:has(yuki-cover[orientation='portrait']) {
+      grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    }
+
+    .feed-alternating .article:nth-child(even):has(yuki-cover[orientation='portrait']) {
+      grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
     }
 
     .feed-alternating .article:nth-child(even) .article-cover {
@@ -4385,9 +4430,49 @@ export class YukiApp extends LitElement {
     }
 
     .quote-card {
+      position: relative;
       font-family: var(--serif);
       font-size: 15.5px;
       line-height: 2;
+    }
+
+    .quote-refresh {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      display: grid;
+      width: 26px;
+      height: 26px;
+      padding: 0;
+      place-items: center;
+      border: 0;
+      border-radius: 50%;
+      background: none;
+      color: var(--faint);
+      opacity: 0;
+      transition:
+        opacity 200ms ease,
+        color 200ms ease,
+        rotate 400ms ease;
+    }
+
+    .quote-card:hover .quote-refresh,
+    .quote-refresh:focus-visible {
+      opacity: 1;
+    }
+
+    .quote-refresh:hover {
+      color: var(--primary-d);
+      rotate: 180deg;
+    }
+
+    .quote-refresh:disabled {
+      opacity: 0.4;
+    }
+
+    .quote-refresh svg {
+      width: 15px;
+      height: 15px;
     }
 
     .quote-card cite {
@@ -5878,9 +5963,12 @@ export class YukiApp extends LitElement {
       border-radius: 50%;
       background: rgb(255 255 255 / 10%);
       color: #fff;
-      font-size: 26px;
-      line-height: 1;
       transition: background 200ms ease;
+    }
+
+    .lightbox-nav svg {
+      width: 22px;
+      height: 22px;
     }
 
     .lightbox-nav:hover {
@@ -6054,7 +6142,7 @@ export class YukiApp extends LitElement {
       position: absolute;
       inset: 0;
       content: '';
-      background: color-mix(in srgb, var(--page) 58%, transparent);
+      background: color-mix(in srgb, var(--page) var(--masthead-tint, 58%), transparent);
     }
 
     .page-head.has-bg::after {
@@ -6503,6 +6591,10 @@ export class YukiApp extends LitElement {
     if (typeof radius === 'number' && radius >= 0 && radius <= 32) {
       style['--radius'] = `${radius}px`;
     }
+    const overlay = theme?.mastheadOverlay;
+    if (typeof overlay === 'number' && overlay >= 0 && overlay <= 0.95) {
+      style['--masthead-tint'] = `${Math.round(overlay * 100)}%`;
+    }
     return style;
   }
 
@@ -6740,6 +6832,21 @@ export class YukiApp extends LitElement {
           <aside class="${base} quote-card" data-label="引语" data-reveal @click=${click}>
             ${quoteText}
             ${quoteFrom ? html`<cite>${quoteFrom}</cite>` : nothing}
+            ${hitokoto
+              ? html`<button
+                  class="quote-refresh"
+                  type="button"
+                  aria-label="换一句"
+                  title="换一句"
+                  ?disabled=${this.quoteRefreshBusy}
+                  @click=${(event: Event) => {
+                    event.stopPropagation();
+                    void this.refreshHitokoto();
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11A8 8 0 0 0 5.6 6.6M4 13a8 8 0 0 0 14.4 4.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M20 4v7h-7M4 20v-7h7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>`
+              : nothing}
           </aside>
         `;
         }
@@ -6943,20 +7050,12 @@ export class YukiApp extends LitElement {
               aria-label="进入文章区域"
               @click=${(event: Event) => {
                 event.stopPropagation();
-                // 滚到主内容区顶部：grid-identity 自带 scroll-margin-top，
-                // 个人卡片完整可见且不被悬浮导航遮挡（各视口高度通用）。
-                const target = this.renderRoot.querySelector<HTMLElement>('.grid-identity');
-                if (target) {
-                  target.scrollIntoView({
-                    behavior: this.reducedMotion ? 'auto' : 'smooth',
-                    block: 'start',
-                  });
-                } else {
-                  window.scrollTo({
-                    top: window.innerHeight,
-                    behavior: this.reducedMotion ? 'auto' : 'smooth',
-                  });
-                }
+                // 直接按首屏高度滚动：hero 完整滚出视口，内容从视口顶开始。
+                const hero = this.renderRoot.querySelector<HTMLElement>('.hero');
+                window.scrollTo({
+                  top: hero?.offsetHeight ?? window.innerHeight,
+                  behavior: this.reducedMotion ? 'auto' : 'smooth',
+                });
               }}
             >
               <span>ENTER</span>${icon('arrow-down')}

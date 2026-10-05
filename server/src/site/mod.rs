@@ -72,6 +72,7 @@ struct SiteView {
     border: String,
     radius: u8,
     scale: f32,
+    masthead_tint: u8,
 }
 
 #[derive(Clone)]
@@ -264,7 +265,7 @@ struct HomeStats {
   <title data-away="唔, 不看我了吗...Ծ‸Ծ">{{ page_title }} · {{ site.title }}</title>
   <script>(()=>{const d=document.documentElement;try{if(window.sessionStorage.getItem('yukilog.splash'))return}catch{return}d.classList.add('splash-run','is-intro')})();</script>
   <style>
-    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
+    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--masthead-tint:{{ site.masthead_tint }}%;--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
     *{box-sizing:border-box}
     @view-transition{navigation:auto}
     ::view-transition-old(root),::view-transition-new(root){animation-duration:240ms;animation-timing-function:cubic-bezier(.22,.61,.36,1)}
@@ -590,7 +591,7 @@ struct HomeStats {
     .masthead-editorial .lead{margin:10px 0 0;color:var(--muted)}
     .page-head.has-bg,.masthead.has-bg{position:relative;isolation:isolate;overflow:hidden;padding:64px 44px;border:0;border-radius:20px}
     .masthead-bg{position:absolute;z-index:-2;inset:0;background:center/cover no-repeat}
-    .page-head.has-bg::before,.masthead.has-bg::before{position:absolute;z-index:-1;inset:0;content:'';background:color-mix(in srgb,var(--page) 82%,transparent)}
+    .page-head.has-bg::before,.masthead.has-bg::before{position:absolute;z-index:-1;inset:0;content:'';background:color-mix(in srgb,var(--page) var(--masthead-tint,58%),transparent)}
     .profile-card{width:min(100%,420px)}
     .profile-button{display:block;width:100%;padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);text-align:center}
     .profile-face{display:block}
@@ -1302,6 +1303,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         border: settings.theme.colors.border,
         radius: settings.theme.shape.radius,
         scale: settings.theme.typography.scale,
+        masthead_tint: (settings.theme.masthead_overlay.unwrap_or(0.58) * 100.0).round() as u8,
     })
 }
 
@@ -1765,6 +1767,7 @@ mod tests {
             border: "#dfe3ea".to_owned(),
             radius: 16,
             scale: 1.0,
+            masthead_tint: 58,
         }
     }
 

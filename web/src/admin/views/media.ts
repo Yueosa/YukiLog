@@ -158,6 +158,7 @@ export class AdmMedia extends AdmView {
 
   private siteUsageOf(item: MediaAsset): string | null {
     if (this.store.settings.avatarMediaId === item.id) return '站点头像';
+    if ((this.store.settings.heroBackgroundMediaIds ?? []).includes(item.id)) return '首屏背景';
     if (this.store.settings.mastheadMediaId === item.id) return '刊头背景';
     for (const record of this.store.layouts) {
       const usage = this.nodeUsage(record.layout.root, item);

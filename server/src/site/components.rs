@@ -611,6 +611,7 @@ mod tests {
             border: "#dfe3ea".to_owned(),
             radius: 16,
             scale: 1.0,
+            masthead_tint: 58,
         }
     }
 

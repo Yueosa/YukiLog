@@ -119,6 +119,8 @@ export type ThemeTokens = {
   };
   shape: { radius: number; borderedCards: boolean };
   motion: 'none' | 'subtle' | 'expressive';
+  /** 刊头背景蒙版强度（0-0.95），null 时前端默认 0.58。 */
+  mastheadOverlay?: number | null;
 };
 
 export type SiteSettings = {

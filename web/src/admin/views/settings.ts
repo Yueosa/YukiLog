@@ -469,6 +469,21 @@ export class AdmSettings extends AdmView {
           </div>
         </div>
         <p class="note">全站文章 / 动态 / 友链 / 搜索页刊头的背景图。</p>
+        <label class="field masthead-tint-field">
+          <span>蒙版强度（${Math.round((draft.theme.mastheadOverlay ?? 0.58) * 100)}%）</span>
+          <input
+            type="range"
+            min="0"
+            max="95"
+            step="1"
+            .value=${String(Math.round((draft.theme.mastheadOverlay ?? 0.58) * 100))}
+            @input=${(e: Event) => {
+              const value = Number((e.currentTarget as HTMLInputElement).value) / 100;
+              this.setField('theme', { ...draft.theme, mastheadOverlay: value });
+            }}
+          />
+        </label>
+        <p class="note">数值越低背景图越清晰，越高文字越易读。</p>
       </section>
     `;
   }
@@ -493,6 +508,7 @@ export class AdmSettings extends AdmView {
   private pickerSelectedId(): string | null {
     if (this.pickerTarget === 'avatar') return this.draft?.avatarMediaId ?? null;
     if (this.pickerTarget === 'masthead') return this.draft?.mastheadMediaId ?? null;
+    if (this.pickerTarget === 'hero') return this.draft?.heroBackgroundMediaIds?.[0] ?? null;
     return null;
   }
 

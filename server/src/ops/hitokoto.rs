@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 const REMOTE_URL: &str = "https://v1.hitokoto.cn";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
-const CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const CACHE_TTL: Duration = Duration::from_secs(60);
 
 const FALLBACKS: &[(&str, &str)] = &[
     ("愿你走出半生，归来仍是少年。", "网络"),
