@@ -4,6 +4,7 @@ import './adm-modal.js';
 import './adm-tabs.js';
 import './adm-upload.js';
 import './adm-media-picker.js';
+import './adm-focal-picker.js';
 import './adm-tag-input.js';
 import './adm-empty.js';
 export { AdmView } from './base-view.js';

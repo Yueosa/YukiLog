@@ -29,7 +29,7 @@ pub struct SiteSettingsWrite {
     pub avatar_media_id: Option<Uuid>,
     pub avatar_external_url: Option<String>,
     pub masthead_media_id: Option<Uuid>,
-    pub hero_background_media_ids: Vec<Uuid>,
+    pub hero_background_media_ids: Vec<HeroBackground>,
     pub hero_quote: Option<String>,
     pub social_links: Vec<SocialLink>,
     pub theme: ThemeTokens,
@@ -41,6 +41,34 @@ pub struct SiteSettingsWrite {
 pub struct SocialLink {
     pub label: String,
     pub url: String,
+}
+
+/// 首屏背景项：纯媒体 id（居中）或带焦点位置（"50% 30%"）的对象。
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(untagged)]
+pub enum HeroBackground {
+    Id(Uuid),
+    Focal {
+        #[serde(rename = "mediaId")]
+        media_id: Uuid,
+        position: String,
+    },
+}
+
+impl HeroBackground {
+    pub(crate) fn media_id(&self) -> Uuid {
+        match self {
+            Self::Id(id) => *id,
+            Self::Focal { media_id, .. } => *media_id,
+        }
+    }
+
+    pub(crate) fn position(&self) -> Option<&str> {
+        match self {
+            Self::Id(_) => None,
+            Self::Focal { position, .. } => Some(position.as_str()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -343,9 +371,8 @@ impl TryFrom<site_settings::Model> for SiteSettingsResponse {
             avatar_media_id: model.avatar_media_id,
             avatar_external_url: model.avatar_external_url,
             masthead_media_id: model.masthead_media_id,
-            hero_background_media_ids: crate::ops::media::hero_background_ids(
-                &model.hero_background_media_ids,
-            )?,
+            hero_background_media_ids: serde_json::from_value(model.hero_background_media_ids)
+                .map_err(|_| AppError::Internal("stored hero backgrounds do not match schema"))?,
             hero_quote: model.hero_quote,
             social_links,
             theme,
@@ -369,18 +396,39 @@ async fn validate_masthead(state: &AppState, id: Option<Uuid>) -> Result<(), App
     validate_image_media(state, id, "刊头媒体不存在", "刊头媒体必须是图片").await
 }
 
-async fn validate_hero_backgrounds(state: &AppState, ids: &[Uuid]) -> Result<(), AppError> {
-    if ids.is_empty() {
+async fn validate_hero_backgrounds(
+    state: &AppState,
+    items: &[HeroBackground],
+) -> Result<(), AppError> {
+    if items.is_empty() {
         return Ok(());
     }
+    for item in items {
+        if let Some(position) = item.position() {
+            let valid = position
+                .split_once(' ')
+                .map(|(x, y)| {
+                    [x, y].iter().all(|part| {
+                        part.strip_suffix('%')
+                            .and_then(|number| number.parse::<u8>().ok())
+                            .is_some_and(|number| number <= 100)
+                    })
+                })
+                .unwrap_or(false);
+            if !valid {
+                return Err(AppError::InvalidRequest("首屏背景焦点必须是 'x% y%' 格式"));
+            }
+        }
+    }
+    let ids: Vec<Uuid> = items.iter().map(HeroBackground::media_id).collect();
     let assets = media_assets::Entity::find()
         .filter(media_assets::Column::Id.is_in(ids.iter().copied()))
         .all(&state.database)
         .await?;
-    for id in ids {
+    for id in &ids {
         let media = assets
             .iter()
-            .find(|media| &media.id == id)
+            .find(|media| media.id == *id)
             .ok_or(AppError::InvalidRequest("首屏背景媒体不存在"))?;
         if !media.media_type.starts_with("image/") {
             return Err(AppError::InvalidRequest("首屏背景媒体必须是图片"));
@@ -507,11 +555,11 @@ mod tests {
     #[test]
     fn validates_hero_rotation_shape() {
         let mut input = settings();
-        input.hero_background_media_ids = (0..=12).map(Uuid::from_u128).collect();
+        input.hero_background_media_ids = (0..=12).map(|v| HeroBackground::Id(Uuid::from_u128(v))).collect();
         assert!(input.validate().is_err());
 
         let mut input = settings();
-        input.hero_background_media_ids = (0..12).map(Uuid::from_u128).collect();
+        input.hero_background_media_ids = (0..12).map(|v| HeroBackground::Id(Uuid::from_u128(v))).collect();
         assert!(input.validate().is_ok());
 
         let mut input = settings();
@@ -531,8 +579,8 @@ mod tests {
     fn hero_fields_round_trip_through_stored_json() {
         let input = settings();
         let stored = serde_json::to_value(&input.hero_background_media_ids).unwrap();
-        let decoded = crate::ops::media::hero_background_ids(&stored).unwrap();
-        assert_eq!(decoded, input.hero_background_media_ids);
-        assert!(crate::ops::media::hero_background_ids(&serde_json::json!({"bad": 1})).is_err());
+        let decoded: Vec<HeroBackground> = serde_json::from_value(stored).unwrap();
+        assert_eq!(decoded.len(), input.hero_background_media_ids.len());
+        assert!(serde_json::from_value::<Vec<HeroBackground>>(serde_json::json!({"bad": 1})).is_err());
     }
 }

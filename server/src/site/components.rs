@@ -109,22 +109,36 @@ fn render_hero(node: &LayoutNode, context: &RenderContext<'_>) -> String {
             .and_then(Value::as_str)
             .and_then(|id| context.media_urls.get(id))
         {
-            background_urls.push(url.clone());
+            background_urls.push((url.clone(), None));
         }
     }
-    let background_url = background_urls.first().map(String::as_str).unwrap_or_default();
+    let background_url = background_urls
+        .first()
+        .map(|(url, _)| url.as_str())
+        .unwrap_or_default();
+    let background_position = background_urls
+        .first()
+        .and_then(|(_, position)| position.as_deref())
+        .unwrap_or("var(--hero-pos, center)");
     let mut background = if background_url.is_empty() {
         String::new()
     } else {
         format!(
-            r#"<div class="hero-background" role="img" aria-label="首页背景" style="background-image:url(&quot;{}&quot;);background-position:var(--hero-pos, center);background-size:var(--hero-fit, cover)"></div>"#,
-            escape_html(background_url)
+            r#"<div class="hero-background" role="img" aria-label="首页背景" style="background-image:url(&quot;{}&quot;);background-position:{};background-size:var(--hero-fit, cover)"></div>"#,
+            escape_html(background_url),
+            escape_html(background_position)
         )
     };
     if background_urls.len() > 1 {
-        let images = serde_json::to_string(&background_urls).unwrap_or_default();
+        let images: Vec<&str> = background_urls.iter().map(|(url, _)| url.as_str()).collect();
+        let positions: Vec<Option<&str>> = background_urls
+            .iter()
+            .map(|(_, position)| position.as_deref())
+            .collect();
+        let images = serde_json::to_string(&images).unwrap_or_default();
+        let positions = serde_json::to_string(&positions).unwrap_or_default();
         background.push_str(&format!(
-            r#"<script>(()=>{{const images={images};if(images.length<2)return;try{{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return}}catch(_){{}}const base=document.currentScript.previousElementSibling;if(!base||!base.classList.contains('hero-background'))return;base.style.transition='opacity 1.2s ease';let index=0;images.slice(1).forEach((src)=>{{const preload=new Image();preload.src=src}});window.setInterval(()=>{{index=(index+1)%images.length;base.style.opacity='0';window.setTimeout(()=>{{base.style.backgroundImage='url("'+images[index]+'")';base.style.opacity='1'}},1200)}},8000)}})();</script>"#
+            r#"<script>(()=>{{const images={images},positions={positions};if(images.length<2)return;try{{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return}}catch(_){{}}const base=document.currentScript.previousElementSibling;if(!base||!base.classList.contains('hero-background'))return;base.style.transition='opacity 1.2s ease';let index=0;images.slice(1).forEach((src)=>{{const preload=new Image();preload.src=src}});window.setInterval(()=>{{index=(index+1)%images.length;base.style.opacity='0';window.setTimeout(()=>{{base.style.backgroundImage='url("'+images[index]+'")';if(positions[index])base.style.backgroundPosition=positions[index];base.style.opacity='1'}},1200)}},8000)}})();</script>"#
         ));
     }
     let mut socials = String::new();
@@ -647,8 +661,8 @@ mod tests {
     fn hero_uses_first_background_and_rotates_the_rest() {
         let mut site = site_view();
         site.hero_backgrounds = vec![
-            "/media/aa/one.png".to_owned(),
-            "/media/bb/two.png".to_owned(),
+            ("/media/aa/one.png".to_owned(), None),
+            ("/media/bb/two.png".to_owned(), Some("50% 20%".to_owned())),
         ];
         site.hero_quote = "语录文本".to_owned();
         let media_urls = HashMap::new();

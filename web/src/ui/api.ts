@@ -114,7 +114,7 @@ export interface PublicSite {
   dynamicCount?: number;
   totalViews?: number;
   /** 首屏背景图池：多张时冷进入随机抽一张并每 8 秒淡切。 */
-  heroBackgrounds?: string[];
+  heroBackgrounds?: Array<{ url: string; position: string | null }>;
   /** 首屏语录卡文本；为空时回退 siteDescription。 */
   heroQuote?: string | null;
 }

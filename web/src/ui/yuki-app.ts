@@ -160,7 +160,7 @@ interface SiteView extends PublicSiteData {
   mastheadUrl: string;
   /** null = 站点信息还没加载完成 */
   mailEnabled: boolean | null;
-  heroBackgrounds: string[];
+  heroBackgrounds: Array<{ url: string; position: string | null }>;
   heroQuote: string | null;
 }
 
@@ -7049,22 +7049,26 @@ export class YukiApp extends LitElement {
           : hasMedia
             ? html`
                 <div class="hero-background hero-bg-stack" role="img" aria-label="首屏背景">
-                  ${heroBackgrounds.map((url, index) => {
+                  ${heroBackgrounds.map((item, index) => {
                     const contain =
                       this.store.site.data?.theme?.heroBackgroundFit === 'contain';
+                    const focal = item.position ?? backgroundPosition;
                     return html`
                       ${contain
                         ? html`<div
                             class="hero-bg-layer blur${index === this.heroBgIndex ? ' active' : ''}"
-                            style=${styleMap({ backgroundImage: `url("${url}")` })}
+                            style=${styleMap({
+                              backgroundImage: `url("${item.url}")`,
+                              backgroundPosition: focal,
+                            })}
                             aria-hidden="true"
                           ></div>`
                         : nothing}
                       <div
                         class="hero-bg-layer${index === this.heroBgIndex ? ' active' : ''}"
                         style=${styleMap({
-                          backgroundImage: `url("${url}")`,
-                          backgroundPosition,
+                          backgroundImage: `url("${item.url}")`,
+                          backgroundPosition: focal,
                         })}
                       ></div>
                     `;
@@ -7115,9 +7119,9 @@ export class YukiApp extends LitElement {
     if (backgrounds.length === 0) return;
     this.heroBgSeeded = true;
     this.heroBgIndex = Math.floor(Math.random() * backgrounds.length);
-    backgrounds.forEach((url) => {
+    backgrounds.forEach((item) => {
       const preload = new Image();
-      preload.src = url;
+      preload.src = item.url;
     });
     if (backgrounds.length > 1 && !this.reducedMotion && this.heroBgTimer === null) {
       this.heroBgTimer = window.setInterval(() => {

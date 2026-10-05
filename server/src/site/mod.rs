@@ -51,7 +51,7 @@ struct SiteView {
     owner_bio: String,
     avatar_url: String,
     masthead_url: String,
-    hero_backgrounds: Vec<String>,
+    hero_backgrounds: Vec<(String, Option<String>)>,
     hero_quote: String,
     favicon_url: String,
     origin: String,
@@ -1225,9 +1225,8 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         avatar_media_id: model.avatar_media_id,
         avatar_external_url: model.avatar_external_url,
         masthead_media_id: model.masthead_media_id,
-        hero_background_media_ids: crate::ops::media::hero_background_ids(
-            &model.hero_background_media_ids,
-        )?,
+        hero_background_media_ids: serde_json::from_value(model.hero_background_media_ids)
+            .map_err(|_| AppError::Internal("stored hero backgrounds do not match schema"))?,
         hero_quote: model.hero_quote,
         social_links: serde_json::from_value(model.social_links)
             .map_err(|_| AppError::Internal("decode social links"))?,
@@ -1240,8 +1239,8 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         .validate()
         .map_err(|_| AppError::Internal("stored site settings failed validation"))?;
     let hero_backgrounds =
-        crate::ops::media::image_media_urls(&state.database, &settings.hero_background_media_ids)
-            .await?;
+        crate::ops::media::hero_background_urls(&state.database, &settings.hero_background_media_ids)
+            .await;
     let avatar_media_url = media_url(state, settings.avatar_media_id).await?;
     let avatar_external_url = settings.avatar_external_url.clone().unwrap_or_default();
     let avatar_url = if avatar_media_url.is_empty() {

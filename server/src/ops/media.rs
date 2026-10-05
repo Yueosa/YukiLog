@@ -435,9 +435,34 @@ fn random_suffix() -> String {
 }
 
 /// Decode the hero background id list stored on `site_settings`.
-pub(crate) fn hero_background_ids(value: &serde_json::Value) -> Result<Vec<Uuid>, AppError> {
-    serde_json::from_value(value.clone())
-        .map_err(|_| AppError::Internal("decode hero background media ids"))
+/// Resolve hero backgrounds to `(url, focal position)` pairs, keeping list order
+/// and skipping entries whose media is missing or not an image.
+pub(crate) async fn hero_background_urls<C: ConnectionTrait>(
+    connection: &C,
+    items: &[crate::content::settings::HeroBackground],
+) -> Vec<(String, Option<String>)> {
+    if items.is_empty() {
+        return Vec::new();
+    }
+    let ids: Vec<Uuid> = items.iter().map(|item| item.media_id()).collect();
+    let assets = media_assets::Entity::find()
+        .filter(media_assets::Column::Id.is_in(ids.iter().copied()))
+        .all(connection)
+        .await
+        .unwrap_or_default();
+    items
+        .iter()
+        .filter_map(|item| {
+            let media = assets
+                .iter()
+                .find(|media| media.id == item.media_id())
+                .filter(|media| media.media_type.starts_with("image/"))?;
+            Some((
+                format!("/media/{}", media.storage_key),
+                item.position().map(str::to_owned),
+            ))
+        })
+        .collect()
 }
 
 /// Resolve media ids to public `/media/{storage_key}` URLs, keeping id order and

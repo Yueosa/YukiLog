@@ -3,7 +3,7 @@ import { property, state } from 'lit/decorators.js';
 import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
 import { fontLabel, heroBackgroundLabel, maxWidthLabel, mediaPickerLabel, motionLabel } from '../labels.js';
-import type { SiteSettings, ThemeTokens } from '../types.js';
+import type { HeroBackgroundSetting, SiteSettings, ThemeTokens } from '../types.js';
 import type { LayoutNode, NavigationVariant, ShellLayout } from '../../layout/types.js';
 
 const colorFields: Array<{ key: keyof ThemeTokens['colors']; label: string }> = [
@@ -144,9 +144,24 @@ export class AdmSettings extends AdmView {
       }
 
       .hero-item {
+        position: relative;
         width: 132px;
         display: grid;
         gap: 5px;
+      }
+
+      .hero-focal-mark {
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        display: grid;
+        width: 20px;
+        height: 20px;
+        place-items: center;
+        border-radius: 50%;
+        background: rgb(20 26 36 / 72%);
+        color: #fff;
+        font-size: 12px;
       }
 
       .hero-item img,
@@ -539,10 +554,23 @@ export class AdmSettings extends AdmView {
     return typeof value === 'string' ? value : null;
   }
 
+  private focalTarget: { index: number; url: string; position: string | null } | null = null;
+
+  private heroItemId(item: HeroBackgroundSetting): string {
+    return typeof item === 'string' ? item : item.mediaId;
+  }
+
+  private heroItemPosition(item: HeroBackgroundSetting): string | null {
+    return typeof item === 'string' ? null : item.position;
+  }
+
   private pickerSelectedId(): string | null {
     if (this.pickerTarget === 'avatar') return this.draft?.avatarMediaId ?? null;
     if (this.pickerTarget === 'masthead') return this.draft?.mastheadMediaId ?? null;
-    if (this.pickerTarget === 'hero') return this.draft?.heroBackgroundMediaIds?.[0] ?? null;
+    if (this.pickerTarget === 'hero') {
+      const first = this.draft?.heroBackgroundMediaIds?.[0];
+      return first ? this.heroItemId(first) : null;
+    }
     return null;
   }
 
@@ -559,7 +587,7 @@ export class AdmSettings extends AdmView {
     const ids = [...(this.draft.heroBackgroundMediaIds ?? [])];
     for (const id of mediaIds) {
       if (ids.length >= HERO_BACKGROUND_MAX) break;
-      if (!ids.includes(id)) ids.push(id);
+      if (!ids.some((item) => this.heroItemId(item) === id)) ids.push(id);
     }
     if (mediaIds.length && ids.length >= HERO_BACKGROUND_MAX) {
       this.store.toast(`首屏背景最多 ${HERO_BACKGROUND_MAX} 张`, 'info');
@@ -595,16 +623,30 @@ export class AdmSettings extends AdmView {
         </h2>
         ${ids.length
           ? html`<div class="hero-list">
-              ${ids.map((id, index) => {
-                const media = this.store.media.find((item) => item.id === id);
+              ${ids.map((item, index) => {
+                const id = this.heroItemId(item);
+                const focal = this.heroItemPosition(item);
+                const media = this.store.media.find((entry) => entry.id === id);
                 return html`
                   <div class="hero-item">
                     ${media
                       ? html`<img src=${media.url} alt=${media.original_name} loading="lazy" />`
                       : html`<span class="hero-missing">已删除</span>`}
+                    ${focal ? html`<span class="hero-focal-mark" title=${focal}>⌖</span>` : nothing}
                     <div class="hero-ops">
                       <button type="button" aria-label="上移" title="上移" ?disabled=${index === 0} @click=${() => this.moveHeroImage(index, -1)}>↑</button>
                       <button type="button" aria-label="下移" title="下移" ?disabled=${index === ids.length - 1} @click=${() => this.moveHeroImage(index, 1)}>↓</button>
+                      <button
+                        type="button"
+                        aria-label="框选焦点"
+                        title="框选焦点"
+                        ?disabled=${!media}
+                        @click=${() =>
+                          media &&
+                          (this.focalTarget = { index, url: media.url, position: focal })}
+                      >
+                        ⌖
+                      </button>
                       <button type="button" aria-label="移除" title="移除" @click=${() => this.removeHeroImage(index)}>×</button>
                     </div>
                   </div>

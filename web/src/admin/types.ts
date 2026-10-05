@@ -131,6 +131,9 @@ export type ThemeTokens = {
   mastheadFit?: 'cover' | 'contain' | 'stretch' | null;
 };
 
+/** 首屏背景项：纯媒体 id（居中）或带焦点位置的对象。 */
+export type HeroBackgroundSetting = string | { mediaId: string; position: string };
+
 export type SiteSettings = {
   siteTitle: string;
   siteDescription: string | null;
@@ -139,7 +142,7 @@ export type SiteSettings = {
   avatarMediaId: string | null;
   avatarExternalUrl: string | null;
   mastheadMediaId: string | null;
-  heroBackgroundMediaIds: string[];
+  heroBackgroundMediaIds: HeroBackgroundSetting[];
   heroQuote: string | null;
   socialLinks: Array<{ label: string; url: string }>;
   theme: ThemeTokens;
