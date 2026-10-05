@@ -241,6 +241,7 @@ struct HomeStats {
   <meta name="description" content="{{ site.description }}">
   <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
   <title>{{ page_title }} · {{ site.title }}</title>
+  <script>(()=>{const d=document.documentElement;try{if(window.sessionStorage.getItem('yukilog.splash'))return}catch{return}d.classList.add('splash-run','is-intro')})();</script>
   <style>
     :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
     *{box-sizing:border-box}
@@ -698,10 +699,46 @@ struct HomeStats {
     @media(max-width:760px){.page{width:min(100% - 40px,1180px);padding-top:108px}.archive-row{grid-template-columns:64px minmax(0,1fr)}.archive-row .meta{display:none}.friends-grid{grid-template-columns:1fr}.feed-alternating .article,.feed-alternating .article:nth-of-type(even),.feed-alternating .article:has(.is-portrait),.feed-alternating .article:nth-of-type(even):has(.is-portrait){grid-template-columns:1fr}.feed-alternating .article:nth-of-type(even) .article-cover{order:0}.feed-alternating .article-cover.is-portrait{width:min(320px,88%)}.layout-grid,.layout-grid.grid-three-rail{grid-template-columns:minmax(0,1fr);gap:20px;padding:76px 16px 56px}}
     @media(max-width:760px){.comment-form-grid{grid-template-columns:1fr}}
     @media(max-width:640px){.hero h1{font-size:clamp(36px,11vw,48px)}.hero-inner{gap:4vh}.welcome-quote{padding:22px 20px}.quote-text{font-size:15px}.nav-topbar .nav-links{display:none}.nav-hamburger{display:grid}.mobile-menu{padding-inline:24px}.layout-grid.grid-identity{width:min(100% - 40px,1180px);gap:20px}.layout-grid.grid-feed-rail{width:min(100% - 40px,1180px);gap:48px;padding:56px 0 72px}.site-footer{flex-direction:column;align-items:center;gap:6px;text-align:center}}
+    .prelude{position:fixed;inset:0;z-index:300;display:none;overflow:hidden;background:var(--page)}
+    html.splash-run .prelude{display:grid;grid-template-rows:1fr auto;animation:prelude-exit .9s cubic-bezier(.22,.7,.2,1) 2.3s forwards}
+    html.splash-run .prelude.is-skipped{animation-name:prelude-exit-now;animation-delay:0s}
+    html.is-intro body{overflow:hidden}
+    .prelude.is-leaving{pointer-events:none}
+    .prelude-bloom{position:absolute;top:46%;left:50%;width:min(60vw,560px);aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--secondary) 18%,transparent),color-mix(in srgb,var(--primary) 7%,transparent) 46%,transparent 72%);opacity:0;transform:translate(-50%,-50%) scale(.8);animation:prelude-bloom 1.9s ease-out 1.15s}
+    .prelude-stage{position:relative;display:grid;place-content:center;justify-items:center;gap:18px;padding:6vw;text-align:center}
+    .prelude-kicker{margin:0;color:var(--secondary-d);font-family:var(--mono);font-size:11px;letter-spacing:.42em;text-transform:uppercase;animation:prelude-arrive .8s cubic-bezier(.2,.8,.2,1) both}
+    .prelude-title{font-family:var(--serif);font-size:clamp(48px,10vw,104px);font-weight:700;line-height:1;letter-spacing:-.02em;animation:prelude-arrive .8s cubic-bezier(.2,.8,.2,1) .12s both}
+    .prelude-flake{color:var(--primary-d);font-size:22px;line-height:1;opacity:0;transform:scale(.4);animation:prelude-flake .7s cubic-bezier(.18,.82,.22,1) 1.15s forwards}
+    .prelude-trace{position:relative;height:80px;margin:0 8vw 9vh}
+    .prelude-trace svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+    .prelude-track{fill:none;stroke:var(--ink);stroke-width:1;opacity:.08}
+    .prelude-line{fill:none;stroke:var(--primary-d);stroke-width:1.6;stroke-linecap:round;stroke-dasharray:1;stroke-dashoffset:1;opacity:.6;animation:prelude-trace 1.5s cubic-bezier(.3,.05,.25,1) .2s forwards}
+    .prelude-hint{position:absolute;right:24px;bottom:16px;color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.2em}
+    @keyframes prelude-exit{to{opacity:0;filter:blur(3px);transform:scale(1.015);visibility:hidden}}
+    @keyframes prelude-exit-now{to{opacity:0;filter:blur(3px);transform:scale(1.015);visibility:hidden}}
+    @keyframes prelude-arrive{from{opacity:0;transform:translateY(10px)}}
+    @keyframes prelude-bloom{0%{opacity:0;transform:translate(-50%,-50%) scale(.8)}22%{opacity:.85;transform:translate(-50%,-50%) scale(1.02)}58%{opacity:.3;transform:translate(-50%,-50%) scale(1.1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.22)}}
+    @keyframes prelude-flake{to{opacity:1;transform:scale(1)}}
+    @keyframes prelude-trace{0%{stroke-dashoffset:1}70%{stroke-dashoffset:0;opacity:.6}100%{stroke-dashoffset:0;opacity:.25}}
     @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}}
   </style>
 </head>
 <body class="{{ site.font_class }} shell-{{ site.navigation_class }}{% if immersive_home %} immersive-home{% endif %}">
+  <div class="prelude" data-prelude aria-hidden="true">
+    <div class="prelude-bloom"></div>
+    <div class="prelude-stage">
+      <p class="prelude-kicker">YukiLog — Night Flight</p>
+      <strong class="prelude-title">{{ site.title }}</strong>
+      <span class="prelude-flake">❄</span>
+    </div>
+    <div class="prelude-trace">
+      <svg viewBox="0 0 1200 60" preserveAspectRatio="none" focusable="false">
+        <path class="prelude-track" d="M0 30H1200"/>
+        <path class="prelude-line" pathLength="1" d="M0 30H1200"/>
+      </svg>
+    </div>
+    <span class="prelude-hint">点击或按任意键跳过</span>
+  </div>
   {% if immersive_home %}<div class="nav-corners" id="nav-corners"><a class="brand" href="/">{{ site.title }}</a><div class="nav-links"><a class="nav-item{% if current_section == "home" %} active{% endif %}" href="/"><span class="nav-label">首页</span></a><a class="nav-item{% if current_section == "articles" %} active{% endif %}" href="/articles"><span class="nav-label">文章</span></a><a class="nav-item{% if current_section == "dynamics" %} active{% endif %}" href="/dynamics"><span class="nav-label">动态</span></a><a class="nav-item{% if current_section == "friends" %} active{% endif %}" href="/friends"><span class="nav-label">友链</span></a></div><div class="nav-actions">{% if site.show_search %}<a class="nav-action" href="/search" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></a>{% endif %}<button class="nav-action nav-hamburger menu-toggle" type="button" aria-label="打开菜单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div></div>{% endif %}
   <nav id="site-nav" class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}{% if immersive_home %}{% else %} nav-sticky{% endif %}" aria-label="主导航">
     <a class="brand" href="/">{{ site.title }}</a>
@@ -755,6 +792,39 @@ struct HomeStats {
         if (event.key === 'Escape') closeMenu();
       });
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const prelude = document.querySelector('[data-prelude]');
+      if (prelude) {
+        const intro = document.documentElement.classList.contains('splash-run');
+        if (!intro || reduced) {
+          prelude.remove();
+          document.documentElement.classList.remove('is-intro', 'splash-run');
+        } else {
+          let leaving = false;
+          const leave = () => {
+            if (leaving) return;
+            leaving = true;
+            try {
+              window.sessionStorage.setItem('yukilog.splash', '1');
+            } catch {
+            }
+            document.documentElement.classList.remove('is-intro', 'splash-run');
+            prelude.classList.add('is-leaving');
+            const exitAnim = (prelude.getAnimations ? prelude.getAnimations() : [])
+              .find((animation) => animation.animationName && animation.animationName.startsWith('prelude-exit'));
+            if (exitAnim) exitAnim.finished.then(() => prelude.remove(), () => prelude.remove());
+            else prelude.remove();
+          };
+          const skip = () => {
+            if (leaving) return;
+            prelude.classList.add('is-skipped');
+            leave();
+          };
+          prelude.addEventListener('click', skip);
+          window.addEventListener('keydown', skip, { once: true });
+          setTimeout(leave, 2300);
+          setTimeout(leave, 6000);
+        }
+      }
       document.querySelector('.enter-button')?.addEventListener('click', (event) => {
         event.preventDefault();
         window.scrollTo({ top: window.innerHeight, behavior: reduced ? 'auto' : 'smooth' });
