@@ -512,6 +512,13 @@ struct HomeStats {
     .hero-character{display:inline-block;animation:hero-char-in 700ms cubic-bezier(.22,.61,.36,1) both;animation-delay:calc(var(--char-index) * 55ms)}
     .hero-character.accent{color:var(--secondary)}
     @keyframes hero-char-in{from{opacity:0;translate:0 22px}to{opacity:1;translate:0 0}}
+    .hero-info,.enter-button{transition:opacity 800ms cubic-bezier(.22,.61,.36,1),translate 800ms cubic-bezier(.22,.61,.36,1)}
+    .hero-info{transition-delay:.15s}
+    .enter-button{transition-delay:.35s}
+    html.is-intro .hero-character{animation-play-state:paused}
+    html.is-intro .hero-info,html.is-intro .enter-button{opacity:0}
+    html.is-intro .hero-info{translate:0 22px}
+    html.is-intro .enter-button{translate:-50% 22px}
     .welcome-quote{display:flex;width:100%;align-items:center;flex-direction:column;gap:18px;padding:24px 36px 20px;border:1px solid rgb(255 255 255/8%);border-radius:24px;background:rgb(6 12 22/55%)}
     .quote-mark{display:none}
     .quote-text{font-family:var(--serif);font-size:17px;line-height:1.9;color:rgb(255 255 255/88%);text-align:center}
@@ -792,6 +799,23 @@ struct HomeStats {
         if (event.key === 'Escape') closeMenu();
       });
       const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const startReveal = () => {
+        if (reduced || !('IntersectionObserver' in window)) return;
+        document.documentElement.classList.add('reveal-ready');
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('in');
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.1, rootMargin: '0px 0px 10% 0px' });
+        document.querySelectorAll('[data-reveal]').forEach((element, index) => {
+          element.style.transitionDelay = (index % 8) * 80 + 'ms';
+          observer.observe(element);
+        });
+      };
+      let deferReveal = false;
       const prelude = document.querySelector('[data-prelude]');
       if (prelude) {
         const intro = document.documentElement.classList.contains('splash-run');
@@ -800,6 +824,7 @@ struct HomeStats {
           document.documentElement.classList.remove('is-intro', 'splash-run');
         } else {
           let leaving = false;
+          deferReveal = true;
           const leave = () => {
             if (leaving) return;
             leaving = true;
@@ -809,6 +834,7 @@ struct HomeStats {
             }
             document.documentElement.classList.remove('is-intro', 'splash-run');
             prelude.classList.add('is-leaving');
+            startReveal();
             const exitAnim = (prelude.getAnimations ? prelude.getAnimations() : [])
               .find((animation) => animation.animationName && animation.animationName.startsWith('prelude-exit'));
             if (exitAnim) exitAnim.finished.then(() => prelude.remove(), () => prelude.remove());
@@ -1038,21 +1064,7 @@ struct HomeStats {
           }
         });
       });
-      if (!reduced && 'IntersectionObserver' in window) {
-        document.documentElement.classList.add('reveal-ready');
-        const observer = new IntersectionObserver((entries) => {
-          entries.forEach((entry) => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add('in');
-              observer.unobserve(entry.target);
-            }
-          });
-        }, { threshold: 0.1, rootMargin: '0px 0px 10% 0px' });
-        document.querySelectorAll('[data-reveal]').forEach((element, index) => {
-          element.style.transitionDelay = (index % 8) * 80 + 'ms';
-          observer.observe(element);
-        });
-      }
+      if (!deferReveal) startReveal();
     })();
   </script>
 </body>
