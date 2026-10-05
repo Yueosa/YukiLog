@@ -23,7 +23,7 @@ function document(): LayoutDocument {
     id: 'test-layout',
     label: '测试布局',
     description: '',
-    theme: 'hanakoi',
+    theme: 'nightflight',
     shell: {
       schemaVersion: 1,
       navigation: 'topbar',

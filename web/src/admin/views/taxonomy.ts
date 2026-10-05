@@ -1,0 +1,283 @@
+import { css, html } from 'lit';
+import { property, state } from 'lit/decorators.js';
+import { AdmView } from '../components/base-view.js';
+import { adminTheme } from '../theme.js';
+import { generateSlug, isValidSlug } from '../slugify.js';
+import type { Category, Tag } from '../types.js';
+
+/** 分类与标签：左右两栏，内联创建 + 表格管理。 */
+export class AdmTaxonomy extends AdmView {
+  @property() articleId: string | null = null;
+  @property() dynamicId: string | null = null;
+
+  @state() private catName = '';
+  @state() private catSlug = '';
+  @state() private catDesc = '';
+  @state() private catSort = '0';
+  private catSlugTouched = false;
+
+  @state() private newTagName = '';
+  @state() private newTagSlug = '';
+  private tagSlugTouched = false;
+
+  static styles = [
+    adminTheme,
+    css`
+      :host {
+        display: block;
+      }
+
+      .columns {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+
+      @media (max-width: 900px) {
+        .columns {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .create-form {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--surface-muted);
+      }
+
+      .create-form .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .create-form .actions {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .ops {
+        display: inline-flex;
+        gap: 8px;
+        white-space: nowrap;
+      }
+
+      .desc-cell {
+        max-width: 220px;
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+    `,
+  ];
+
+  private async addCategory() {
+    const name = this.catName.trim();
+    const slug = this.catSlug.trim();
+    if (!name) return this.store.toast('请填写分类名称', 'err');
+    if (!isValidSlug(slug)) return this.store.toast('slug 格式不正确（小写字母、数字、连字符）', 'err');
+    await this.store.createCategory({
+      name,
+      slug,
+      description: this.catDesc.trim() || null,
+      sort_order: Number.parseInt(this.catSort, 10) || 0,
+    });
+    this.catName = this.catSlug = this.catDesc = '';
+    this.catSort = '0';
+    this.catSlugTouched = false;
+  }
+
+  private async editCategory(item: Category) {
+    const values = await this.store.prompt('编辑分类', [
+      { name: 'name', label: '名称', value: item.name, required: true },
+      { name: 'slug', label: 'slug', value: item.slug, required: true },
+      { name: 'description', label: '说明', value: item.description ?? '' },
+      { name: 'sort_order', label: '排序', value: String(item.sort_order), type: 'number' },
+    ]);
+    if (!values) return;
+    if (!isValidSlug(values.slug.trim())) return this.store.toast('slug 格式不正确（小写字母、数字、连字符）', 'err');
+    await this.store.updateCategory(item.id, {
+      name: values.name.trim(),
+      slug: values.slug.trim(),
+      description: values.description.trim() || null,
+      sort_order: Number.parseInt(values.sort_order, 10) || 0,
+    });
+  }
+
+  private async addTag() {
+    const name = this.newTagName.trim();
+    const slug = this.newTagSlug.trim();
+    if (!name) return this.store.toast('请填写标签名称', 'err');
+    if (!isValidSlug(slug)) return this.store.toast('slug 格式不正确（小写字母、数字、连字符）', 'err');
+    await this.store.createTag({ name, slug });
+    this.newTagName = this.newTagSlug = '';
+    this.tagSlugTouched = false;
+  }
+
+  private async editTag(item: Tag) {
+    const values = await this.store.prompt('编辑标签', [
+      { name: 'name', label: '名称', value: item.name, required: true },
+      { name: 'slug', label: 'slug', value: item.slug, required: true },
+    ]);
+    if (!values) return;
+    if (!isValidSlug(values.slug.trim())) return this.store.toast('slug 格式不正确（小写字母、数字、连字符）', 'err');
+    await this.store.updateTag(item.id, { name: values.name.trim(), slug: values.slug.trim() });
+  }
+
+  private renderCategoryPanel() {
+    const items = [...this.store.categories].sort((a, b) => a.sort_order - b.sort_order);
+    return html`
+      <section class="panel">
+        <h2 class="panel-title">分类</h2>
+        <div class="create-form">
+          <div class="row">
+            <label class="field">
+              <span>名称</span>
+              <input
+                .value=${this.catName}
+                placeholder="如：夜航手记"
+                @input=${(e: InputEvent) => {
+                  this.catName = (e.target as HTMLInputElement).value;
+                  if (!this.catSlugTouched) this.catSlug = generateSlug(this.catName);
+                }}
+              />
+            </label>
+            <label class="field">
+              <span>slug</span>
+              <input
+                class="mono"
+                .value=${this.catSlug}
+                placeholder="nightflight-notes"
+                @input=${(e: InputEvent) => {
+                  this.catSlug = (e.target as HTMLInputElement).value;
+                  this.catSlugTouched = true;
+                }}
+              />
+            </label>
+          </div>
+          <div class="row">
+            <label class="field">
+              <span>说明</span>
+              <input .value=${this.catDesc} placeholder="一句话介绍（可空）" @input=${(e: InputEvent) => (this.catDesc = (e.target as HTMLInputElement).value)} />
+            </label>
+            <label class="field">
+              <span>排序</span>
+              <input type="number" .value=${this.catSort} @input=${(e: InputEvent) => (this.catSort = (e.target as HTMLInputElement).value)} />
+            </label>
+          </div>
+          <div class="actions">
+            <button class="btn primary" ?disabled=${this.store.busy} @click=${this.addCategory}>添加分类</button>
+          </div>
+        </div>
+        ${items.length
+          ? html`
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>名称</th><th>slug</th><th>说明</th><th>排序</th><th>操作</th></tr>
+                  </thead>
+                  <tbody>
+                    ${items.map(
+                      (item) => html`
+                        <tr>
+                          <td><b>${item.name}</b></td>
+                          <td class="mono">${item.slug}</td>
+                          <td class="desc-cell">${item.description || html`<span class="faint">—</span>`}</td>
+                          <td class="mono">${item.sort_order}</td>
+                          <td>
+                            <span class="ops">
+                              <button class="btn secondary small" @click=${() => this.editCategory(item)}>编辑</button>
+                              <button class="btn danger small" @click=${() => this.store.removeTaxonomy('categories', item.id)}>删除</button>
+                            </span>
+                          </td>
+                        </tr>
+                      `,
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            `
+          : html`<adm-empty text="还没有分类" hint="用上方表单创建第一个分类"></adm-empty>`}
+      </section>
+    `;
+  }
+
+  private renderTagPanel() {
+    const items = [...this.store.tags].sort((a, b) => a.name.localeCompare(b.name, 'zh'));
+    return html`
+      <section class="panel">
+        <h2 class="panel-title">标签</h2>
+        <div class="create-form">
+          <div class="row">
+            <label class="field">
+              <span>名称</span>
+              <input
+                .value=${this.newTagName}
+                placeholder="如：前端"
+                @input=${(e: InputEvent) => {
+                  this.newTagName = (e.target as HTMLInputElement).value;
+                  if (!this.tagSlugTouched) this.newTagSlug = generateSlug(this.newTagName);
+                }}
+              />
+            </label>
+            <label class="field">
+              <span>slug</span>
+              <input
+                class="mono"
+                .value=${this.newTagSlug}
+                placeholder="frontend"
+                @input=${(e: InputEvent) => {
+                  this.newTagSlug = (e.target as HTMLInputElement).value;
+                  this.tagSlugTouched = true;
+                }}
+              />
+            </label>
+          </div>
+          <div class="actions">
+            <button class="btn primary" ?disabled=${this.store.busy} @click=${this.addTag}>添加标签</button>
+          </div>
+        </div>
+        ${items.length
+          ? html`
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr><th>名称</th><th>slug</th><th>操作</th></tr>
+                  </thead>
+                  <tbody>
+                    ${items.map(
+                      (item) => html`
+                        <tr>
+                          <td><b>${item.name}</b></td>
+                          <td class="mono">${item.slug}</td>
+                          <td>
+                            <span class="ops">
+                              <button class="btn secondary small" @click=${() => this.editTag(item)}>编辑</button>
+                              <button class="btn danger small" @click=${() => this.store.removeTaxonomy('tags', item.id)}>删除</button>
+                            </span>
+                          </td>
+                        </tr>
+                      `,
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            `
+          : html`<adm-empty text="还没有标签" hint="用上方表单创建第一个标签"></adm-empty>`}
+      </section>
+    `;
+  }
+
+  protected render() {
+    return html`
+      <div class="columns">
+        ${this.renderCategoryPanel()}
+        ${this.renderTagPanel()}
+      </div>
+    `;
+  }
+}
+
+customElements.define('adm-taxonomy', AdmTaxonomy);

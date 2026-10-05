@@ -31,19 +31,31 @@ export type Article = {
   status: 'draft' | 'published';
   allow_comments: boolean;
   published_at: string | null;
+  featured_at: string | null;
   created_at: string;
   updated_at: string;
   tag_ids: string[];
 };
 
+export type DynamicMediaItem = {
+  id: string;
+  url: string;
+  original_name: string;
+  media_type: string;
+  width: number | null;
+  height: number | null;
+};
+
 export type Dynamic = {
   id: string;
   content_markdown: string;
+  mood: string | null;
   status: 'draft' | 'published';
   allow_comments: boolean;
   published_at: string | null;
   created_at: string;
   updated_at: string;
+  media: DynamicMediaItem[];
 };
 
 export type Comment = {
@@ -52,7 +64,7 @@ export type Comment = {
   dynamic_id: string | null;
   parent_id: string | null;
   display_name: string;
-  email: string;
+  email: string | null;
   website: string | null;
   content: string;
   status: 'pending' | 'visible' | 'hidden';
@@ -62,6 +74,7 @@ export type Comment = {
 export type FriendLink = {
   id: string;
   avatar_media_id: string | null;
+  avatar_url: string | null;
   name: string;
   url: string;
   description: string | null;
@@ -172,4 +185,47 @@ export type NotificationSettings = {
   notify_on_friend_links: boolean;
   notify_on_likes: boolean;
   notification_frequency: 'immediate' | 'hourly' | 'daily';
+};
+
+export type OverviewCounts = {
+  articles: number;
+  articles_published: number;
+  dynamics: number;
+  comments_pending: number;
+  media: number;
+  subscribers_active: number;
+  deliveries_failed: number;
+  notifications_unread: number;
+};
+
+export type OverviewTopArticle = {
+  id: string;
+  title: string;
+  slug: string;
+  value: number;
+};
+
+export type OverviewTopDynamic = {
+  id: string;
+  excerpt: string;
+  like_count: number;
+};
+
+export type OverviewRecentComment = {
+  id: string;
+  display_name: string;
+  excerpt: string;
+  status: string;
+  created_at: string;
+  target_title: string;
+};
+
+export type AdminOverview = {
+  counts: OverviewCounts;
+  totals: { views: number; likes: number };
+  top_viewed: OverviewTopArticle[];
+  top_liked_articles: OverviewTopArticle[];
+  top_liked_dynamics: OverviewTopDynamic[];
+  recent_comments: OverviewRecentComment[];
+  recent_notifications: AdminNotification[];
 };

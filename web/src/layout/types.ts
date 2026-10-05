@@ -1,5 +1,5 @@
 export type NavigationVariant = 'topbar' | 'sidebar' | 'floating-dock';
-export type ThemeId = 'hanakoi' | 'yukikoi-moonletter';
+export type ThemeId = 'nightflight';
 
 export type ComponentType =
   | 'stack'

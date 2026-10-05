@@ -49,6 +49,8 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
           'minmax(0, 1fr) 280px',
           '280px minmax(0, 1fr)',
           '240px minmax(0, 1fr) 240px',
+          'auto minmax(0, 1fr) auto',
+          'minmax(0, 1fr) 300px',
         ],
       },
       gap: { kind: 'string', values: spacing },
@@ -133,6 +135,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
       'backgroundPosition',
       'overlay',
       'title',
+      'accent',
       'lead',
       'showSocials',
       'showEnter',
@@ -146,6 +149,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
       },
       overlay: { kind: 'string', values: ['soft', 'medium', 'strong'] },
       title: { kind: 'string', maxLength: 120 },
+      accent: { kind: 'string', maxLength: 8 },
       lead: { kind: 'string', maxLength: 500 },
       showSocials: { kind: 'boolean' },
       showEnter: { kind: 'boolean' },
@@ -164,9 +168,11 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
       alignment: 'left',
     },
     variants: ['editorial', 'minimal'],
-    configurableFields: ['title', 'lead', 'alignment'],
+    configurableFields: ['backgroundMediaId', 'kicker', 'title', 'lead', 'alignment'],
     properties: {
       variant: { kind: 'string', values: ['editorial', 'minimal'] },
+      backgroundMediaId: { kind: 'media-image' },
+      kicker: { kind: 'string', maxLength: 80 },
       title: { kind: 'string', maxLength: 120 },
       lead: { kind: 'string', maxLength: 500 },
       alignment: { kind: 'string', values: ['left', 'center', 'right'] },
@@ -306,13 +312,13 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
     label: '站点数据',
     group: 'content',
     acceptsChildren: false,
-    defaultProps: { fields: ['articles', 'dynamics', 'words'], compact: true },
+    defaultProps: { fields: ['articles', 'dynamics', 'friends', 'views'], compact: true },
     configurableFields: ['fields', 'compact'],
     properties: {
       fields: {
         kind: 'string-array',
-        values: ['articles', 'dynamics', 'words'],
-        maxItems: 3,
+        values: ['articles', 'dynamics', 'friends', 'views'],
+        maxItems: 4,
       },
       compact: { kind: 'boolean' },
       area,
@@ -335,7 +341,7 @@ export const componentRegistry: Record<ComponentType, ComponentDefinition> = {
 
 export function validateLayout(document: LayoutDocument): string[] {
   const errors = validatePageLayout(document);
-  if (document.theme !== 'hanakoi') {
+  if (document.theme !== 'nightflight') {
     errors.push('未注册的主题');
   }
   if (document.shell.schemaVersion !== 1) errors.push('不支持的外壳 schemaVersion');
@@ -387,6 +393,10 @@ export function validatePageLayout(document: PageLayoutDocument): string[] {
     for (const [breakpoint, overrides] of Object.entries(node.responsive ?? {})) {
       if (breakpoint !== 'tablet' && breakpoint !== 'mobile') {
         errors.push(`节点 ${node.id} 使用了未知响应式断点`);
+        continue;
+      }
+      if ('backgroundMediaId' in overrides) {
+        errors.push(`节点 ${node.id} 的响应式覆盖不能修改首屏背景媒体`);
         continue;
       }
       validateProperties(node.id, overrides, definition.properties, errors);
