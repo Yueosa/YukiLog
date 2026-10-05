@@ -406,6 +406,17 @@ export class AdminStore extends EventTarget {
 
   // ---------- 媒体 ----------
 
+  /** 进入需要媒体库的页面前刷新列表；读取失败保持现状，不打扰。 */
+  async refreshMedia() {
+    if (this.previewMode) return;
+    try {
+      this.media = await api('/api/admin/media');
+      this.emit();
+    } catch {
+      // 下拉保持现有数据。
+    }
+  }
+
   async uploadMedia(file: File): Promise<MediaAsset | null> {
     let uploaded: MediaAsset | null = null;
     const known = new Set(this.media.map((item) => item.id));

@@ -19,5 +19,13 @@ export default defineConfig(({ command }) => ({
     manifest: true,
     outDir: 'dist',
     emptyOutDir: true,
+    rollupOptions: {
+      input: {
+        main: 'index.html',
+        // 生产环境公开站 SPA 壳（server/src/site/gateway.rs）按这个名字从
+        // .vite/manifest.json 里解析入口脚本，直接挂在 <yuki-app> 上。
+        'yuki-app': 'src/ui/yuki-app.ts',
+      },
+    },
   },
 }));

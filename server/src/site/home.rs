@@ -16,7 +16,7 @@ use crate::{
 use super::{
     ArticleFilter, ArticleSort, HOME_ARTICLE_LIMIT, HOME_DYNAMIC_LIMIT, HomeStats,
     components::{RenderContext, load_layout_media, render_node},
-    load_articles, load_dynamics, load_layout, load_site, page,
+    PageMeta, load_articles, load_dynamics, load_layout, load_site, page,
 };
 
 #[derive(Debug, Deserialize)]
@@ -67,7 +67,7 @@ pub async fn home(
             sort,
         },
     )?;
-    page(&site, "首页", &content)
+    page(&site, &PageMeta::new(&site, "首页", "/"), &content)
 }
 
 async fn load_home_stats(state: &AppState) -> Result<HomeStats, AppError> {

@@ -2,24 +2,29 @@ use std::{env, error::Error, time::Duration};
 
 use lettre::{
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-    message::Mailbox,
+    message::{Mailbox, MultiPart, SinglePart},
     transport::smtp::{Error as SmtpError, authentication::Credentials},
 };
 use sea_orm::{
-    ActiveModelTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
-    FromQueryResult, IntoActiveModel, QuerySelect, Set, Statement, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    EntityTrait, FromQueryResult, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set,
+    Statement, TransactionTrait,
 };
 
 use crate::{
     entities::{
-        admin_accounts, admin_notifications, articles, dynamics, email_deliveries, subscribers,
+        admin_accounts, admin_notifications, articles, dynamic_media, dynamics, email_deliveries,
+        media_assets, subscribers,
     },
+    markup,
     ops::subscriptions::{SubscriptionState, TokenPurpose},
 };
 
 const BATCH_SIZE: u32 = 1;
 const MAX_ATTEMPTS: i16 = 10;
 const STALE_AFTER_MINUTES: i16 = 15;
+const BRAND_COLOR: &str = "#3278d4";
+const MAX_DYNAMIC_IMAGES: usize = 4;
 
 type WorkerError = Box<dyn Error + Send + Sync>;
 
@@ -171,20 +176,14 @@ UPDATE admin_notifications
             return finalize_delivery(transaction, current, "cancelled", None).await;
         }
 
-        let (subject, body) = match current.kind.as_str() {
+        let content = match current.kind.as_str() {
             "confirm_subscription" if subscriber.status == "pending" => {
                 let token = self.signer.token(
                     subscriber.id,
                     &subscriber.token_nonce,
                     TokenPurpose::Confirm,
                 )?;
-                (
-                    "确认订阅 YukiLog".to_owned(),
-                    format!(
-                        "请打开以下链接确认订阅：\n\n{}/subscriptions/confirm/{}\n",
-                        self.public_origin, token
-                    ),
-                )
+                confirm_subscription_content(&self.public_origin, &token)
             }
             "article_published" if subscriber.status == "active" => {
                 let Some(article_id) = current.article_id else {
@@ -196,14 +195,20 @@ UPDATE admin_notifications
                 let Some(article) = article else {
                     return finalize_delivery(transaction, current, "cancelled", None).await;
                 };
-                (
-                    format!("YukiLog 新文章：{}", article.title),
-                    self.notification_body(
-                        subscriber.id,
-                        &subscriber.token_nonce,
-                        &format!("{}/articles/{}", self.public_origin, article.slug),
-                        article.summary.as_deref().unwrap_or("打开链接阅读全文。"),
-                    )?,
+                let cover_url = match article.cover_media_id {
+                    Some(media_id) => media_assets::Entity::find_by_id(media_id)
+                        .one(&transaction)
+                        .await?
+                        .filter(|media| media.media_type.starts_with("image/"))
+                        .map(|media| format!("{}/media/{}", self.public_origin, media.storage_key)),
+                    None => None,
+                };
+                article_published_content(
+                    &self.unsubscribe_url(subscriber.id, &subscriber.token_nonce)?,
+                    &article.title,
+                    &format!("{}/articles/{}", self.public_origin, article.slug),
+                    article.summary.as_deref().unwrap_or("打开链接阅读全文。"),
+                    cover_url.as_deref(),
                 )
             }
             "dynamic_published" if subscriber.status == "active" => {
@@ -216,15 +221,35 @@ UPDATE admin_notifications
                 let Some(dynamic) = dynamic else {
                     return finalize_delivery(transaction, current, "cancelled", None).await;
                 };
+                let attachments = dynamic_media::Entity::find()
+                    .filter(dynamic_media::Column::DynamicId.eq(dynamic.id))
+                    .order_by_asc(dynamic_media::Column::Position)
+                    .all(&transaction)
+                    .await?;
+                let assets = if attachments.is_empty() {
+                    Vec::new()
+                } else {
+                    media_assets::Entity::find()
+                        .filter(
+                            media_assets::Column::Id
+                                .is_in(attachments.iter().map(|row| row.media_id)),
+                        )
+                        .all(&transaction)
+                        .await?
+                };
+                let image_urls = attachments
+                    .iter()
+                    .filter_map(|row| assets.iter().find(|media| media.id == row.media_id))
+                    .filter(|media| media.media_type.starts_with("image/"))
+                    .map(|media| format!("{}/media/{}", self.public_origin, media.storage_key))
+                    .collect::<Vec<_>>();
                 let link = format!("{}/dynamics#dynamic-{}", self.public_origin, dynamic.id);
-                (
-                    "YukiLog 发布了新动态".to_owned(),
-                    self.notification_body(
-                        subscriber.id,
-                        &subscriber.token_nonce,
-                        &link,
-                        &excerpt(&dynamic.content_markdown, 300),
-                    )?,
+                dynamic_published_content(
+                    &self.unsubscribe_url(subscriber.id, &subscriber.token_nonce)?,
+                    &link,
+                    &excerpt(&dynamic.content_markdown, 300),
+                    &markup::render(&dynamic.content_markdown).html,
+                    &image_urls,
                 )
             }
             _ => {
@@ -244,11 +269,7 @@ UPDATE admin_notifications
                 return Ok(());
             }
         };
-        let message = Message::builder()
-            .from(self.from.clone())
-            .to(recipient)
-            .subject(subject)
-            .body(body)?;
+        let message = multipart_message(self.from.clone(), recipient, &content)?;
         match self.transport.send(message).await {
             Ok(_) => {
                 let is_confirmation = current.kind == "confirm_subscription";
@@ -402,15 +423,14 @@ RETURNING notification.*
             transaction.commit().await?;
             return Ok(());
         }
-        let body = format!(
-            "{}\n\n本次新增事件：{}\n查看：{}{}\n",
-            current.message, new_events, self.public_origin, current.target_url
+        let content = admin_notification_content(
+            &self.public_origin,
+            &current.title,
+            &current.message,
+            new_events,
+            &current.target_url,
         );
-        let message = Message::builder()
-            .from(self.from.clone())
-            .to(recipient)
-            .subject(format!("[YukiLog] {}", current.title))
-            .body(body)?;
+        let message = multipart_message(self.from.clone(), recipient, &content)?;
         match self.transport.send(message).await {
             Ok(_) => {
                 let event_count = current.event_count;
@@ -459,20 +479,220 @@ RETURNING notification.*
         Ok(())
     }
 
-    fn notification_body(
+    fn unsubscribe_url(
         &self,
         subscriber_id: sea_orm::prelude::Uuid,
         nonce: &[u8],
-        link: &str,
-        summary: &str,
     ) -> Result<String, WorkerError> {
         let token = self
             .signer
             .token(subscriber_id, nonce, TokenPurpose::Unsubscribe)?;
         Ok(format!(
-            "{summary}\n\n阅读：{link}\n\n不再接收邮件：{}/subscriptions/unsubscribe/{}",
+            "{}/subscriptions/unsubscribe/{}",
             self.public_origin, token
         ))
+    }
+}
+
+struct MailContent {
+    subject: String,
+    text: String,
+    html: String,
+}
+
+fn multipart_message(
+    from: Mailbox,
+    to: Mailbox,
+    content: &MailContent,
+) -> Result<Message, lettre::error::Error> {
+    Message::builder()
+        .from(from)
+        .to(to)
+        .subject(content.subject.clone())
+        .multipart(
+            MultiPart::alternative()
+                .singlepart(SinglePart::plain(content.text.clone()))
+                .singlepart(SinglePart::html(content.html.clone())),
+        )
+}
+
+fn escape_html(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn brand_html(kicker: &str, body_html: &str, footer_html: &str) -> String {
+    format!(
+        r#"<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#f2f4f8;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f2f4f8;">
+<tr><td align="center" style="padding:24px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;">
+<tr><td style="background-color:{BRAND_COLOR};border-radius:12px 12px 0 0;padding:18px 28px;">
+<span style="font-family:'Helvetica Neue',Helvetica,'PingFang SC','Microsoft YaHei',sans-serif;font-size:18px;font-weight:bold;color:#ffffff;">YukiLog</span>
+<span style="font-family:'Helvetica Neue',Helvetica,'PingFang SC','Microsoft YaHei',sans-serif;font-size:13px;color:#dbe7f7;padding-left:10px;">{}</span>
+</td></tr>
+<tr><td style="background-color:#ffffff;border-radius:0 0 12px 12px;padding:28px;font-family:'Helvetica Neue',Helvetica,'PingFang SC','Microsoft YaHei',sans-serif;font-size:15px;line-height:1.7;color:#20232a;">
+{}
+</td></tr>
+<tr><td style="padding:16px 28px;font-family:'Helvetica Neue',Helvetica,'PingFang SC','Microsoft YaHei',sans-serif;font-size:12px;line-height:1.6;color:#667085;">
+{}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"#,
+        escape_html(kicker),
+        body_html,
+        footer_html
+    )
+}
+
+fn button_html(href: &str, label: &str) -> String {
+    format!(
+        r#"<table role="presentation" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr><td style="background-color:{BRAND_COLOR};border-radius:8px;"><a href="{}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:12px 26px;font-size:15px;color:#ffffff;text-decoration:none;">{}</a></td></tr></table>"#,
+        escape_html(href),
+        escape_html(label)
+    )
+}
+
+fn paragraph_html(text: &str) -> String {
+    format!(
+        r#"<p style="margin:0 0 14px;">{}</p>"#,
+        escape_html(text).replace('\n', "<br>")
+    )
+}
+
+fn confirm_subscription_content(origin: &str, token: &str) -> MailContent {
+    let url = format!("{origin}/subscriptions/confirm/{token}");
+    let body = format!(
+        "{}{}{}{}",
+        r#"<h1 style="margin:0 0 14px;font-size:20px;">欢迎订阅 YukiLog</h1>"#,
+        paragraph_html("只差一步：点击下面的按钮确认订阅，之后有新文章或新动态时会邮件提醒你。"),
+        button_html(&url, "确认订阅"),
+        format!(
+            r#"<p style="margin:0;font-size:13px;color:#667085;">按钮打不开？复制这个链接到浏览器：<br><a href="{0}" style="color:{BRAND_COLOR};word-break:break-all;">{0}</a></p>"#,
+            escape_html(&url)
+        ),
+    );
+    MailContent {
+        subject: "确认订阅 YukiLog".to_owned(),
+        text: format!("请打开以下链接确认订阅：\n\n{url}\n"),
+        html: brand_html(
+            "订阅确认",
+            &body,
+            "这是一封订阅确认邮件；如果你没有订阅过 YukiLog，忽略即可。",
+        ),
+    }
+}
+
+fn article_published_content(
+    unsubscribe_url: &str,
+    title: &str,
+    article_url: &str,
+    summary: &str,
+    cover_url: Option<&str>,
+) -> MailContent {
+    let cover_html = cover_url
+        .map(|url| {
+            format!(
+                r#"<img src="{}" alt="{}" width="544" style="display:block;width:100%;max-width:544px;height:auto;border-radius:8px;margin:0 0 18px;">"#,
+                escape_html(url),
+                escape_html(title)
+            )
+        })
+        .unwrap_or_default();
+    let body = format!(
+        "{}{}{}{}{}",
+        cover_html,
+        format!(
+            r#"<h1 style="margin:0 0 14px;font-size:20px;"><a href="{}" style="color:#20232a;text-decoration:none;">{}</a></h1>"#,
+            escape_html(article_url),
+            escape_html(title)
+        ),
+        paragraph_html(summary),
+        button_html(article_url, "阅读全文"),
+        format!(
+            r#"<p style="margin:0;font-size:13px;color:#667085;">链接：<a href="{0}" style="color:{BRAND_COLOR};word-break:break-all;">{0}</a></p>"#,
+            escape_html(article_url)
+        ),
+    );
+    let footer = format!(
+        r#"你订阅了 YukiLog 的新文章提醒。<a href="{}" style="color:{BRAND_COLOR};">不再接收邮件</a>"#,
+        escape_html(unsubscribe_url)
+    );
+    MailContent {
+        subject: format!("YukiLog 新文章：{title}"),
+        text: format!("{summary}\n\n阅读：{article_url}\n\n不再接收邮件：{unsubscribe_url}"),
+        html: brand_html("新文章", &body, &footer),
+    }
+}
+
+fn dynamic_published_content(
+    unsubscribe_url: &str,
+    link: &str,
+    text_excerpt: &str,
+    body_html: &str,
+    image_urls: &[String],
+) -> MailContent {
+    let total_images = image_urls.len();
+    let mut images_html = String::new();
+    for url in image_urls.iter().take(MAX_DYNAMIC_IMAGES) {
+        images_html.push_str(&format!(
+            r#"<img src="{}" alt="动态附图" width="266" style="display:inline-block;width:266px;max-width:48%;height:auto;border-radius:8px;margin:0 6px 8px 0;vertical-align:top;">"#,
+            escape_html(url)
+        ));
+    }
+    if total_images > MAX_DYNAMIC_IMAGES {
+        images_html.push_str(&format!(
+            r#"<p style="margin:0 0 14px;font-size:13px;color:#667085;">共 {total_images} 张图，打开动态查看全部。</p>"#
+        ));
+    }
+    let body = format!(
+        r#"<div style="margin:0 0 14px;">{}</div>{}{}{}"#,
+        body_html,
+        images_html,
+        button_html(link, "查看动态"),
+        format!(
+            r#"<p style="margin:0;font-size:13px;color:#667085;">链接：<a href="{0}" style="color:{BRAND_COLOR};word-break:break-all;">{0}</a></p>"#,
+            escape_html(link)
+        ),
+    );
+    let footer = format!(
+        r#"你订阅了 YukiLog 的新动态提醒。<a href="{}" style="color:{BRAND_COLOR};">不再接收邮件</a>"#,
+        escape_html(unsubscribe_url)
+    );
+    MailContent {
+        subject: "YukiLog 发布了新动态".to_owned(),
+        text: format!("{text_excerpt}\n\n阅读：{link}\n\n不再接收邮件：{unsubscribe_url}"),
+        html: brand_html("新动态", &body, &footer),
+    }
+}
+
+fn admin_notification_content(
+    origin: &str,
+    title: &str,
+    message: &str,
+    new_events: i32,
+    target_url: &str,
+) -> MailContent {
+    let url = format!("{origin}{target_url}");
+    let body = format!(
+        "{}{}{}",
+        paragraph_html(message),
+        paragraph_html(&format!("本次新增事件：{new_events}")),
+        button_html(&url, "前往处理"),
+    );
+    MailContent {
+        subject: format!("[YukiLog] {title}"),
+        text: format!("{message}\n\n本次新增事件：{new_events}\n查看：{url}\n"),
+        html: brand_html("管理通知", &body, "这封邮件发往 YukiLog 管理员通知邮箱。"),
     }
 }
 
@@ -654,6 +874,119 @@ mod tests {
             .subject("test")
             .body("test body".to_owned())
             .unwrap()
+    }
+
+    #[test]
+    fn confirm_content_keeps_plain_text_and_adds_button() {
+        let content = confirm_subscription_content("https://blog.example.com", "token-123");
+        assert_eq!(content.subject, "确认订阅 YukiLog");
+        assert!(
+            content
+                .text
+                .contains("https://blog.example.com/subscriptions/confirm/token-123")
+        );
+        assert!(content.html.contains("确认订阅</a>"));
+        assert!(
+            content
+                .html
+                .contains("https://blog.example.com/subscriptions/confirm/token-123")
+        );
+        assert!(!content.html.contains("<img"));
+    }
+
+    #[test]
+    fn article_content_embeds_absolute_cover_and_unsubscribe_link() {
+        let content = article_published_content(
+            "https://blog.example.com/subscriptions/unsubscribe/tok",
+            "标题 <b>",
+            "https://blog.example.com/articles/hello",
+            "摘要",
+            Some("https://blog.example.com/media/ab/cover.png"),
+        );
+        assert_eq!(content.subject, "YukiLog 新文章：标题 <b>");
+        assert!(content.text.contains("摘要\n\n阅读：https://blog.example.com/articles/hello"));
+        assert!(content.text.contains("不再接收邮件：https://blog.example.com/subscriptions/unsubscribe/tok"));
+        assert!(
+            content
+                .html
+                .contains(r#"<img src="https://blog.example.com/media/ab/cover.png""#)
+        );
+        assert!(content.html.contains("标题 &lt;b&gt;"));
+        assert!(content.html.contains("阅读全文</a>"));
+        assert!(content.html.contains("不再接收邮件</a>"));
+
+        let without_cover = article_published_content(
+            "https://blog.example.com/u",
+            "标题",
+            "https://blog.example.com/articles/hello",
+            "摘要",
+            None,
+        );
+        assert!(!without_cover.html.contains("<img"));
+    }
+
+    #[test]
+    fn dynamic_content_caps_images_and_notes_overflow() {
+        let images = (0..6)
+            .map(|index| format!("https://blog.example.com/media/ab/{index}.png"))
+            .collect::<Vec<_>>();
+        let content = dynamic_published_content(
+            "https://blog.example.com/subscriptions/unsubscribe/tok",
+            "https://blog.example.com/dynamics#dynamic-1",
+            "正文节选",
+            "<p>正文 <strong>HTML</strong></p>",
+            &images,
+        );
+        assert_eq!(content.subject, "YukiLog 发布了新动态");
+        assert!(content.text.contains("正文节选"));
+        assert!(content.html.contains("<p>正文 <strong>HTML</strong></p>"));
+        assert_eq!(content.html.matches("<img").count(), MAX_DYNAMIC_IMAGES);
+        assert!(content.html.contains("共 6 张图"));
+
+        let few = dynamic_published_content(
+            "https://blog.example.com/u",
+            "https://blog.example.com/dynamics#dynamic-1",
+            "正文节选",
+            "<p>正文</p>",
+            &images[..2],
+        );
+        assert_eq!(few.html.matches("<img").count(), 2);
+        assert!(!few.html.contains("共 "));
+    }
+
+    #[test]
+    fn admin_content_includes_event_count_and_target() {
+        let content = admin_notification_content(
+            "https://blog.example.com",
+            "新评论",
+            "有人评论了 <文章>",
+            3,
+            "/admin/comments",
+        );
+        assert_eq!(content.subject, "[YukiLog] 新评论");
+        assert!(
+            content
+                .text
+                .contains("本次新增事件：3\n查看：https://blog.example.com/admin/comments")
+        );
+        assert!(content.html.contains("有人评论了 &lt;文章&gt;"));
+        assert!(content.html.contains("前往处理</a>"));
+    }
+
+    #[test]
+    fn multipart_message_serializes_alternative_plain_and_html() {
+        let content = confirm_subscription_content("https://blog.example.com", "token-123");
+        let message = multipart_message(
+            "YukiLog <sender@example.com>".parse().unwrap(),
+            "reader@example.com".parse().unwrap(),
+            &content,
+        )
+        .unwrap();
+        let raw = String::from_utf8(message.formatted()).unwrap();
+        assert!(raw.contains("multipart/alternative"), "missing alternative: {raw}");
+        assert!(raw.contains("text/plain"), "missing plain part: {raw}");
+        assert!(raw.contains("text/html"), "missing html part: {raw}");
+        assert!(raw.contains("subscriptions/confirm/token-123"));
     }
 
     async fn fake_smtp(outcome: FakeSmtpOutcome) -> (u16, tokio::task::JoinHandle<()>) {

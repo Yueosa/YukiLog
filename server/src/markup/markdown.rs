@@ -6,6 +6,7 @@ use pulldown_cmark::{
 };
 use syntect::{highlighting::Theme, highlighting::ThemeSet, parsing::SyntaxSet};
 
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Heading {
     pub level: u8,
     pub text: String,

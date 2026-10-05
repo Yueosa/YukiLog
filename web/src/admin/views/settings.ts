@@ -2,9 +2,9 @@ import { css, html, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
-import { fontLabel, maxWidthLabel, mediaPickerLabel, motionLabel } from '../labels.js';
+import { fontLabel, heroBackgroundLabel, maxWidthLabel, mediaPickerLabel, motionLabel } from '../labels.js';
 import type { SiteSettings, ThemeTokens } from '../types.js';
-import type { NavigationVariant, ShellLayout } from '../../layout/types.js';
+import type { LayoutNode, NavigationVariant, ShellLayout } from '../../layout/types.js';
 
 const colorFields: Array<{ key: keyof ThemeTokens['colors']; label: string }> = [
   { key: 'background', label: '页面背景' },
@@ -233,6 +233,11 @@ export class AdmSettings extends AdmView {
     }
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    void this.store.refreshMedia();
+  }
+
   private touch() {
     this.dirty = true;
     this.requestUpdate();
@@ -289,6 +294,7 @@ export class AdmSettings extends AdmView {
 
   private renderInfo(draft: SiteSettings) {
     const avatar = draft.avatarMediaId ? this.store.media.find((item) => item.id === draft.avatarMediaId) : null;
+    const avatarUrl = avatar?.url ?? draft.avatarExternalUrl ?? null;
     const images = this.store.media.filter((item) => item.media_type.startsWith('image/'));
     return html`
       <section class="panel">
@@ -324,7 +330,7 @@ export class AdmSettings extends AdmView {
         <div style="margin-top: 14px">
           <div class="field" style="margin-bottom: 8px"><span>站点头像</span></div>
           <div class="avatar-row">
-            <div class="avatar">${avatar ? html`<img src=${avatar.url} alt="站点头像" />` : html`无`}</div>
+            <div class="avatar">${avatarUrl ? html`<img src=${avatarUrl} alt="站点头像" />` : html`无`}</div>
             <div class="avatar-side">
               <adm-upload
                 accept="image/*"
@@ -399,6 +405,86 @@ export class AdmSettings extends AdmView {
           </div>
         </div>
         <p class="note">全站文章 / 动态 / 友链 / 搜索页刊头的背景图。</p>
+      </section>
+    `;
+  }
+
+  private findNode(node: LayoutNode, match: (node: LayoutNode) => boolean): LayoutNode | null {
+    if (match(node)) return node;
+    for (const child of node.children ?? []) {
+      const found = this.findNode(child, match);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  private homeHero(): LayoutNode | null {
+    const record = this.store.layouts.find((item) => item.pageKey === 'home');
+    return record ? this.findNode(record.layout.root, (node) => node.type === 'hero') : null;
+  }
+
+  /** 首屏背景走布局通道：改写当前首页布局 hero 节点的 backgroundMediaId 并即时保存。 */
+  private async setHeroBackground(mediaId: string | null) {
+    const record = this.store.layouts.find((item) => item.pageKey === 'home');
+    const hero = record ? this.findNode(record.layout.root, (node) => node.type === 'hero') : null;
+    if (!record || !hero) return;
+    const layout = structuredClone(record.layout);
+    const target = this.findNode(layout.root, (node) => node.id === hero.id);
+    if (!target) return;
+    if (mediaId) target.props.backgroundMediaId = mediaId;
+    else delete target.props.backgroundMediaId;
+    await this.store.saveHomeLayout(layout);
+  }
+
+  private renderHeroBackground() {
+    const hero = this.homeHero();
+    if (!hero) {
+      return html`
+        <section class="panel">
+          <h2 class="panel-title">${heroBackgroundLabel.title}</h2>
+          <p class="note">
+            ${heroBackgroundLabel.missing}<a href="#/studio">${heroBackgroundLabel.missingLink}</a>${heroBackgroundLabel.missingTail}
+          </p>
+        </section>
+      `;
+    }
+    const mediaId = typeof hero.props.backgroundMediaId === 'string' ? hero.props.backgroundMediaId : null;
+    const current = mediaId ? this.store.media.find((item) => item.id === mediaId) : null;
+    const images = this.store.media.filter((item) => item.media_type.startsWith('image/'));
+    return html`
+      <section class="panel">
+        <h2 class="panel-title">${heroBackgroundLabel.title}</h2>
+        <div class="masthead-row">
+          <div class="masthead-preview">
+            ${current ? html`<img src=${current.url} alt="首屏背景预览" />` : html`${heroBackgroundLabel.unset}`}
+          </div>
+          <div class="avatar-side">
+            <adm-upload
+              accept="image/*"
+              compact
+              text=${mediaPickerLabel.upload}
+              @adm-upload=${(e: CustomEvent<{ media: { id: string } }>) => void this.setHeroBackground(e.detail.media.id)}
+            ></adm-upload>
+            <label class="field">
+              <span>${mediaPickerLabel.selectFromLibrary}</span>
+              <select
+                .value=${mediaId ?? ''}
+                @change=${(e: Event) => void this.setHeroBackground((e.currentTarget as HTMLSelectElement).value || null)}
+              >
+                <option value="">${mediaPickerLabel.none}</option>
+                ${images.map((item) => html`<option value=${item.id} ?selected=${item.id === mediaId}>${item.original_name}</option>`)}
+              </select>
+            </label>
+            ${mediaId
+              ? html`<div>
+                  <button class="btn secondary small" type="button" ?disabled=${this.store.busy} @click=${() => void this.setHeroBackground(null)}>
+                    ${mediaPickerLabel.clear}
+                  </button>
+                </div>`
+              : nothing}
+          </div>
+        </div>
+        <p class="note">${heroBackgroundLabel.note}</p>
       </section>
     `;
   }
@@ -618,6 +704,7 @@ export class AdmSettings extends AdmView {
     return html`
       ${this.renderInfo(draft)}
       ${this.renderMasthead(draft)}
+      ${this.renderHeroBackground()}
       ${this.renderLinks(draft)}
       ${this.renderTheme(draft)}
       ${this.renderLayout(draft)}

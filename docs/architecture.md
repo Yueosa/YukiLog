@@ -6,7 +6,8 @@ YukiLog 是一个模块化单体，不拆分微服务。
 
 ```text
 Browser
-  ├─ Rust SSR HTML
+  ├─ Lit 访客 SPA（人类 UA，数据走 /api/public/*）
+  ├─ Rust SSR HTML（爬虫 UA 与 ?ssr=1）
   ├─ Lit Web Components
   └─ Admin Lit SPA
           │
@@ -20,7 +21,9 @@ Browser
 ```
 
 - Axum 是唯一处理 HTTP 的应用进程；SMTP worker 是独立的后台投递进程。
-- Askama 负责公开页面的 HTML，Lit 只增强需要状态的交互。
+- 公开页面双形态：人类访客得到 `yuki-app` SPA 壳（`site/gateway.rs` 按 UA 与
+  `?ssr=1` 分流），爬虫和无 JS 环境得到 Askama SSR 完整 HTML；SSR 保留为 SEO
+  与降级通道。
 - 管理后台使用 Lit SPA，但复用同一套 API 和 Web Components。
 - PostgreSQL 是持久业务数据的唯一事实来源。
 - 初始系统不依赖 Redis；确实出现跨进程短期状态需求时再引入。
@@ -35,13 +38,15 @@ Browser
 - `entities/`：SeaORM 实体；
 - `http/`：路由注册、中间件与健康检查；
 - `markup/`：Markdown 渲染与 User-Agent 短标签解析；
-- `content/`：内容与互动的 API handler（`public`/`admin`/`design`/`settings`，
-  以及仪表盘聚合 `overview`）；
-- `site/`：公开 SSR——`mod.rs` 是页面外壳（PageTemplate/共享 loader/共享卡片模型），
-  `home.rs` 首页与排序，`article.rs` 文章详情与评论区，`lists.rs` 归档/动态/友链/搜索
-  列表页，`components.rs` 布局节点渲染与组件模板；
-- `ops/`：站点运营链路——`feed`（RSS）、`mail`（SMTP worker）、`notifications`、
-  `subscriptions`、`media`（上传与存储）。
+- `content/`：内容与互动的 API handler（`public`/`public_api`/`admin`/`design`/
+  `settings`，以及仪表盘聚合 `overview`）；`public_api` 是访客 SPA 的只读 JSON
+  数据源，`public` 是评论/点赞/浏览等互动端点；
+- `site/`：公开 SSR 与 UA 分流——`gateway.rs` 按 User-Agent 与 `?ssr=1` 在 SPA 壳
+  和 SSR 之间分流并解析 vite manifest，`mod.rs` 是页面外壳（PageTemplate/共享
+  loader/共享卡片模型），`home.rs` 首页与排序，`article.rs` 文章详情与评论区，
+  `lists.rs` 归档/动态/友链/搜索列表页，`components.rs` 布局节点渲染与组件模板；
+- `ops/`：站点运营链路——`feed`（RSS）、`hitokoto`（一言代理与兜底）、`mail`
+  （SMTP worker）、`notifications`、`subscriptions`、`media`（上传与存储）。
 
 ## 新代码规则
 

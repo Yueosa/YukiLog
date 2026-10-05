@@ -60,6 +60,57 @@ UUID 必须存在于媒体库，数组顺序即 `position` 展示顺序，传 `[
 `width`、`height`，按 `position` 升序。RSS 动态条目在正文 HTML 后追加第一张
 `image/*` 配图的 `<img>`（绝对 URL）。
 
+## 公开内容 API
+
+访客端 Lit SPA 的只读数据源。全部 GET、无需鉴权、JSON 一律 camelCase。列表与
+搜索按 IP 做基础限流（列表 1 次/秒、搜索 1 次/2 秒，超限返回 429）。错误响应
+沿用 `{ code, message }` 形态，时间字段一律 RFC 3339 字符串。
+
+- `GET /api/public/site` → `{ siteTitle, siteDescription, ownerName, ownerBio,
+  avatarUrl, mastheadUrl, socialLinks: [{ label, url }], mailEnabled,
+  articleCount, dynamicCount, friendCount, totalViews, theme,
+  shellLayout }`。`avatarUrl` 本地头像媒体优先、为空回退外部头像 URL；
+  `theme`/`shellLayout` 与 `GET /api/admin/settings` 同形；
+  `articleCount`/`dynamicCount` 只计已发布且到点内容、`friendCount` 只计
+  可见友链、`totalViews` 是 `article_metrics.view_count` 合计，四格口径与
+  SSR 首页统计卡一致；
+- `GET /api/public/articles?sort=featured|popular|recent&category=<slug>&tag=<slug>&page=N&pageSize=M`：
+  默认 `sort=featured`、`page=1`、`pageSize=10`；`pageSize` 上限 20、`page` 上限
+  10000；非法 `sort` 返回 422；只返回已发布文章。排序口径与 SSR 一致：featured
+  按 `featured_at` 降序（未精选排后）、popular 按 `like_count * 20 + view_count`
+  加权、recent 按发布时间倒序 → `{ items: [ArticleItem], page, totalPages, total }`，
+  `ArticleItem = { id, slug, title, summary, coverUrl（无则 ""）, category:
+  { name, slug } | null, tags: [{ name, slug }], publishedAt, views, likes,
+  featured }`；`id` 是文章 UUID，写端点（view/metrics/like/comments）按它寻址；
+- `GET /api/public/articles/{slug}` → `ArticleItem` 展平后另加 `{ html, headings:
+  [{ level, text, id }], updatedAt, allowComments, prev: { slug, title } | null,
+  next: { slug, title } | null }`；`prev` 是发布时间更晚（较新）的一篇、`next` 是
+  更早的一篇；不存在或未发布返回 404；
+- `GET /api/public/articles/{slug}/comments` → `{ items: [CommentItem], total }`，
+  只含 visible、按时间升序；`CommentItem = { displayName, avatarUrl,
+  website | null, contentHtml, createdAt }`，`contentHtml` 是转义后的纯文本；
+- `GET /api/public/dynamics?page=N&pageSize=M`（分页规则同上）→ `{ items: [{ id,
+  contentHtml, mood | null, mediaUrls: [], likes, commentCount, createdAt }], page,
+  totalPages, total }`；`createdAt` 取发布时间；`commentCount` 只计 visible 评论；
+- `GET /api/public/dynamics/{id}/comments` → 同文章评论结构，按时间升序平铺
+  （不做楼中楼嵌套）；
+- `GET /api/public/friends` → `{ items: [{ name, url, description, avatarUrl,
+  host }] }`，只含 `is_visible` 友链；头像口径与 SSR 相同（外链头像 > 本地媒体 >
+  对方站点 `/favicon.ico`）；
+- `GET /api/public/search?q=&page=N` → `{ articles: { items, total }, dynamics:
+  { items, total } }`；关键词 trim 后最多 100 字符，文章匹配标题/摘要/正文、动态
+  匹配正文，两组各自按发布时间倒序、每页 10 条；
+- `GET /api/hitokoto` → `{ text, from }`。服务器代理 `https://v1.hitokoto.cn`
+  （3 秒超时、内存缓存 10 分钟）；超时、非 2xx、非法响应一律回退内置句库并返回
+  200，绝不向前端返回 5xx。
+
+页面壳契约：`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/friends`、
+`/search` 对人类 UA 返回 SPA 壳 HTML（`<yuki-app>` 挂载点 +
+`/admin/assets/yuki-app-<hash>.js` 模块脚本；hash 由服务端读取
+`$YUKILOG_WEB_DIR/.vite/manifest.json` 中 `name: "yuki-app"` 的 chunk 解析，壳里
+同时输出 manifest 声明的 CSS）。爬虫 UA 与带 `?ssr=1` 的请求继续返回完整 SSR
+HTML；找不到 manifest 时所有访客回退 SSR。
+
 ## 公开互动
 
 - `POST /api/friend-link-applications`

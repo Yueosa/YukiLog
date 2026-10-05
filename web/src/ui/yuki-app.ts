@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { styleMap } from 'lit/directives/style-map.js';
+import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import {
   componentRegistry,
   flattenLayout,
@@ -23,201 +24,22 @@ import type {
   PageLayoutDocument,
   PropertySchema,
 } from '../layout/types.js';
-
-const articles = [
-  {
-    slug: 'october-wind',
-    orientation: 'landscape' as const,
-    title: '在十月的晚风里，重新搭一座小小的站',
-    summary: '旧服务器消失以后，我终于有机会重新想一遍：一个博客究竟应该留下什么。',
-    date: '2026 · 10 · 04',
-    category: '生活随笔',
-    tags: ['夜色', '重逢'],
-    views: 128,
-    likes: 16,
-    cover: 'cover-one',
-    featured: true,
-  },
-  {
-    slug: 'unpushed-nights',
-    orientation: 'landscape' as const,
-    title: '那些没有被算法推送的夜晚',
-    summary: '有些文字并不期待抵达很多人，只希望在某一个恰好的时刻，被某个人读到。',
-    date: '2026 · 09 · 17',
-    category: '写作',
-    tags: ['回忆', '长信'],
-    views: 96,
-    likes: 21,
-    cover: 'cover-two',
-    featured: false,
-  },
-  {
-    slug: 'scattered-stars',
-    orientation: 'portrait' as const,
-    title: '把动态写成散落在时间里的星',
-    summary: '短句不再是假装完整的文章，它们只是当天留下的一点光。',
-    date: '2026 · 08 · 29',
-    category: '动态',
-    tags: ['星轨', '片刻'],
-    views: 73,
-    likes: 12,
-    cover: 'cover-three',
-    featured: false,
-  },
-  {
-    slug: 'blog-system',
-    orientation: 'landscape' as const,
-    title: '一套不替创作者做决定的博客系统',
-    summary: '组件、布局和设计语言应当可以被更换，而内容不必跟着重新搬家。',
-    date: '2026 · 08 · 11',
-    category: '开发手记',
-    tags: ['Rust', '组件引擎'],
-    views: 184,
-    likes: 28,
-    cover: 'cover-four',
-    featured: true,
-  },
-  {
-    slug: 'rain-photos',
-    orientation: 'portrait' as const,
-    title: '雨落在窗边的时候，适合整理旧照片',
-    summary: '我没有试图把每张照片都解释清楚，只给它们留下了时间和地点。',
-    date: '2026 · 07 · 26',
-    category: '日常',
-    tags: ['雨天', '照片'],
-    views: 61,
-    likes: 9,
-    cover: 'cover-five',
-    featured: false,
-  },
-  {
-    slug: 'blank-page',
-    orientation: 'landscape' as const,
-    title: '从一张空白页面开始',
-    summary: '这一次不修补旧站。重新决定哪些东西值得存在，也允许一些东西永远离开。',
-    date: '2026 · 07 · 08',
-    category: '站务',
-    tags: ['重构', 'YukiLog'],
-    views: 142,
-    likes: 24,
-    cover: 'cover-six',
-    featured: false,
-  },
-];
-
-interface MomentComment {
-  name: string;
-  site?: string;
-  agent?: string;
-  time: string;
-  text: string;
-  owner?: boolean;
-  children?: MomentComment[];
-}
-
-const dynamics: Array<{
-  text: string;
-  time: string;
-  rel: string;
-  likes: number;
-  images?: string[];
-  comments?: MomentComment[];
-}> = [
-  {
-    text: '雨停以后，窗沿留下了一小段很亮的晚霞。',
-    time: '2026.10.04 / 22:17',
-    rel: '12 小时前',
-    likes: 12,
-    comments: [
-      {
-        name: '远岸',
-        site: 'https://yeastar.xin',
-        agent: 'Desktop Edge 146 · Windows 10',
-        time: '23:02',
-        text: '这句真好，像一小片被忘了收起来的光。',
-      },
-      {
-        name: '栖迟',
-        agent: 'Mobile Safari · iPhone',
-        time: '昨天 08:41',
-        text: '看来晚霞也知道自己被看见了。',
-      },
-    ],
-  },
-  {
-    text: '重新整理了书桌，也重新整理了一些念头。',
-    time: '2026.10.02 / 16:40',
-    rel: '3 天前',
-    likes: 9,
-    images: ['cover-four'],
-  },
-  {
-    text: '正在为新的 YukiLog 选择它应有的样子。候选有三个，但心里其实早有答案。',
-    time: '2026.09.28 / 23:05',
-    rel: '1 周前',
-    likes: 21,
-    comments: [
-      {
-        name: '栖迟',
-        agent: 'Desktop Firefox 128 · Arch Linux',
-        time: '09.29 / 00:12',
-        text: '是夜航那个吗？首屏的月亮一出来就觉得是它了。',
-        children: [
-          {
-            name: '恋',
-            owner: true,
-            time: '09.29 / 00:47',
-            text: '是它。另外两位候选也很优秀，但月亮一升起来就没得选了。',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    text: '凌晨两点，终于把恢复演练完整跑通。睡个好觉。',
-    time: '2026.09.20 / 02:03',
-    rel: '2 周前',
-    likes: 16,
-    images: ['cover-five', 'cover-two', 'cover-one'],
-  },
-  { text: '今天的风很轻，适合慢一点做决定。', time: '2026.09.15 / 19:26', rel: '3 周前', likes: 8 },
-];
-
-// 文章详情页排版预览用的富文本 mock（正式内容由后端 Markdown 渲染输出）。
-const articleProseMock = html`
-  <p>
-    十月四日下午，云厂商发来最后一封提醒邮件的时候，我其实已经知道来不及了。机器被回收，磁盘被清空，那个跑了两年的旧站，连同它所有的文章、评论和访问统计，一起变成了账单页面上的一行小字。
-  </p>
-  <p>难过是有一点的。但更多的是一种奇怪的轻松——好像有人替我按下了那个我一直舍不得按的删除键。</p>
-  <h2>旧站的问题，我一直都知道</h2>
-  <p>
-    旧的前端是写死的。想换一个组件的位置，要改模板；想换一套配色，要翻遍所有样式表。数据库的更新方式更原始，<code>ALTER TABLE</code>
-    语句散在各个角落里，没有人能说清线上到底跑到了哪一版。
-  </p>
-  <blockquote>
-    <p>重写不是否定过去，而是承认现在的自己，已经能做得更好一点了。</p>
-  </blockquote>
-  <p>所以这一次，布局是存在数据库里的文档，主题是可以整体更换的设计语言，而建库只有一份从零开始的基线：</p>
-  <pre><code>cargo run -p yukilog-migration
-  ✓ create baseline      42 ms
-  ✓ seed nightflight      3 ms</code></pre>
-  <p>重写的清单其实很短，但每一条都是旧站做不到的事：</p>
-  <ul>
-    <li>界面可以配置，而不是写死在模板里</li>
-    <li>响应式和媒体播放要流畅，手机和电脑都一样</li>
-    <li>管理页要像样，至少能和公开页坐在一起不心虚</li>
-  </ul>
-  <h2>重新开始，而不是修补</h2>
-  <p>
-    有人问我为什么不在旧站上继续修。答案是：修补只能解决「坏了」的问题，解决不了「一开始就没长对」的问题。这一次从数据模型开始就是新的，连这篇测试排版的文章，也是系统自己种下来的。
-  </p>
-  <h3>留下来的东西</h3>
-  <p>
-    备份里找回了几篇长文，但重读之后我决定不整包导入。那些文字更像是当时的流水账，而不是现在的我还想再说一遍的话。真正留下来的，只有写它们的那几个夜晚。
-  </p>
-  <hr />
-  <p>如果你也曾弄丢过什么东西，希望你也能在某个十月，把它重新搭成自己喜欢的样子。</p>
-`;
+import * as api from './api.js';
+import { paletteFor } from './cover.js';
+import './cover.js';
+import { loadCommenter, saveCommenter, type Commenter } from './commenter.js';
+import {
+  excerpt,
+  formatDate,
+  formatDateTime,
+  formatMonthDay,
+  readingMinutes,
+  relTime,
+  textFromHtml,
+  yearOf,
+} from './format.js';
+import { previewArticles, previewDynamics, previewStats } from './preview-placeholders.js';
+import { PublicStore } from './store.js';
 
 type IconName =
   | 'home'
@@ -332,21 +154,36 @@ export interface PublicSiteData {
   socialLinks: Array<{ label: string; url: string }>;
 }
 
-const defaultSiteData: PublicSiteData = {
+/** 组件内部使用的站点视图：API 数据 + 工作室注入数据的并集。 */
+interface SiteView extends PublicSiteData {
+  mastheadUrl: string;
+  /** null = 站点信息还没加载完成 */
+  mailEnabled: boolean | null;
+}
+
+const emptySiteView: SiteView = {
   siteTitle: 'YukiLog',
-  siteDescription: '记录技术、思考、情绪与挣扎',
-  ownerName: 'Lian（恋）',
-  ownerBio: '我能走到这里，是因为你没有放弃',
-  avatarUrl: 'https://q1.qlogo.cn/g?b=qq&nk=1303028790&s=640',
-  socialLinks: [
-    { label: 'GitHub', url: 'https://github.com/Yueosa' },
-    { label: 'QQ', url: 'https://qm.qq.com/cgi-bin/qm/qr?k=O6KD1bt5WDvQw47kzjaDuYIASzar_y-F' },
-    { label: 'Bilibili', url: 'https://space.bilibili.com/433677987' },
-    { label: 'X', url: 'https://x.com/Yosa04942475621' },
-    { label: '网易云音乐', url: 'https://music.163.com/#/user/home?id=630887153' },
-    { label: 'Gmail', url: 'mailto:yichengxin7@gmail.com' },
-  ],
+  siteDescription: '',
+  ownerName: '',
+  ownerBio: '',
+  avatarUrl: '',
+  mastheadUrl: '',
+  socialLinks: [],
+  mailEnabled: null,
 };
+
+function toSiteView(site: api.PublicSite): SiteView {
+  return {
+    siteTitle: site.siteTitle,
+    siteDescription: site.siteDescription ?? '',
+    ownerName: site.ownerName,
+    ownerBio: site.ownerBio,
+    avatarUrl: site.avatarUrl,
+    mastheadUrl: site.mastheadUrl ?? '',
+    socialLinks: site.socialLinks ?? [],
+    mailEnabled: site.mailEnabled === true,
+  };
+}
 
 function socialIcon(label: string, index: number): IconName {
   const normalized = label.toLowerCase();
@@ -398,28 +235,40 @@ export class YukiApp extends LitElement {
   private studioViewport: 'desktop' | 'tablet' | 'mobile' = 'desktop';
   // 生产环境由工作室从媒体库注入真实媒体；仓库不提供默认图片（版权考虑）
   private mediaLibrary: StudioMedia[] = [];
-  private siteData: PublicSiteData = structuredClone(defaultSiteData);
+  /** 工作室/预览注入的站点数据；为空时展示 API 站点数据。 */
+  private siteOverride: SiteView | null = null;
+  private readonly store = new PublicStore();
+  private unsubscribeStore: (() => void) | null = null;
   private mobileMenuOpen = false;
   private nodeSequence = 0;
   private navPastHero = false;
   private spaNavigated = false;
   private revealInstant = false;
-  private feedSort: 'featured' | 'popular' | 'recent' = 'featured';
-  private likedDynamics = new Set<number>();
-  private likedArticles = new Set<string>();
+  private feedSort: api.FeedSort = 'featured';
   private commentFormOpen = false;
+  private commentBusy = false;
+  private commentError = '';
+  private commentSentFor = '';
+  private commenter: Commenter = loadCommenter();
   private subscribeBusy = false;
   private subscribeDone = new Set<string>();
   private subscribeFailed = new Set<string>();
   private friendApplyBusy = false;
   private friendApplyDone = false;
   private friendApplyError = '';
-  private momentReplyOpen = new Set<number>();
-  private momentReplySent = new Set<number>();
+  private momentReplyOpen = new Set<string>();
+  private momentReplySent = new Set<string>();
+  private momentReplyBusy = new Set<string>();
+  private momentReplyError = new Map<string, string>();
+  private momentExtrasRequested = new Set<string>();
+  private momentObserver: IntersectionObserver | null = null;
   private tocItems: { id: string; text: string; level: number }[] = [];
   private tocActive = '';
   private tocPath = '';
   private tocObserver: IntersectionObserver | null = null;
+  private readonly scrollPositions = new Map<string, number>();
+  private pendingScrollRestore: number | null = null;
+  private hashHandled = '';
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private revealObserver: IntersectionObserver | null = null;
 
@@ -431,13 +280,117 @@ export class YukiApp extends LitElement {
     return this.studioStore.selectedNodeId;
   }
 
+  /** 当前生效的站点数据：工作室注入 > API > 空壳。 */
+  private get siteData(): SiteView {
+    if (this.siteOverride) return this.siteOverride;
+    const data = this.store.site.data;
+    return data ? toSiteView(data) : emptySiteView;
+  }
+
+  /** 外壳设置：公开运行时被站点设置覆盖，工作室里跟随布局文档。 */
+  private get shell() {
+    if (!this.studio && !this.previewOnly) {
+      const fromSite = this.store.site.data?.shellLayout;
+      if (fromSite) return fromSite;
+    }
+    return this.layout.shell;
+  }
+
+  private routeKey(): string {
+    return `${window.location.pathname}${window.location.search}`;
+  }
+
+  private readonly handlePopState = () => {
+    // 浏览器前进/后退：恢复该条目离开时的滚动位置（列表页体验关键）。
+    this.pendingScrollRestore = this.scrollPositions.get(this.routeKey()) ?? null;
+    this.handleRouteChange();
+  };
+
   private readonly handleRouteChange = () => {
     this.mobileMenuOpen = false;
     document.body.style.overflow = '';
     if (this.spaNavigated) this.revealInstant = true;
     this.handleViewportScroll();
+    this.syncRouteData();
     this.requestUpdate();
   };
+
+  /** 按当前地址同步数据：仅在公开运行时（非工作室、非预览）拉取。 */
+  private syncRouteData() {
+    if (this.previewOnly || this.studio) return;
+    const path = window.location.pathname;
+    // 管理后台里嵌入的实例（布局工作室画布）不拉取公开数据
+    if (path.startsWith('/admin')) return;
+    const params = new URLSearchParams(window.location.search);
+    const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
+    this.store.ensureSite();
+    if (path === '/') {
+      this.store.ensureHitokoto();
+      const sortParam = params.get('sort');
+      if (sortParam === 'featured' || sortParam === 'popular' || sortParam === 'recent') {
+        this.feedSort = sortParam;
+      }
+      this.store.loadHomeFeed(this.feedSort);
+      this.store.loadDynamics(1);
+      this.store.ensureFriends();
+      this.setTitle('');
+      return;
+    }
+    if (path === '/articles') {
+      this.store.loadArchive({ page });
+      this.setTitle('文章');
+      return;
+    }
+    if (path.startsWith('/articles/')) {
+      const slug = decodeURIComponent(path.slice('/articles/'.length));
+      if (slug) this.store.loadArticle(slug);
+      this.commentFormOpen = false;
+      this.commentError = '';
+      this.setTitle('文章');
+      return;
+    }
+    if (path === '/dynamics') {
+      this.store.loadDynamics(1);
+      this.setTitle('动态');
+      return;
+    }
+    if (path === '/friends') {
+      this.store.ensureFriends();
+      this.setTitle('友链');
+      return;
+    }
+    if (path === '/search') {
+      const query = params.get('q')?.trim() ?? '';
+      const category = params.get('category') ?? '';
+      const tag = params.get('tag') ?? '';
+      if (query) this.store.loadSearch(query, page);
+      else if (category || tag) this.store.loadArchive({ category, tag, page });
+      this.store.loadFacets();
+      this.setTitle('搜索');
+      return;
+    }
+    this.setTitle('页面不存在');
+  }
+
+  private titleSection = '';
+
+  private setTitle(section: string) {
+    this.titleSection = section;
+    this.syncDocumentTitle();
+  }
+
+  private syncDocumentTitle() {
+    if (this.previewOnly || this.studio) return;
+    const siteTitle = this.store.site.data?.siteTitle || 'YukiLog';
+    const path = window.location.pathname;
+    let section = this.titleSection;
+    if (path.startsWith('/articles/')) {
+      const slug = decodeURIComponent(path.slice('/articles/'.length));
+      const detail = this.store.articlesBySlug.get(slug)?.data;
+      if (detail) section = detail.title;
+    }
+    document.title = section ? `${section} · ${siteTitle}` : siteTitle;
+  }
 
   private readonly handleViewportScroll = () => {
     this.updateScrollRing();
@@ -505,9 +458,9 @@ export class YukiApp extends LitElement {
       this.mediaLibrary = Array.isArray(event.data.mediaLibrary)
         ? (event.data.mediaLibrary as StudioMedia[])
         : [];
-      this.siteData = event.data.siteData
-        ? (event.data.siteData as PublicSiteData)
-        : structuredClone(defaultSiteData);
+      this.siteOverride = event.data.siteData
+        ? { ...emptySiteView, ...(event.data.siteData as PublicSiteData) }
+        : null;
       this.requestUpdate();
       return;
     }
@@ -521,17 +474,26 @@ export class YukiApp extends LitElement {
 
   connectedCallback() {
     super.connectedCallback();
-    window.addEventListener('popstate', this.handleRouteChange);
+    window.addEventListener('popstate', this.handlePopState);
     window.addEventListener('scroll', this.handleViewportScroll, { passive: true });
     this.addEventListener('click', this.handleSiteClick);
     this.addEventListener('submit', this.handleSiteSubmit);
     window.addEventListener('keydown', this.handleStudioKeydown);
     window.addEventListener('message', this.handlePreviewMessage);
+    if (!this.previewOnly) {
+      // 滚动恢复由 SPA 自己管理，浏览器原生恢复会让列表页跳动。
+      if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+      this.unsubscribeStore = this.store.subscribe(() => {
+        this.syncDocumentTitle();
+        this.requestUpdate();
+      });
+    }
     this.handleViewportScroll();
+    this.syncRouteData();
   }
 
   disconnectedCallback() {
-    window.removeEventListener('popstate', this.handleRouteChange);
+    window.removeEventListener('popstate', this.handlePopState);
     window.removeEventListener('scroll', this.handleViewportScroll);
     this.removeEventListener('click', this.handleSiteClick);
     this.removeEventListener('submit', this.handleSiteSubmit);
@@ -539,6 +501,10 @@ export class YukiApp extends LitElement {
     window.removeEventListener('message', this.handlePreviewMessage);
     this.revealObserver?.disconnect();
     this.revealObserver = null;
+    this.momentObserver?.disconnect();
+    this.momentObserver = null;
+    this.unsubscribeStore?.();
+    this.unsubscribeStore = null;
     document.body.style.overflow = '';
     super.disconnectedCallback();
   }
@@ -566,6 +532,7 @@ export class YukiApp extends LitElement {
     if (/^\/(admin|api|media|subscriptions|feeds|feed\.xml)/.test(href)) return;
     event.preventDefault();
     if (href === window.location.pathname + window.location.search) return;
+    this.scrollPositions.set(this.routeKey(), window.scrollY);
     window.history.pushState(null, '', href);
     this.spaNavigated = true;
     window.scrollTo(0, 0);
@@ -573,7 +540,7 @@ export class YukiApp extends LitElement {
   };
 
   private readonly handleSiteSubmit = (event: SubmitEvent) => {
-    if (this.previewOnly) return;
+    if (this.previewOnly || event.defaultPrevented) return;
     const form = event
       .composedPath()
       .find((node): node is HTMLFormElement => node instanceof HTMLFormElement);
@@ -586,8 +553,10 @@ export class YukiApp extends LitElement {
       if (typeof value === 'string' && value) params.set(key, value);
     });
     const search = params.toString();
+    this.scrollPositions.set(this.routeKey(), window.scrollY);
     window.history.pushState(null, '', `${action}${search ? `?${search}` : ''}`);
     this.spaNavigated = true;
+    window.scrollTo(0, 0);
     this.handleRouteChange();
   };
 
@@ -604,16 +573,7 @@ export class YukiApp extends LitElement {
     this.subscribeFailed.delete(kind);
     this.requestUpdate();
     try {
-      const response = await fetch('/api/subscriptions', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          email,
-          subscribe_articles: kind === 'articles' || withOther,
-          subscribe_dynamics: kind === 'dynamics' || withOther,
-        }),
-      });
-      if (!response.ok) throw new Error(String(response.status));
+      await api.subscribe(email, kind === 'articles' || withOther, kind === 'dynamics' || withOther);
       this.subscribeDone.add(kind);
     } catch {
       this.subscribeFailed.add(kind);
@@ -623,15 +583,71 @@ export class YukiApp extends LitElement {
     }
   }
 
-  // 动态评论：开发环境无后端时仅演示交互，展示已寄出提示。
-  private submitMomentReply(event: SubmitEvent, index: number) {
+  // 动态评论：POST 到既有评论端点，成功后记忆评论者并展示审核提示（与 SSR 行为一致）。
+  private async submitMomentReply(event: SubmitEvent, id: string) {
     event.preventDefault();
+    if (this.momentReplyBusy.has(id)) return;
     const data = new FormData(event.currentTarget as HTMLFormElement);
     const content = String(data.get('content') ?? '').trim();
     const displayName = String(data.get('display_name') ?? '').trim();
     if (!content || !displayName) return;
-    this.momentReplySent.add(index);
+    const email = String(data.get('email') ?? '').trim();
+    const website = String(data.get('website') ?? '').trim();
+    this.momentReplyBusy.add(id);
+    this.momentReplyError.delete(id);
     this.requestUpdate();
+    try {
+      await api.submitDynamicComment(id, {
+        display_name: displayName,
+        email: email || null,
+        website: website || null,
+        content,
+      });
+      this.commenter = { display_name: displayName, email, website };
+      saveCommenter(this.commenter);
+      this.momentReplySent.add(id);
+    } catch (error) {
+      this.momentReplyError.set(id, api.errorMessage(error));
+    } finally {
+      this.momentReplyBusy.delete(id);
+      this.requestUpdate();
+    }
+  }
+
+  private async submitArticleComment(event: SubmitEvent, detail: api.ArticleDetail) {
+    event.preventDefault();
+    if (this.commentBusy) return;
+    const data = new FormData(event.currentTarget as HTMLFormElement);
+    const displayName = String(data.get('display_name') ?? '').trim();
+    const content = String(data.get('content') ?? '').trim();
+    if (!displayName || !content) return;
+    if (!detail.id) {
+      this.commentError = '评论服务暂时不可用，请稍后再试。';
+      this.requestUpdate();
+      return;
+    }
+    const email = String(data.get('email') ?? '').trim();
+    const website = String(data.get('website') ?? '').trim();
+    this.commentBusy = true;
+    this.commentError = '';
+    this.requestUpdate();
+    try {
+      await api.submitArticleComment(detail.id, {
+        display_name: displayName,
+        email: email || null,
+        website: website || null,
+        content,
+      });
+      this.commenter = { display_name: displayName, email, website };
+      saveCommenter(this.commenter);
+      this.commentSentFor = detail.slug;
+      this.commentFormOpen = false;
+    } catch (error) {
+      this.commentError = api.errorMessage(error);
+    } finally {
+      this.commentBusy = false;
+      this.requestUpdate();
+    }
   }
 
   private async submitFriendApplication(event: SubmitEvent) {
@@ -648,18 +664,13 @@ export class YukiApp extends LitElement {
     this.friendApplyError = '';
     this.requestUpdate();
     try {
-      const response = await fetch('/api/friend-link-applications', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          url,
-          email,
-          description: description || null,
-          avatar_url: avatarUrl || null,
-        }),
+      await api.applyFriendLink({
+        name,
+        url,
+        email,
+        description: description || null,
+        avatar_url: avatarUrl || null,
       });
-      if (!response.ok) throw new Error(String(response.status));
       this.friendApplyDone = true;
     } catch {
       this.friendApplyError = '提交失败，请检查站点地址格式后重试。';
@@ -705,28 +716,43 @@ export class YukiApp extends LitElement {
     if (this.studio && !this.previewOnly) this.syncStudioPreview();
     this.observeReveals();
     this.scanToc();
+    this.observeMomentExtras();
+    if (this.pendingScrollRestore !== null) {
+      const y = this.pendingScrollRestore;
+      this.pendingScrollRestore = null;
+      window.scrollTo(0, y);
+    }
+    // 站外/搜索结果带来的 hash 锚点（如 /dynamics#dynamic-id）：shadow DOM 内的 id
+    // 浏览器原生片段跳转够不到，等内容渲染出来后手动滚动。
+    const hashKey = `${window.location.pathname}${window.location.hash}`;
+    if (window.location.hash && this.hashHandled !== hashKey) {
+      const target = this.renderRoot.querySelector(
+        `#${CSS.escape(window.location.hash.slice(1))}`,
+      );
+      if (target) {
+        this.hashHandled = hashKey;
+        target.scrollIntoView({ block: 'start' });
+      }
+    }
   }
 
-  // 目录：从已渲染的正文里扫描 h2/h3，注入锚点 id，并用 IO 做滚动高亮。
+  // 目录：使用详情接口下发的 headings（服务端渲染正文时已注入相同 id），IO 做滚动高亮。
   private scanToc() {
     const path = window.location.pathname;
-    if (path === this.tocPath) return;
-    this.tocPath = path;
-    const prose = this.renderRoot.querySelector('.prose');
-    const items = prose
-      ? [...prose.querySelectorAll('h2, h3')].map((heading, index) => {
-          if (!heading.id) heading.id = `h-${index + 1}`;
-          return {
-            id: heading.id,
-            text: heading.textContent ?? '',
-            level: heading.tagName === 'H2' ? 2 : 3,
-          };
-        })
-      : [];
-    this.tocItems = items;
-    this.tocActive = items[0]?.id ?? '';
+    const slug = path.startsWith('/articles/')
+      ? decodeURIComponent(path.slice('/articles/'.length))
+      : '';
+    const detail = slug ? (this.store.articlesBySlug.get(slug)?.data ?? null) : null;
+    const stamp = `${path}#${detail?.slug ?? ''}`;
+    if (stamp === this.tocPath) return;
+    this.tocPath = stamp;
     this.tocObserver?.disconnect();
     this.tocObserver = null;
+    const items = (detail?.headings ?? [])
+      .filter((heading) => heading.level === 2 || heading.level === 3)
+      .map((heading) => ({ id: heading.id, text: heading.text, level: heading.level }));
+    this.tocItems = items;
+    this.tocActive = items[0]?.id ?? '';
     if (items.length === 0) return;
     this.tocObserver = new IntersectionObserver(
       (entries) => {
@@ -746,6 +772,33 @@ export class YukiApp extends LitElement {
     this.requestUpdate();
   }
 
+  // 动态卡片滚入视口后再拉取点赞状态与评论，避免整页并发请求。
+  private observeMomentExtras() {
+    if (this.previewOnly || this.studio || window.location.pathname !== '/dynamics') return;
+    const moments = this.renderRoot.querySelectorAll<HTMLElement>('.moment[data-dyn]');
+    if (moments.length === 0) return;
+    if (!this.momentObserver) {
+      this.momentObserver = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const id = (entry.target as HTMLElement).dataset.dyn;
+            if (!id || this.momentExtrasRequested.has(id)) return;
+            this.momentExtrasRequested.add(id);
+            this.store.loadDynamicMetrics(id);
+            this.store.loadDynamicComments(id);
+            this.momentObserver?.unobserve(entry.target);
+          });
+        },
+        { rootMargin: '200px 0px', threshold: 0 },
+      );
+    }
+    moments.forEach((moment) => {
+      const id = moment.dataset.dyn ?? '';
+      if (id && !this.momentExtrasRequested.has(id)) this.momentObserver?.observe(moment);
+    });
+  }
+
   // 评论头像兜底：按昵称哈希选一个夜航配色的小插画（星星 / 月夜 / 海浪）。
   private avatarFallback(name: string) {
     let hash = 0;
@@ -760,14 +813,30 @@ export class YukiApp extends LitElement {
     }
   }
 
-  // 头像优先级：website 的 favicon → 兜底插画。公开评论接口另下发合并后的
-  // avatar_url（favicon 优先，其次 email 的 Gravatar），接入真实数据时优先使用它。
-  private commentAvatar(name: string, site?: string) {
-    if (!site) return html`<span class="comment-avatar">${this.avatarFallback(name)}</span>`;
-    const host = site.replace(/^https?:\/\//, '').split('/')[0];
+  // 评论头像：优先使用接口下发的 avatarUrl（favicon/Gravatar 已由服务端合并），
+  // 为空或加载失败时回退到按昵称哈希挑选的夜航小插画（与 SSR 同一算法）。
+  private commentAvatar(name: string, avatarUrl?: string | null) {
+    if (!avatarUrl) return html`<span class="comment-avatar">${this.avatarFallback(name)}</span>`;
     return html`<span class="comment-avatar has-img">
       <img
-        src="https://${host}/favicon.ico"
+        src=${avatarUrl}
+        alt=""
+        loading="lazy"
+        @error=${(event: Event) => (event.currentTarget as HTMLElement).classList.add('is-broken')}
+      />
+      ${this.avatarFallback(name)}
+    </span>`;
+  }
+
+  private ownerAvatar(className = '') {
+    const name = this.siteData.ownerName || '博主';
+    const avatarUrl = this.siteData.avatarUrl;
+    if (!avatarUrl) {
+      return html`<span class="comment-avatar ${className}">${this.avatarFallback(name)}</span>`;
+    }
+    return html`<span class="comment-avatar has-img ${className}">
+      <img
+        src=${avatarUrl}
         alt=""
         loading="lazy"
         @error=${(event: Event) => (event.currentTarget as HTMLElement).classList.add('is-broken')}
@@ -777,26 +846,50 @@ export class YukiApp extends LitElement {
   }
 
   // 动态卡片（朋友圈形态）：头像+昵称+相对时间 → 正文 → 配图 → 点赞/评论 → 灰底内联评论区。
-  private renderMoment(item: (typeof dynamics)[number], index: number) {
-    const liked = this.likedDynamics.has(index);
-    const comments = item.comments ?? [];
-    const images = item.images ?? [];
+  private renderMoment(item: api.DynamicItem) {
+    const metrics = this.store.dynamicMetrics.get(item.id);
+    const liked = metrics?.liked ?? false;
+    const likeCount = metrics?.like_count ?? item.likes;
+    const likeBusy = this.store.likeBusy.has(item.id);
+    const commentsSlice = this.store.comments(`dynamic:${item.id}`);
+    const comments = commentsSlice.data?.items ?? [];
+    const images = item.mediaUrls ?? [];
+    const author = this.siteData.ownerName || '博主';
     return html`
-      <div class="moment" data-reveal>
+      <div class="moment" data-dyn=${item.id} data-reveal>
         <div class="moment-card">
           <header class="moment-head">
-            <span class="comment-avatar moment-avatar">${this.avatarFallback('恋')}</span>
+            ${this.ownerAvatar('moment-avatar')}
             <div class="moment-who">
-              <span class="moment-author">恋</span>
-              <time title=${item.time}>${item.rel}</time>
+              <span class="moment-author">${author}</span>
+              <time title=${formatDateTime(item.createdAt)}>
+                ${relTime(item.createdAt)}${item.mood
+                  ? html`<span class="moment-mood">· ${item.mood}</span>`
+                  : nothing}
+              </time>
             </div>
           </header>
-          <p class="moment-text">${item.text}</p>
+          <div class="moment-text">${unsafeHTML(item.contentHtml)}</div>
           ${images.length === 1
-            ? html`<div class="m-media"><i class=${images[0]}></i></div>`
+            ? html`<yuki-cover
+                class="m-media"
+                src=${images[0]}
+                alt="动态配图"
+                seed=${item.id}
+                adaptive
+                max-height="62vh"
+              ></yuki-cover>`
             : images.length > 1
               ? html`<div class="m-grid count-${images.length}">
-                  ${images.map((cover) => html`<i class=${cover}></i>`)}
+                  ${images.map(
+                    (url, imageIndex) => html`<yuki-cover
+                      src=${url}
+                      alt="动态配图 ${imageIndex + 1}"
+                      seed=${`${item.id}-${imageIndex}`}
+                      ratio="1 / 1"
+                      fit="cover"
+                    ></yuki-cover>`,
+                  )}
                 </div>`
               : nothing}
           <div class="mfoot">
@@ -805,32 +898,48 @@ export class YukiApp extends LitElement {
               type="button"
               aria-pressed=${liked}
               aria-label=${liked ? '取消喜欢' : '喜欢'}
-              @click=${() => {
-                if (liked) this.likedDynamics.delete(index);
-                else this.likedDynamics.add(index);
-                this.requestUpdate();
-              }}
+              ?disabled=${likeBusy}
+              @click=${() => void this.store.toggleDynamicLike(item.id)}
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   d="M12 20.3C7.2 16.9 3.5 13.6 3.5 9.9 3.5 7.2 5.6 5 8.3 5c1.5 0 2.9.7 3.7 1.9C12.8 5.7 14.2 5 15.7 5c2.7 0 4.8 2.2 4.8 4.9 0 3.7-3.7 7-8.5 10.4Z"
                 />
               </svg>
-              ${item.likes + (liked ? 1 : 0)}
+              ${likeCount}
             </button>
             <span class="m-count">
               <svg viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M21 12a8 8 0 0 1-8 8H4l2.3-2.9A8 8 0 1 1 21 12Z" />
               </svg>
-              ${comments.length}
+              ${item.commentCount}
             </span>
           </div>
           <div class="m-comments">
+            ${commentsSlice.status === 'loading'
+              ? html`<div class="skel skel-line" style="width: 62%"></div>`
+              : nothing}
+            ${commentsSlice.status === 'error'
+              ? html`<p class="m-reply-note">
+                  评论加载失败，
+                  <a
+                    href=${`/dynamics#dynamic-${item.id}`}
+                    @click=${(event: Event) => {
+                      event.preventDefault();
+                      this.store.loadDynamicComments(item.id, true);
+                    }}
+                    >重试</a
+                  >
+                </p>`
+              : nothing}
             ${comments.map((comment) => this.renderMomentComment(comment))}
-            ${this.momentReplySent.has(index)
+            ${this.momentReplySent.has(item.id)
               ? html`<p class="m-reply-sent">评论已寄出，审核通过后会显示在这里。</p>`
               : html`
-                  <form class="m-reply" @submit=${(event: SubmitEvent) => this.submitMomentReply(event, index)}>
+                  <form
+                    class="m-reply"
+                    @submit=${(event: SubmitEvent) => void this.submitMomentReply(event, item.id)}
+                  >
                     <input
                       name="content"
                       type="text"
@@ -840,14 +949,16 @@ export class YukiApp extends LitElement {
                       autocomplete="off"
                       required
                       @focus=${() => {
-                        if (!this.momentReplyOpen.has(index)) {
-                          this.momentReplyOpen.add(index);
+                        if (!this.momentReplyOpen.has(item.id)) {
+                          this.momentReplyOpen.add(item.id);
                           this.requestUpdate();
                         }
                       }}
                     />
-                    <button type="submit">发送</button>
-                    ${this.momentReplyOpen.has(index)
+                    <button type="submit" ?disabled=${this.momentReplyBusy.has(item.id)}>
+                      ${this.momentReplyBusy.has(item.id) ? '寄出中…' : '发送'}
+                    </button>
+                    ${this.momentReplyOpen.has(item.id)
                       ? html`
                           <div class="m-reply-more">
                             <input
@@ -858,6 +969,7 @@ export class YukiApp extends LitElement {
                               aria-label="昵称"
                               autocomplete="nickname"
                               required
+                              value=${this.commenter.display_name}
                             />
                             <input
                               name="email"
@@ -866,6 +978,7 @@ export class YukiApp extends LitElement {
                               placeholder="邮箱（选填，会公开）"
                               aria-label="邮箱"
                               autocomplete="email"
+                              value=${this.commenter.email}
                             />
                             <input
                               name="website"
@@ -874,9 +987,13 @@ export class YukiApp extends LitElement {
                               placeholder="网站（选填）"
                               aria-label="网站"
                               autocomplete="url"
+                              value=${this.commenter.website}
                             />
                           </div>
-                          <p class="m-reply-note">评论会在审核后显示；昵称和邮箱会公开展示。</p>
+                          <p class="m-reply-note">
+                            ${this.momentReplyError.get(item.id) ??
+                            '评论会在审核后显示；昵称和邮箱会公开展示。'}
+                          </p>
                         `
                       : nothing}
                   </form>
@@ -887,33 +1004,28 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private renderMomentComment(comment: MomentComment): TemplateResult {
+  private renderMomentComment(comment: api.PublicComment): TemplateResult {
+    const host = comment.website
+      ? comment.website.replace(/^https?:\/\//, '').split('/')[0]
+      : '';
     return html`
       <div class="m-comment">
-        ${this.commentAvatar(comment.name, comment.site)}
+        ${this.commentAvatar(comment.displayName, comment.avatarUrl)}
         <div class="m-comment-body">
           <div class="m-comment-line">
-            ${comment.site
+            ${comment.website
               ? html`<a
-                  class="comment-name${comment.owner ? ' is-owner' : ''}"
-                  href=${comment.site}
+                  class="comment-name"
+                  href=${comment.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  >${comment.name}</a
+                  title=${host}
+                  >${comment.displayName}</a
                 >`
-              : html`<span class="comment-name${comment.owner ? ' is-owner' : ''}"
-                  >${comment.name}</span
-                >`}
-            ${comment.owner ? html`<span class="comment-badge">作者</span>` : nothing}
-            <time>${comment.time}</time>
+              : html`<span class="comment-name">${comment.displayName}</span>`}
+            <time title=${formatDateTime(comment.createdAt)}>${relTime(comment.createdAt)}</time>
           </div>
-          <p>${comment.text}</p>
-          ${comment.agent ? html`<span class="m-comment-agent">${comment.agent}</span>` : nothing}
-          ${comment.children?.length
-            ? html`<div class="m-children">
-                ${comment.children.map((child) => this.renderMomentComment(child))}
-              </div>`
-            : nothing}
+          <div class="m-comment-content">${unsafeHTML(comment.contentHtml)}</div>
         </div>
       </div>
     `;
@@ -956,7 +1068,7 @@ export class YukiApp extends LitElement {
   }
 
   setSiteData(siteData: PublicSiteData) {
-    this.siteData = structuredClone(siteData);
+    this.siteOverride = { ...emptySiteView, ...structuredClone(siteData) };
     this.requestUpdate();
   }
 
@@ -1745,25 +1857,11 @@ export class YukiApp extends LitElement {
       margin-top: 14px;
       overflow: hidden;
       border-radius: 12px;
-    }
-
-    .m-media i {
-      display: block;
-      aspect-ratio: 16 / 10;
-      background: var(--cover) center / cover no-repeat;
       transition: scale 550ms cubic-bezier(0.22, 0.61, 0.36, 1);
     }
 
-    .m-media.portrait {
-      width: min(300px, 80%);
-    }
-
-    .m-media.portrait i {
-      aspect-ratio: 3 / 4;
-    }
-
-    .moment:hover .m-media i {
-      scale: 1.04;
+    .moment:hover .m-media {
+      scale: 1.02;
     }
 
     .mfoot {
@@ -1834,15 +1932,12 @@ export class YukiApp extends LitElement {
       max-width: 300px;
     }
 
-    .m-grid i {
-      display: block;
-      aspect-ratio: 1;
+    .m-grid yuki-cover {
       border-radius: 8px;
-      background: var(--cover) center / cover no-repeat;
       transition: scale 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
     }
 
-    .m-grid i:hover {
+    .m-grid yuki-cover:hover {
       scale: 1.04;
     }
 
@@ -2284,14 +2379,6 @@ export class YukiApp extends LitElement {
       width: 100%;
       margin: 0 0 48px;
       border-radius: 14px;
-      background: var(--cover) center / cover no-repeat;
-      aspect-ratio: 16 / 10;
-    }
-
-    .post-cover.is-portrait {
-      width: min(400px, 100%);
-      margin-inline: auto;
-      aspect-ratio: 3 / 4;
     }
 
     /* 正文排版（SSR 的 Markdown 输出共用这套） */
@@ -3821,27 +3908,17 @@ export class YukiApp extends LitElement {
       order: 2;
     }
 
-    .feed-alternating .article:has(.is-portrait) {
-      grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
-    }
-
-    .feed-alternating .article:nth-child(even):has(.is-portrait) {
-      grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
-    }
-
     .article-cover {
       display: block;
       overflow: hidden;
       border-radius: 14px;
-      background: var(--cover) center / cover no-repeat;
-      aspect-ratio: 16 / 10;
       transition:
         translate 450ms cubic-bezier(0.22, 0.61, 0.36, 1),
         box-shadow 450ms ease;
     }
 
-    .article-cover.is-portrait {
-      aspect-ratio: 3 / 4;
+    .article-cover yuki-cover {
+      border-radius: 14px;
     }
 
     .article:hover .article-cover {
@@ -3851,30 +3928,6 @@ export class YukiApp extends LitElement {
 
     .article:nth-child(even):hover .article-cover {
       box-shadow: 0 22px 44px -14px rgb(213 127 149 / 38%);
-    }
-
-    .cover-one {
-      --cover: linear-gradient(150deg, #3d5a80, #7eb6d9 55%, #c9a0b4);
-    }
-
-    .cover-two {
-      --cover: linear-gradient(150deg, #1d2b4a, #45618f 60%, #7eb6d9);
-    }
-
-    .cover-three {
-      --cover: linear-gradient(150deg, #5c4a72, #a17fa8 55%, #e8a4b4);
-    }
-
-    .cover-four {
-      --cover: linear-gradient(150deg, #274c57, #3f7d8c 55%, #8fc7c9);
-    }
-
-    .cover-five {
-      --cover: linear-gradient(150deg, #6b4a68, #b07fa0 55%, #e8c9b4);
-    }
-
-    .cover-six {
-      --cover: linear-gradient(150deg, #2c3e50, #5f7d9c 55%, #a9c6de);
     }
 
     .article-copy {
@@ -4998,8 +5051,6 @@ export class YukiApp extends LitElement {
       width: 148px;
       flex: 0 0 148px;
       border-radius: 10px;
-      background: var(--cover) center / cover no-repeat;
-      aspect-ratio: 16 / 10;
     }
 
     .archive-summary {
@@ -5061,6 +5112,196 @@ export class YukiApp extends LitElement {
       fill: var(--secondary-d);
       stroke: var(--secondary-d);
       scale: 1.15;
+    }
+
+    /* ---------- 加载骨架 / 错误重试 ---------- */
+    .skel {
+      border-radius: 8px;
+      background: linear-gradient(
+        100deg,
+        var(--surface-soft) 42%,
+        var(--surface) 52%,
+        var(--surface-soft) 62%
+      );
+      background-size: 200% 100%;
+      animation: skel-shine 1.5s linear infinite;
+    }
+
+    .skel-cover {
+      border-radius: 14px;
+      aspect-ratio: 16 / 9;
+    }
+
+    .skel-line {
+      height: 13px;
+      margin: 9px 0;
+    }
+
+    @keyframes skel-shine {
+      to {
+        background-position: -200% 0;
+      }
+    }
+
+    .load-error {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      padding: 20px 22px;
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+
+    .load-error p {
+      margin: 0;
+    }
+
+    .load-error button {
+      padding: 8px 20px;
+      border: 0;
+      border-radius: 999px;
+      background: var(--ink);
+      color: var(--page);
+      font-size: 12.5px;
+      transition: background 250ms ease;
+    }
+
+    .load-error button:hover {
+      background: var(--primary-d);
+    }
+
+    /* ---------- 分页 / 加载更多 ---------- */
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 52px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .pager a,
+    .pager-cur {
+      padding: 7px 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      transition:
+        color 250ms ease,
+        border-color 250ms ease;
+    }
+
+    .pager a:hover {
+      border-color: var(--primary);
+      color: var(--primary-d);
+    }
+
+    .pager .pager-cur {
+      border-color: var(--ink);
+      background: var(--ink);
+      color: #fff;
+    }
+
+    .pager .pager-gap {
+      padding: 7px 2px;
+      color: var(--faint);
+    }
+
+    .load-more {
+      display: block;
+      margin: 4px auto 0;
+      padding: 11px 32px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      transition:
+        color 250ms ease,
+        border-color 250ms ease,
+        translate 250ms ease;
+    }
+
+    .load-more:hover:not(:disabled) {
+      border-color: var(--primary);
+      color: var(--primary-d);
+      translate: 0 -1px;
+    }
+
+    .load-more:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    /* ---------- 首屏一言 ---------- */
+    .quote-from {
+      margin-top: -8px;
+      color: rgb(255 255 255 / 55%);
+      font-family: var(--serif);
+      font-size: 12.5px;
+      letter-spacing: 0.1em;
+    }
+
+    /* ---------- 动态补充样式 ---------- */
+    .moment-mood {
+      margin-left: 8px;
+      color: var(--secondary-d);
+      letter-spacing: 0.1em;
+    }
+
+    .m-comment-content p,
+    .comment-content-html p {
+      margin: 3px 0 0;
+    }
+
+    .comment-content-html p {
+      margin: 0 0 0.6em;
+    }
+
+    .comment-content-html p:last-child {
+      margin-bottom: 0;
+    }
+
+    .comment-sent {
+      margin-top: 18px;
+    }
+
+    .results-cap {
+      max-width: 760px;
+      margin: 40px auto 8px;
+      color: var(--faint);
+      font-size: 12px;
+      letter-spacing: 0.18em;
+    }
+
+    /* 列表页刊头背景：盖一层页面色保证文字可读（与 .masthead.has-bg 同一处理） */
+    .page-head.has-bg {
+      position: relative;
+      overflow: hidden;
+      padding: 40px 36px 36px;
+      border-bottom: 0;
+      border-radius: 20px;
+      background-position: center;
+      background-size: cover;
+    }
+
+    .page-head.has-bg::before {
+      position: absolute;
+      inset: 0;
+      content: '';
+      background: color-mix(in srgb, var(--page) 82%, transparent);
+      backdrop-filter: blur(6px);
+    }
+
+    .page-head.has-bg > * {
+      position: relative;
     }
 
     /* ---------- 响应式 ---------- */
@@ -5181,18 +5422,12 @@ export class YukiApp extends LitElement {
       }
 
       .feed-alternating .article,
-      .feed-alternating .article:nth-child(even),
-      .feed-alternating .article:has(.is-portrait),
-      .feed-alternating .article:nth-child(even):has(.is-portrait) {
+      .feed-alternating .article:nth-child(even) {
         grid-template-columns: 1fr;
       }
 
       .feed-alternating .article:nth-child(even) .article-cover {
         order: 0;
-      }
-
-      .feed-alternating .article-cover.is-portrait {
-        width: min(320px, 88%);
       }
 
       .layout-grid,
@@ -5215,10 +5450,6 @@ export class YukiApp extends LitElement {
 
       .comment-form-grid {
         grid-template-columns: 1fr;
-      }
-
-      .post-cover.is-portrait {
-        width: min(320px, 88%);
       }
 
       .lab-bar {
@@ -5474,6 +5705,33 @@ export class YukiApp extends LitElement {
     return href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`);
   }
 
+  /** 站点设置下发的主题 token → CSS 变量（工作室里不应用，跟随画布自身主题）。 */
+  private siteThemeStyle(): Record<string, string> {
+    if (this.studio || this.previewOnly) return {};
+    const theme = this.store.site.data?.theme;
+    const colors = theme?.colors;
+    if (!colors) return {};
+    const style: Record<string, string> = {};
+    const map: Array<[string, string | undefined]> = [
+      ['--page', colors.background],
+      ['--surface', colors.surface],
+      ['--surface-soft', colors.surfaceMuted],
+      ['--ink', colors.text],
+      ['--muted', colors.textMuted],
+      ['--primary', colors.primary],
+      ['--secondary', colors.secondary],
+      ['--line', colors.border],
+    ];
+    for (const [key, value] of map) {
+      if (value && /^#[0-9a-fA-F]{3,8}$/.test(value)) style[key] = value;
+    }
+    const radius = theme?.shape?.radius;
+    if (typeof radius === 'number' && radius >= 0 && radius <= 32) {
+      style['--radius'] = `${radius}px`;
+    }
+    return style;
+  }
+
   private renderNavigation() {
     const items = publicNavigation;
     const links = html`
@@ -5494,7 +5752,7 @@ export class YukiApp extends LitElement {
     `;
     const actions = html`
       <div class="nav-actions">
-        ${this.layout.shell.showSearch
+        ${this.shell.showSearch
           ? html`<a
               class="nav-action nav-search${this.isCurrentPage('/search') ? ' active' : ''}"
               href="/search"
@@ -5514,7 +5772,7 @@ export class YukiApp extends LitElement {
         </button>
       </div>
     `;
-    if (this.layout.shell.navigation === 'sidebar') {
+    if (this.shell.navigation === 'sidebar') {
       return html`
         <nav class="site-nav nav-sidebar">
           <a class="brand" href="/">${this.siteData.siteTitle}</a>
@@ -5523,7 +5781,7 @@ export class YukiApp extends LitElement {
         </nav>
       `;
     }
-    if (this.layout.shell.navigation === 'floating-dock') {
+    if (this.shell.navigation === 'floating-dock') {
       return html`<nav class="site-nav nav-dock"><a class="brand" href="/">Y</a>${links}</nav>`;
     }
     return html`
@@ -5704,18 +5962,23 @@ export class YukiApp extends LitElement {
       case 'stats':
         {
           const fields = new Set((node.props.fields as string[]) ?? []);
+          const stats = this.previewOnly
+            ? previewStats
+            : this.store.stats;
           const available = [
-            ['articles', '6', '文章'],
-            ['dynamics', '5', '动态'],
-            ['friends', '4', '友链'],
-            ['views', '604', '总阅读'],
+            ['articles', stats.articles, '文章'],
+            ['dynamics', stats.dynamics, '动态'],
+            ['friends', stats.friends, '友链'],
+            ['views', stats.views, '总阅读'],
           ] as const;
         return html`
           <section class="${base} stats-card" data-label="站点数据" data-reveal @click=${click}>
             <p class="component-kicker">站点信息</p>
             <div class="stats-grid">
                 ${available
-                  .filter(([field]) => fields.size === 0 || fields.has(field))
+                  .filter(
+                    ([field, value]) => value !== null && (fields.size === 0 || fields.has(field)),
+                  )
                   .map(
                     ([, value, label]) =>
                       html`<div class="stat"><strong>${value}</strong><span>${label}</span></div>`,
@@ -5728,6 +5991,9 @@ export class YukiApp extends LitElement {
         {
           const limit = Number(node.props.limit ?? 3);
           const variant = String(node.props.variant ?? 'compact');
+          const stripItems = (
+            this.previewOnly ? previewDynamics : (this.store.dynamics.data?.items ?? [])
+          ).slice(0, Math.max(1, limit));
         return html`
             <section
               class="${base} dynamic-strip dynamics-${variant}"
@@ -5744,14 +6010,16 @@ export class YukiApp extends LitElement {
                 最近动态
                 <span class="strip-more" aria-hidden="true">更多 ›</span>
               </a>
-              ${dynamics
-                .slice(0, Math.max(1, limit))
-                .map(
-                  (item) =>
-                    html`<div class="dynamic-item">
-                      <time>${item.time.slice(5, 10)}</time><span>${item.text}</span>
-                    </div>`,
-                )}
+              ${stripItems.length === 0 && !this.previewOnly
+                ? html`<div class="skel skel-line" style="width: 78%"></div>
+                    <div class="skel skel-line" style="width: 55%"></div>`
+                : stripItems.map(
+                    (item) =>
+                      html`<div class="dynamic-item">
+                        <time>${formatMonthDay(item.createdAt)}</time
+                        ><span>${excerpt(textFromHtml(item.contentHtml), 48)}</span>
+                      </div>`,
+                  )}
           </section>
         `;
         }
@@ -5774,9 +6042,14 @@ export class YukiApp extends LitElement {
       { label: 'RSS', url: '/feed.xml' },
     ];
     const socialColors = ['#6e7f8d', '#e3a0ae', '#7eb6d9', '#8fafc4', '#e8a4b4', '#d6a1ae', '#f0a65a'];
+    // 首屏引语：公开运行时显示一言（失败回退本地句库）；工作室里保持布局字面量。
+    const quote = this.studio || this.previewOnly ? null : this.store.hitokotoQuote();
+    const quoteText = quote ? quote.text : String(node.props.lead ?? '');
+    const quoteFrom = quote?.from ?? '';
     const details = html`
       <div class="welcome-quote">
-        <span class="quote-text">${String(node.props.lead ?? '')}</span>
+        <span class="quote-text">${quoteText}</span>
+        ${quoteFrom ? html`<span class="quote-from">—— ${quoteFrom}</span>` : nothing}
         ${node.props.showSocials
           ? html`
               <nav class="social-row" aria-label="社交链接">
@@ -5897,6 +6170,16 @@ export class YukiApp extends LitElement {
                     @click=${(event: Event) => {
                       event.stopPropagation();
                       this.feedSort = value;
+                      if (!this.studio && !this.previewOnly) {
+                        this.store.loadHomeFeed(value);
+                        if (window.location.pathname === '/') {
+                          window.history.replaceState(
+                            null,
+                            '',
+                            value === 'featured' ? '/' : `/?sort=${value}`,
+                          );
+                        }
+                      }
                       this.requestUpdate();
                     }}
                   >
@@ -5983,16 +6266,13 @@ export class YukiApp extends LitElement {
   private renderArticleFeed(node: LayoutNode, base: string, click: (event: Event) => void) {
     const variant = String(node.props.variant ?? 'compact');
     const fields = new Set((node.props.fields as ArticleField[]) ?? []);
-    const limit = Number(node.props.limit ?? articles.length);
+    const limit = Math.max(1, Number(node.props.limit ?? 5));
     const sort = this.feedSort;
-    const sortedArticles =
-      sort === 'popular'
-        ? [...articles].sort((left, right) => right.likes - left.likes)
-        : sort === 'featured'
-          ? [...articles].sort(
-              (left, right) => Number(right.featured) - Number(left.featured),
-            )
-          : articles;
+    const feedSlice = this.previewOnly ? null : this.store.homeFeed(sort);
+    const items = this.previewOnly
+      ? previewArticles
+      : (feedSlice?.data?.items ?? []);
+    const total = this.previewOnly ? previewArticles.length : (feedSlice?.data?.total ?? 0);
     return html`
       <section
         class="${base} article-feed feed-${variant}"
@@ -6000,20 +6280,33 @@ export class YukiApp extends LitElement {
         data-node-id="${node.id}"
         @click=${click}
       >
-        ${sortedArticles.slice(0, Math.max(1, limit)).map(
+        ${!this.previewOnly && (feedSlice?.status === 'idle' || feedSlice?.status === 'loading')
+          ? this.skeletonFeed(Math.min(3, limit))
+          : nothing}
+        ${!this.previewOnly && feedSlice?.status === 'error'
+          ? this.renderLoadError(feedSlice.error, () => this.store.loadHomeFeed(sort, true))
+          : nothing}
+        ${items.slice(0, limit).map(
           (article) => html`
             <article class="article" data-reveal>
               ${fields.has('cover')
-                ? html`<a class="article-cover ${article.cover}${
-                    article.orientation === 'portrait' ? ' is-portrait' : ''
-                  }" href=${`/articles/${article.slug}`} aria-label=${article.title}></a>`
+                ? html`<a
+                    class="article-cover"
+                    href=${`/articles/${article.slug}`}
+                    aria-label=${article.title}
+                    ><yuki-cover
+                      src=${article.coverUrl}
+                      alt=${article.title}
+                      seed=${article.slug}
+                    ></yuki-cover
+                  ></a>`
                 : nothing}
               <div class="article-copy">
                 <div class="meta">
-                  ${fields.has('category')
-                    ? html`<span class="cat">${article.category}</span>`
+                  ${fields.has('category') && article.category
+                    ? html`<span class="cat">${article.category.name}</span>`
                     : nothing}
-                  ${fields.has('date') ? html`<time>${article.date}</time>` : nothing}
+                  ${fields.has('date') ? html`<time>${formatDate(article.publishedAt)}</time>` : nothing}
                 </div>
                 <h3><a href=${`/articles/${article.slug}`}>${article.title}</a></h3>
                 ${fields.has('summary') ? html`<p class="summary">${article.summary}</p>` : nothing}
@@ -6021,7 +6314,7 @@ export class YukiApp extends LitElement {
                   ${fields.has('tags')
                     ? html`<div class="tags">
                         ${article.tags.map(
-                          (tag) => html`<a href=${`/search?tag=${tag}`}>#${tag}</a>`,
+                          (tag) => html`<a href=${`/search?tag=${encodeURIComponent(tag.slug)}`}>#${tag.name}</a>`,
                         )}
                       </div>`
                     : nothing}
@@ -6032,7 +6325,7 @@ export class YukiApp extends LitElement {
             </article>
           `,
         )}
-        ${sortedArticles.length > Math.max(1, limit)
+        ${total > limit
           ? html`<a
               class="feed-more"
               href="/articles"
@@ -6044,9 +6337,71 @@ export class YukiApp extends LitElement {
     `;
   }
 
+  private skeletonFeed(count: number) {
+    return Array.from({ length: count }, (_, index) => index).map(
+      (index) => html`
+        <article class="article" aria-hidden="true">
+          <div class="skel skel-cover"></div>
+          <div class="article-copy">
+            <div class="skel skel-line" style="width: 34%"></div>
+            <div class="skel skel-line" style="width: 82%; height: 20px"></div>
+            <div class="skel skel-line" style="width: 96%"></div>
+            <div class="skel skel-line" style="width: 58%"></div>
+          </div>
+        </article>
+      `,
+    );
+  }
+
+  private renderLoadError(error: string | null, retry: () => void) {
+    return html`<div class="load-error" data-reveal>
+      <p>${error ?? '内容加载失败，请稍后再试。'}</p>
+      <button type="button" @click=${retry}>重试</button>
+    </div>`;
+  }
+
+  private renderPager(
+    basePath: string,
+    params: URLSearchParams,
+    page: number,
+    totalPages: number,
+  ) {
+    if (totalPages <= 1) return nothing;
+    const href = (target: number) => {
+      const next = new URLSearchParams(params);
+      if (target > 1) next.set('page', String(target));
+      else next.delete('page');
+      const search = next.toString();
+      return `${basePath}${search ? `?${search}` : ''}`;
+    };
+    const windowStart = Math.max(1, Math.min(page - 2, totalPages - 4));
+    const windowEnd = Math.min(totalPages, windowStart + 4);
+    const pages = Array.from(
+      { length: windowEnd - windowStart + 1 },
+      (_, index) => windowStart + index,
+    );
+    return html`
+      <nav class="pager" aria-label="分页" data-reveal>
+        ${page > 1 ? html`<a class="pager-step" href=${href(page - 1)}>← 上一页</a>` : nothing}
+        ${windowStart > 1 ? html`<a href=${href(1)}>1</a><span class="pager-gap">…</span>` : nothing}
+        ${pages.map((item) =>
+          item === page
+            ? html`<span class="pager-cur" aria-current="page">${item}</span>`
+            : html`<a href=${href(item)}>${item}</a>`,
+        )}
+        ${windowEnd < totalPages
+          ? html`<span class="pager-gap">…</span><a href=${href(totalPages)}>${totalPages}</a>`
+          : nothing}
+        ${page < totalPages ? html`<a class="pager-step" href=${href(page + 1)}>下一页 →</a>` : nothing}
+      </nav>
+    `;
+  }
+
   private renderSubscribeCard(kind: 'articles' | 'dynamics') {
     const done = this.subscribeDone.has(kind);
     const failed = this.subscribeFailed.has(kind);
+    const mailEnabled = this.siteData.mailEnabled;
+    const siteLoading = !this.siteOverride && this.store.site.status === 'loading';
     const copy =
       kind === 'articles'
         ? {
@@ -6059,6 +6414,23 @@ export class YukiApp extends LitElement {
             other: '同时订阅文章',
             feed: '/feeds/dynamics.xml',
           };
+    if (mailEnabled !== true) {
+      // mailEnabled=false（或站点信息加载失败）时收起表单，指向 RSS。
+      return html`
+        <section class="subscribe-strip" data-reveal>
+          <div class="sub-copy">
+            <p class="component-kicker">邮件订阅</p>
+            ${siteLoading
+              ? html`<div class="skel skel-line" style="width: 64%"></div>`
+              : html`<p class="sub-text">
+                  邮件订阅暂未开放，请先用 RSS：
+                  <a href="/feed.xml">综合 feed</a> · <a href="/feeds/articles.xml">文章</a> ·
+                  <a href="/feeds/dynamics.xml">动态</a>。
+                </p>`}
+          </div>
+        </section>
+      `;
+    }
     return html`
       <section class="subscribe-strip" data-reveal>
         ${done
@@ -6092,29 +6464,35 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private renderArticleCollection(items: typeof articles) {
-    const years = [...new Set(items.map((item) => item.date.slice(0, 4)))];
+  private renderArticleCollection(items: api.ArticleSummary[]) {
+    const years = [...new Set(items.map((item) => yearOf(item.publishedAt)).filter(Boolean))];
     return years.map((year) => {
-      const group = items.filter((item) => item.date.startsWith(year));
+      const group = items.filter((item) => yearOf(item.publishedAt) === year);
       return html`
         <section class="archive-year">
           <h2 data-reveal>${year} <span>${group.length} 篇</span></h2>
           ${group.map(
             (article, index) => html`
               <a class="archive-row" data-reveal href=${`/articles/${article.slug}`}>
-                <time>${article.date.slice(7).replace(' · ', '.')}</time>
+                <time>${formatMonthDay(article.publishedAt)}</time>
                 <h3><span>${article.title}</span></h3>
                 <div class="meta">
-                  <span class="cat ${index % 2 === 0 ? 'cat-b' : 'cat-p'}">${article.category}</span>
+                  ${article.category
+                    ? html`<span class="cat ${index % 2 === 0 ? 'cat-b' : 'cat-p'}"
+                        >${article.category.name}</span
+                      >`
+                    : nothing}
                   <span>${article.views} 阅读</span>
                 </div>
                 <div class="archive-more">
                   <div class="archive-more-in">
-                    <i
-                      class="archive-cover ${article.cover}${article.orientation === 'portrait' ? ' is-portrait' : ''}"
-                      role="img"
-                      aria-label=${`${article.title}的封面`}
-                    ></i>
+                    <yuki-cover
+                      class="archive-cover"
+                      src=${article.coverUrl}
+                      alt=${`${article.title}的封面`}
+                      seed=${article.slug}
+                      ratio="16 / 10"
+                    ></yuki-cover>
                     <p class="archive-summary">${article.summary}</p>
                   </div>
                 </div>
@@ -6134,17 +6512,15 @@ export class YukiApp extends LitElement {
     );
   }
 
-  private renderIndexRows(items: typeof articles, query: string) {
+  private renderIndexRows(items: api.ArticleSummary[], query: string) {
     return html`
       <div class="results">
-        <p class="cap" data-reveal>
-          ${query ? `「${query}」· ` : ''}${items.length} 条结果
-        </p>
         ${items.map(
           (article) => html`
             <a class="result" data-reveal href=${`/articles/${article.slug}`}>
               <div class="meta">
-                <span class="cat">${article.category}</span><time>${article.date}</time>
+                ${article.category ? html`<span class="cat">${article.category.name}</span>` : nothing}
+                <time>${formatDate(article.publishedAt)}</time>
               </div>
               <h3>${this.highlight(article.title, query)}</h3>
               <p>${this.highlight(article.summary, query)}</p>
@@ -6155,372 +6531,53 @@ export class YukiApp extends LitElement {
     `;
   }
 
+  private renderDynamicRows(items: api.DynamicItem[], query: string) {
+    return html`
+      <div class="results">
+        ${items.map(
+          (item) => html`
+            <a class="result" data-reveal href=${`/dynamics#dynamic-${item.id}`}>
+              <div class="meta">
+                <span class="cat">动态</span>
+                <time>${formatDateTime(item.createdAt)}</time>
+              </div>
+              <p>${this.highlight(excerpt(textFromHtml(item.contentHtml), 120), query)}</p>
+            </a>
+          `,
+        )}
+      </div>
+    `;
+  }
+
   private renderInnerPage() {
     const path = window.location.pathname;
-    const article = articles.find((item) => path === `/articles/${item.slug}`);
-    const params = new URLSearchParams(window.location.search);
-    const query = params.get('q')?.trim() ?? '';
-    const category = params.get('category') ?? '';
-    const tag = params.get('tag') ?? '';
-    const year = params.get('year') ?? '';
-    const categories = [...new Set(articles.map((item) => item.category))];
-    const tags = [...new Set(articles.flatMap((item) => item.tags))];
-    const years = [...new Set(articles.map((item) => item.date.slice(0, 4)))];
-    const filterHref = (key: string, value: string) => {
-      const next = new URLSearchParams(params);
-      if (next.get(key) === value) next.delete(key);
-      else next.set(key, value);
-      const search = next.toString();
-      return `/search${search ? `?${search}` : ''}`;
-    };
-    const friends = [
-      ['星港', 'https://yeastar.xin', 'yeastar.xin', '另一处慢慢更新的主站。', 'SINCE 2024.10', 'cover-one'],
-      ['夜航', 'https://github.com/Yueosa', 'github.com/Yueosa', '代码和还没写完的实验。', 'SINCE 2023.04', 'cover-two'],
-      ['电台', 'https://music.163.com/#/user/home?id=630887153', 'music.163.com', '适合后半夜再读。', 'SINCE 2024.11', 'cover-three'],
-      ['窗边', 'https://x.com/Yosa04942475621', 'x.com/Yosa04942475621', '偶尔留下一句近况。', 'SINCE 2025.06', 'cover-four'],
-    ] as const;
-
-    if (article) {
-      const articleIndex = articles.indexOf(article);
-      const newer = articles[articleIndex - 1];
-      const older = articles[articleIndex + 1];
-      const liked = this.likedArticles.has(article.slug);
-      const tocLink = (item: { id: string; text: string; level: number }) => html`<a
-        class="post-toc-item level-${item.level}${this.tocActive === item.id ? ' is-active' : ''}"
-        href="#${item.id}"
-        @click=${(event: Event) => {
-          event.preventDefault();
-          this.tocActive = item.id;
-          this.renderRoot
-            .querySelector(`#${CSS.escape(item.id)}`)
-            ?.scrollIntoView({ behavior: this.reducedMotion ? 'auto' : 'smooth', block: 'start' });
-        }}
-        >${item.text}</a
-      >`;
-      return html`
-        <main class="inner-page">
-          <article class="article-page">
-            <a
-              class="post-back"
-              href="/articles"
-              @click=${(event: Event) => {
-                event.preventDefault();
-                if (this.spaNavigated && window.history.length > 1) {
-                  window.history.back();
-                } else {
-                  window.history.pushState(null, '', '/articles');
-                  this.handleRouteChange();
-                }
-              }}
-              >← 返回</a
-            >
-            <header class="post-head" data-reveal>
-              <p class="component-kicker">${article.category}</p>
-              <h1>${article.title}</h1>
-              <p class="post-meta">
-                <time>${article.date}</time>
-                <span aria-hidden="true">·</span>
-                <span>${article.views} 阅读</span>
-                <span aria-hidden="true">·</span>
-                <span>${article.likes + (liked ? 1 : 0)} 喜欢</span>
-                <span aria-hidden="true">·</span>
-                <span>约 6 分钟</span>
-              </p>
-              <p class="post-summary">${article.summary}</p>
-            </header>
-            ${this.tocItems.length > 1
-              ? html`<nav class="post-toc" aria-label="目录">
-                  <div class="post-toc-sticky">
-                    <p class="post-toc-kicker">目录</p>
-                    ${this.tocItems.map(tocLink)}
-                  </div>
-                </nav>`
-              : nothing}
-            <div
-              class="post-cover ${article.cover}${article.orientation === 'portrait' ? ' is-portrait' : ''}"
-              role="img"
-              aria-label=${`${article.title}的封面`}
-              data-reveal
-            ></div>
-            ${this.tocItems.length > 1
-              ? html`<details class="post-toc-mobile" data-reveal>
-                  <summary>目录 · ${this.tocItems.length} 节</summary>
-                  ${this.tocItems.map(tocLink)}
-                </details>`
-              : nothing}
-            <div class="prose" data-reveal>${articleProseMock}</div>
-            <p class="post-end" data-reveal>完</p>
-            <footer class="post-foot" data-reveal>
-              <div class="post-tags">
-                ${article.tags.map(
-                  (tag) => html`<a class="post-tag" href=${`/search?tag=${encodeURIComponent(tag)}`}>#${tag}</a>`,
-                )}
-              </div>
-              <button
-                class="heart-button post-like${liked ? ' liked' : ''}"
-                type="button"
-                aria-pressed=${liked}
-                aria-label=${liked ? '取消喜欢' : '喜欢这篇文章'}
-                @click=${() => {
-                  if (liked) this.likedArticles.delete(article.slug);
-                  else this.likedArticles.add(article.slug);
-                  this.requestUpdate();
-                }}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M12 20.3C7.2 16.9 3.5 13.6 3.5 9.9 3.5 7.2 5.6 5 8.3 5c1.5 0 2.9.7 3.7 1.9C12.8 5.7 14.2 5 15.7 5c2.7 0 4.8 2.2 4.8 4.9 0 3.7-3.7 7-8.5 10.4Z"
-                  />
-                </svg>
-                <span class="heart-count">${article.likes + (liked ? 1 : 0)}</span>
-                <span>${liked ? '已喜欢' : '喜欢这篇'}</span>
-              </button>
-            </footer>
-            <nav class="post-nav" data-reveal aria-label="相邻文章">
-              ${newer
-                ? html`<a class="post-nav-item" href=${`/articles/${newer.slug}`}>
-                    <span class="post-nav-kicker">← 上一篇</span>
-                    <span class="post-nav-title">${newer.title}</span>
-                  </a>`
-                : html`<span aria-hidden="true"></span>`}
-              ${older
-                ? html`<a class="post-nav-item older" href=${`/articles/${older.slug}`}>
-                    <span class="post-nav-kicker">下一篇 →</span>
-                    <span class="post-nav-title">${older.title}</span>
-                  </a>`
-                : html`<span aria-hidden="true"></span>`}
-            </nav>
-            <section class="comments" data-reveal>
-              <header class="comments-head">
-                <h2>评论</h2>
-                <span class="comments-count">3 条</span>
-              </header>
-              ${this.commentFormOpen
-                ? html`<form class="comment-form is-open" @submit=${(event: Event) => event.preventDefault()}>
-                    <div class="comment-form-grid">
-                      <label>昵称<input name="display_name" required maxlength="24" placeholder="怎么称呼你" /></label>
-                      <label>邮箱（选填，会公开展示）<input name="email" type="email" placeholder="用于头像和公开展示" /></label>
-                      <label>网站（选填）<input name="website" type="url" placeholder="https://" /></label>
-                    </div>
-                    <label class="comment-content">
-                      内容
-                      <textarea name="content" required rows="4" maxlength="2000" placeholder="想说什么都可以，慢一点也没关系。"></textarea>
-                    </label>
-                    <div class="comment-form-foot">
-                      <p class="comment-note">评论会在审核后显示；昵称和邮箱会公开展示。</p>
-                      <div class="comment-form-actions">
-                        <button
-                          class="comment-cancel"
-                          type="button"
-                          @click=${() => {
-                            this.commentFormOpen = false;
-                            this.requestUpdate();
-                          }}
-                        >
-                          先不写了
-                        </button>
-                        <button type="submit">寄出评论</button>
-                      </div>
-                    </div>
-                  </form>`
-                : html`<button
-                    class="comment-compose"
-                    type="button"
-                    @click=${() => {
-                      this.commentFormOpen = true;
-                      this.requestUpdate();
-                    }}
-                  >
-                    <span class="comment-avatar">${this.avatarFallback('来访者')}</span>
-                    <span class="comment-compose-hint">写下你的想法，点这里开始评论…</span>
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
-                  </button>`}
-              <ol class="comment-list">
-                <li class="comment">
-                  <header>
-                    ${this.commentAvatar('远岸', 'https://yeastar.xin')}
-                    <div class="comment-who">
-                      <div class="comment-line">
-                        <a class="comment-name" href="https://yeastar.xin" rel="nofollow">远岸</a>
-                        <time>2026 · 10 · 04 / 23:14</time>
-                      </div>
-                      <div class="comment-meta">
-                        <a class="comment-site" href="https://yeastar.xin" rel="nofollow">yeastar.xin</a>
-                        <span>Desktop Firefox 143 · Arch Linux</span>
-                      </div>
-                    </div>
-                  </header>
-                  <p>「旧服务器消失」这句话看得心里一沉，但读到最后又觉得很轻。欢迎回来。</p>
-                </li>
-                <li class="comment">
-                  <header>
-                    ${this.commentAvatar('栖迟')}
-                    <div class="comment-who">
-                      <div class="comment-line">
-                        <span class="comment-name">栖迟</span>
-                        <time>2026 · 10 · 05 / 01:02</time>
-                      </div>
-                      <div class="comment-meta">
-                        <span>qichi@example.com</span>
-                        <span>Mobile Safari 17 · iOS 17</span>
-                      </div>
-                    </div>
-                  </header>
-                  <p>备份那一段太真实了……我也是丢了数据之后，才学会给自己写备份脚本的。</p>
-                  <ol class="comment-children">
-                    <li class="comment">
-                      <header>
-                        ${this.commentAvatar('恋')}
-                        <div class="comment-who">
-                          <div class="comment-line">
-                            <span class="comment-name is-owner">恋</span>
-                            <span class="comment-badge">作者</span>
-                            <time>2026 · 10 · 05 / 09:40</time>
-                          </div>
-                          <div class="comment-meta">
-                            <span>Desktop Firefox 143 · Arch Linux</span>
-                          </div>
-                        </div>
-                      </header>
-                      <p>是的，现在备份每天自己跑，再也不用记住这件事了。</p>
-                    </li>
-                  </ol>
-                </li>
-              </ol>
-            </section>
-          </article>
-        </main>
-      `;
+    if (path.startsWith('/articles/')) {
+      const slug = decodeURIComponent(path.slice('/articles/'.length));
+      if (slug) return this.renderArticleDetail(slug);
     }
+    if (path === '/articles') return this.renderArticlesPage();
+    if (path === '/dynamics') return this.renderDynamicsPage();
+    if (path === '/friends') return this.renderFriendsPage();
+    if (path === '/search') return this.renderSearchPage();
+    return this.renderNotFound();
+  }
 
-    if (path === '/articles') {
-      return html`
-        <main class="inner-page">
-          <header class="page-head" data-reveal>
-            <p class="kicker caps">YukiLog — Archive</p>
-            <h1>文章</h1>
-            <p class="inner-lede">长文、随笔与手记，按时间倒序。写得慢，但每一篇都算数。</p>
-          </header>
-          ${this.renderSubscribeCard('articles')}
-          ${this.renderArticleCollection(articles)}
-        </main>
-      `;
-    }
+  private pageHead(kicker: string, title: string, lede: string) {
+    const masthead = this.siteData.mastheadUrl;
+    return html`
+      <header
+        class="page-head${masthead ? ' has-bg' : ''}"
+        style=${masthead ? styleMap({ backgroundImage: `url("${masthead}")` }) : nothing}
+        data-reveal
+      >
+        <p class="kicker caps">${kicker}</p>
+        <h1>${title}</h1>
+        <p class="inner-lede">${lede}</p>
+      </header>
+    `;
+  }
 
-    if (path === '/dynamics') {
-      return html`
-        <main class="inner-page">
-          <header class="page-head" data-reveal>
-            <p class="kicker caps">YukiLog — Moments</p>
-            <h1>动态</h1>
-            <p class="inner-lede">短句与片刻，散落在时间里的星。不必完整，真实就好。</p>
-          </header>
-          ${this.renderSubscribeCard('dynamics')}
-          <div class="timeline">${dynamics.map((item, index) => this.renderMoment(item, index))}</div>
-        </main>
-      `;
-    }
-
-    if (path === '/friends') {
-      return html`
-        <main class="inner-page">
-          <header class="page-head" data-reveal>
-            <p class="kicker caps">YukiLog — Friends</p>
-            <h1>友链</h1>
-            <p class="inner-lede">互联网很大，但总有一些站点值得互相留一盏灯。</p>
-          </header>
-          <div class="friends-grid">
-            ${friends.map(
-              ([name, url, host, description, since, cover]) => html`
-                <a class="friend" data-reveal href=${url} target="_blank" rel="noopener noreferrer">
-                  <span class="friend-avatar ${cover}">
-                    <span aria-hidden="true">${name.slice(0, 1)}</span>
-                    <img
-                      src=${`https://${new URL(url).host}/favicon.ico`}
-                      alt=""
-                      loading="lazy"
-                      @error=${(event: Event) => (event.currentTarget as HTMLImageElement).remove()}
-                    />
-                  </span>
-                  <div>
-                    <h3>${name}</h3>
-                    <span class="furl">${host}</span>
-                    <p>${description}</p>
-                    <span class="fsince">${since}</span>
-                  </div>
-                </a>
-              `,
-            )}
-          </div>
-          <section class="friend-apply" data-reveal>
-            <p class="component-kicker">交换友链</p>
-            <h2>也为你的站点留一盏灯？</h2>
-            ${this.friendApplyDone
-              ? html`<p class="apply-ok">申请已经收到，审核通过后就会出现在上面。谢谢你的灯。</p>`
-              : html`
-                  <p class="apply-lede">
-                    留下站点信息，我看过之后就会挂到这里。favicon 可以留空，会自动取你站点的 /favicon.ico。
-                  </p>
-                  <form class="apply-form" @submit=${this.submitFriendApplication}>
-                    <label>站点名称<input name="name" required maxlength="40" placeholder="你的站点名字" /></label>
-                    <label>站点地址<input name="url" type="url" required placeholder="https://…" /></label>
-                    <label>联系邮箱<input name="email" type="email" required maxlength="254" placeholder="方便我回复你" /></label>
-                    <label>favicon 链接（选填）<input name="avatar_url" type="url" maxlength="2048" placeholder="留空则自动获取" /></label>
-                    <label class="wide">一句话介绍<textarea name="description" rows="2" maxlength="120" placeholder="这个站点在记录什么？"></textarea></label>
-                    ${this.friendApplyError ? html`<p class="apply-err">${this.friendApplyError}</p>` : nothing}
-                    <button type="submit" ?disabled=${this.friendApplyBusy}>
-                      ${this.friendApplyBusy ? '提交中…' : '提交申请'}
-                    </button>
-                  </form>
-                `}
-          </section>
-        </main>
-      `;
-    }
-
-    if (path === '/search') {
-      const found = articles.filter((item) => {
-        const text = `${item.title} ${item.summary} ${item.category} ${item.tags.join(' ')}`;
-        return (
-          (!query || text.includes(query)) &&
-          (!category || item.category === category) &&
-          (!tag || item.tags.includes(tag)) &&
-          (!year || item.date.startsWith(year))
-        );
-      });
-      return html`
-        <main class="inner-page">
-          <header class="page-head" data-reveal>
-            <p class="kicker caps">YukiLog — Search</p>
-            <h1>搜索</h1>
-            <p class="inner-lede">在文章、动态与随记里，找一段你还记得的话。</p>
-          </header>
-          <form class="search-box" method="get" action="/search" @submit=${this.handleSiteSubmit}>
-            ${category ? html`<input type="hidden" name="category" value=${category} />` : nothing}
-            ${tag ? html`<input type="hidden" name="tag" value=${tag} />` : nothing}
-            ${year ? html`<input type="hidden" name="year" value=${year} />` : nothing}
-            <input name="q" value=${query} maxlength="100" aria-label="搜索关键词" placeholder=${`试着搜搜：${tags.slice(0, 3).join('、')}……`} />
-            <button type="submit">搜索</button>
-          </form>
-          <p class="search-hint">ENTER 搜索 · 支持标题 / 正文 / 标签</p>
-          <div class="filter-bar">
-            ${categories.map(
-              (item) => html`<a class="filter-chip${category === item ? ' on' : ''}" href=${filterHref('category', item)}>${item}</a>`,
-            )}
-            ${tags.map(
-              (item) => html`<a class="filter-chip${tag === item ? ' on' : ''}" href=${filterHref('tag', item)}>#${item}</a>`,
-            )}
-            ${years.map(
-              (item) => html`<a class="filter-chip${year === item ? ' on' : ''}" href=${filterHref('year', item)}>${item}</a>`,
-            )}
-          </div>
-          ${found.length
-            ? this.renderIndexRows(found, query)
-            : html`<p class="search-hint">没有符合这些条件的文章。</p>`}
-        </main>
-      `;
-    }
-
+  private renderNotFound() {
     return html`
       <main class="inner-page">
         <header class="page-head" data-reveal>
@@ -6532,13 +6589,620 @@ export class YukiApp extends LitElement {
     `;
   }
 
+  /* ---------- 文章详情 ---------- */
+
+  private renderArticleDetail(slug: string) {
+    const slice = this.store.article(slug);
+    if (slice.status === 'error' && slice.notFound) return this.renderNotFound();
+    if (slice.status === 'error') {
+      return html`<main class="inner-page">
+        ${this.renderLoadError(slice.error, () => this.store.loadArticle(slug, true))}
+      </main>`;
+    }
+    const detail = slice.data;
+    if (!detail) {
+      return html`<main class="inner-page">
+        <article class="article-page" aria-hidden="true">
+          <div class="skel skel-line" style="width: 16%"></div>
+          <div class="skel skel-line" style="width: 78%; height: 34px; margin-top: 18px"></div>
+          <div class="skel skel-line" style="width: 46%"></div>
+          <div class="skel skel-cover" style="margin: 36px 0"></div>
+          <div class="skel skel-line" style="width: 100%"></div>
+          <div class="skel skel-line" style="width: 97%"></div>
+          <div class="skel skel-line" style="width: 88%"></div>
+          <div class="skel skel-line" style="width: 64%"></div>
+        </article>
+      </main>`;
+    }
+    const metrics = this.store.articleMetrics.get(slug);
+    const views = metrics?.view_count ?? detail.views;
+    const likeCount = metrics?.like_count ?? detail.likes;
+    const liked = metrics?.liked ?? false;
+    const likeBusy = this.store.likeBusy.has(slug);
+    const tocLink = (item: { id: string; text: string; level: number }) => html`<a
+      class="post-toc-item level-${item.level}${this.tocActive === item.id ? ' is-active' : ''}"
+      href="#${item.id}"
+      @click=${(event: Event) => {
+        event.preventDefault();
+        this.tocActive = item.id;
+        this.renderRoot
+          .querySelector(`#${CSS.escape(item.id)}`)
+          ?.scrollIntoView({ behavior: this.reducedMotion ? 'auto' : 'smooth', block: 'start' });
+      }}
+      >${item.text}</a
+    >`;
+    return html`
+      <main class="inner-page">
+        <article class="article-page">
+          <a
+            class="post-back"
+            href="/articles"
+            @click=${(event: Event) => {
+              event.preventDefault();
+              if (this.spaNavigated && window.history.length > 1) {
+                window.history.back();
+              } else {
+                window.history.pushState(null, '', '/articles');
+                this.handleRouteChange();
+              }
+            }}
+            >← 返回</a
+          >
+          <header class="post-head" data-reveal>
+            <p class="component-kicker">${detail.category?.name ?? '未分类'}</p>
+            <h1>${detail.title}</h1>
+            <p class="post-meta">
+              <time>${formatDate(detail.publishedAt)}</time>
+              <span aria-hidden="true">·</span>
+              <span>${views} 阅读</span>
+              <span aria-hidden="true">·</span>
+              <span>${likeCount} 喜欢</span>
+              <span aria-hidden="true">·</span>
+              <span>约 ${readingMinutes(detail.html)} 分钟</span>
+            </p>
+            ${detail.summary ? html`<p class="post-summary">${detail.summary}</p>` : nothing}
+          </header>
+          ${this.tocItems.length > 1
+            ? html`<nav class="post-toc" aria-label="目录">
+                <div class="post-toc-sticky">
+                  <p class="post-toc-kicker">目录</p>
+                  ${this.tocItems.map(tocLink)}
+                </div>
+              </nav>`
+            : nothing}
+          <yuki-cover
+            class="post-cover"
+            src=${detail.coverUrl}
+            alt=${`${detail.title}的封面`}
+            seed=${detail.slug}
+            adaptive
+            max-height="68vh"
+            data-reveal
+          ></yuki-cover>
+          ${this.tocItems.length > 1
+            ? html`<details class="post-toc-mobile" data-reveal>
+                <summary>目录 · ${this.tocItems.length} 节</summary>
+                ${this.tocItems.map(tocLink)}
+              </details>`
+            : nothing}
+          <div class="prose" data-reveal>${unsafeHTML(detail.html)}</div>
+          <p class="post-end" data-reveal>完</p>
+          <footer class="post-foot" data-reveal>
+            <div class="post-tags">
+              ${detail.tags.map(
+                (tag) =>
+                  html`<a class="post-tag" href=${`/search?tag=${encodeURIComponent(tag.slug)}`}
+                    >#${tag.name}</a
+                  >`,
+              )}
+            </div>
+            <button
+              class="heart-button post-like${liked ? ' liked' : ''}"
+              type="button"
+              aria-pressed=${liked}
+              aria-label=${liked ? '取消喜欢' : '喜欢这篇文章'}
+              ?disabled=${likeBusy}
+              @click=${() => void this.store.toggleArticleLike(slug)}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M12 20.3C7.2 16.9 3.5 13.6 3.5 9.9 3.5 7.2 5.6 5 8.3 5c1.5 0 2.9.7 3.7 1.9C12.8 5.7 14.2 5 15.7 5c2.7 0 4.8 2.2 4.8 4.9 0 3.7-3.7 7-8.5 10.4Z"
+                />
+              </svg>
+              <span class="heart-count">${likeCount}</span>
+              <span>${liked ? '已喜欢' : '喜欢这篇'}</span>
+            </button>
+          </footer>
+          <nav class="post-nav" data-reveal aria-label="相邻文章">
+            ${detail.prev
+              ? html`<a class="post-nav-item" href=${`/articles/${detail.prev.slug}`}>
+                  <span class="post-nav-kicker">← 上一篇</span>
+                  <span class="post-nav-title">${detail.prev.title}</span>
+                </a>`
+              : html`<span aria-hidden="true"></span>`}
+            ${detail.next
+              ? html`<a class="post-nav-item older" href=${`/articles/${detail.next.slug}`}>
+                  <span class="post-nav-kicker">下一篇 →</span>
+                  <span class="post-nav-title">${detail.next.title}</span>
+                </a>`
+              : html`<span aria-hidden="true"></span>`}
+          </nav>
+          ${this.renderArticleComments(detail)}
+        </article>
+      </main>
+    `;
+  }
+
+  private renderArticleComments(detail: api.ArticleDetail) {
+    const slice = this.store.comments(`article:${detail.slug}`);
+    const comments = slice.data?.items ?? [];
+    return html`
+      <section class="comments" id="comments" data-reveal>
+        <header class="comments-head">
+          <h2>评论</h2>
+          <span class="comments-count"
+            >${slice.status === 'ready' ? `${slice.data?.total ?? comments.length} 条` : '…'}</span
+          >
+        </header>
+        ${this.commentSentFor === detail.slug
+          ? html`<p class="sub-ok comment-sent">评论已寄出，审核通过后会显示在这里。</p>`
+          : nothing}
+        ${detail.allowComments
+          ? this.commentFormOpen
+            ? html`<form
+                class="comment-form is-open"
+                @submit=${(event: SubmitEvent) => void this.submitArticleComment(event, detail)}
+              >
+                <div class="comment-form-grid">
+                  <label
+                    >昵称<input
+                      name="display_name"
+                      required
+                      maxlength="80"
+                      placeholder="怎么称呼你"
+                      value=${this.commenter.display_name}
+                  /></label>
+                  <label
+                    >邮箱（选填，会公开展示）<input
+                      name="email"
+                      type="email"
+                      maxlength="254"
+                      placeholder="用于头像和公开展示"
+                      value=${this.commenter.email}
+                  /></label>
+                  <label
+                    >网站（选填）<input
+                      name="website"
+                      type="url"
+                      maxlength="2048"
+                      placeholder="https://"
+                      value=${this.commenter.website}
+                  /></label>
+                </div>
+                <label class="comment-content">
+                  内容
+                  <textarea
+                    name="content"
+                    required
+                    rows="4"
+                    maxlength="5000"
+                    placeholder="想说什么都可以，慢一点也没关系。"
+                  ></textarea>
+                </label>
+                <div class="comment-form-foot">
+                  <p class="comment-note">
+                    ${this.commentError || '评论会在审核后显示；昵称和邮箱会公开展示。'}
+                  </p>
+                  <div class="comment-form-actions">
+                    <button
+                      class="comment-cancel"
+                      type="button"
+                      @click=${() => {
+                        this.commentFormOpen = false;
+                        this.commentError = '';
+                        this.requestUpdate();
+                      }}
+                    >
+                      先不写了
+                    </button>
+                    <button type="submit" ?disabled=${this.commentBusy}>
+                      ${this.commentBusy ? '寄出中…' : '寄出评论'}
+                    </button>
+                  </div>
+                </div>
+              </form>`
+            : html`<button
+                class="comment-compose"
+                type="button"
+                @click=${() => {
+                  this.commentFormOpen = true;
+                  this.requestUpdate();
+                }}
+              >
+                <span class="comment-avatar"
+                  >${this.avatarFallback(this.commenter.display_name || '来访者')}</span
+                >
+                <span class="comment-compose-hint">写下你的想法，点这里开始评论…</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </button>`
+          : html`<p class="comment-note">评论区已关闭，去别的页面逛逛吧。</p>`}
+        ${slice.status === 'loading'
+          ? html`<div class="skel skel-line" style="width: 52%"></div>
+              <div class="skel skel-line" style="width: 76%"></div>`
+          : nothing}
+        ${slice.status === 'error'
+          ? html`<p class="comment-note">
+              评论加载失败，
+              <a
+                href="#comments"
+                @click=${(event: Event) => {
+                  event.preventDefault();
+                  this.store.loadArticleComments(detail.slug, true);
+                }}
+                >重试</a
+              >
+            </p>`
+          : nothing}
+        ${comments.length > 0
+          ? html`<ol class="comment-list">
+              ${comments.map((comment) => this.renderArticleComment(comment))}
+            </ol>`
+          : nothing}
+      </section>
+    `;
+  }
+
+  private renderArticleComment(comment: api.PublicComment) {
+    const host = comment.website
+      ? comment.website.replace(/^https?:\/\//, '').split('/')[0]
+      : '';
+    return html`
+      <li class="comment">
+        <header>
+          ${this.commentAvatar(comment.displayName, comment.avatarUrl)}
+          <div class="comment-who">
+            <div class="comment-line">
+              ${comment.website
+                ? html`<a
+                    class="comment-name"
+                    href=${comment.website}
+                    target="_blank"
+                    rel="nofollow noopener noreferrer"
+                    >${comment.displayName}</a
+                  >`
+                : html`<span class="comment-name">${comment.displayName}</span>`}
+              <time>${formatDateTime(comment.createdAt)}</time>
+            </div>
+            ${comment.website
+              ? html`<div class="comment-meta">
+                  <a
+                    class="comment-site"
+                    href=${comment.website}
+                    target="_blank"
+                    rel="nofollow noopener noreferrer"
+                    >${host}</a
+                  >
+                </div>`
+              : nothing}
+          </div>
+        </header>
+        <div class="comment-content-html">${unsafeHTML(comment.contentHtml)}</div>
+      </li>
+    `;
+  }
+
+  /* ---------- 列表页 ---------- */
+
+  private renderArticlesPage() {
+    const params = new URLSearchParams(window.location.search);
+    const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
+    const slice = this.store.archive;
+    const items = slice.data?.items ?? [];
+    return html`
+      <main class="inner-page">
+        ${this.pageHead('YukiLog — Archive', '文章', '长文、随笔与手记，按时间倒序。写得慢，但每一篇都算数。')}
+        ${this.renderSubscribeCard('articles')}
+        ${slice.status === 'idle' || slice.status === 'loading'
+          ? html`<section class="archive-year" aria-hidden="true">
+              <div class="skel skel-line" style="width: 120px; height: 22px"></div>
+              <div class="skel skel-line" style="width: 82%"></div>
+              <div class="skel skel-line" style="width: 68%"></div>
+              <div class="skel skel-line" style="width: 74%"></div>
+              <div class="skel skel-line" style="width: 59%"></div>
+            </section>`
+          : nothing}
+        ${slice.status === 'error'
+          ? this.renderLoadError(slice.error, () => this.store.loadArchive({ page }, true))
+          : nothing}
+        ${slice.status === 'ready' && items.length === 0
+          ? html`<p class="search-hint">这里还空着，文章正在路上。</p>`
+          : nothing}
+        ${this.renderArticleCollection(items)}
+        ${slice.data
+          ? this.renderPager('/articles', params, slice.data.page, slice.data.totalPages)
+          : nothing}
+      </main>
+    `;
+  }
+
+  private renderDynamicsPage() {
+    const slice = this.store.dynamics;
+    const data = slice.data;
+    const items = data?.items ?? [];
+    return html`
+      <main class="inner-page">
+        ${this.pageHead('YukiLog — Moments', '动态', '短句与片刻，散落在时间里的星。不必完整，真实就好。')}
+        ${this.renderSubscribeCard('dynamics')}
+        <div class="timeline">
+          ${items.map((item) => keyed(item.id, this.renderMoment(item)))}
+          ${slice.status === 'idle' || (slice.status === 'loading' && items.length === 0)
+            ? html`<div class="moment" aria-hidden="true">
+                <div class="moment-card">
+                  <div class="skel skel-line" style="width: 32%"></div>
+                  <div class="skel skel-line" style="width: 88%"></div>
+                  <div class="skel skel-line" style="width: 54%"></div>
+                </div>
+              </div>`
+            : nothing}
+        </div>
+        ${slice.status === 'error' && items.length === 0
+          ? this.renderLoadError(slice.error, () => this.store.loadDynamics(1, true))
+          : nothing}
+        ${slice.status === 'error' && items.length > 0
+          ? html`<p class="search-hint">
+              后面的内容没加载出来，
+              <a
+                href="/dynamics"
+                @click=${(event: Event) => {
+                  event.preventDefault();
+                  this.store.loadDynamics((data?.page ?? 1) + 1);
+                }}
+                >再试一次</a
+              >
+            </p>`
+          : nothing}
+        ${slice.status === 'ready' && items.length === 0
+          ? html`<p class="search-hint">还没有动态，第一颗星还没升起来。</p>`
+          : nothing}
+        ${data && data.page < data.totalPages
+          ? html`<button
+              class="load-more"
+              type="button"
+              ?disabled=${slice.status === 'loading'}
+              @click=${() => this.store.loadDynamics(data.page + 1)}
+            >
+              ${slice.status === 'loading' ? '载入中…' : '再往后翻翻'}
+            </button>`
+          : nothing}
+      </main>
+    `;
+  }
+
+  private renderFriendsPage() {
+    const slice = this.store.friends;
+    const items = slice.data ?? [];
+    return html`
+      <main class="inner-page">
+        ${this.pageHead('YukiLog — Friends', '友链', '互联网很大，但总有一些站点值得互相留一盏灯。')}
+        ${slice.status === 'idle' || slice.status === 'loading'
+          ? html`<div class="friends-grid" aria-hidden="true">
+              <div class="skel" style="height: 128px; border-radius: 16px"></div>
+              <div class="skel" style="height: 128px; border-radius: 16px"></div>
+            </div>`
+          : nothing}
+        ${slice.status === 'error'
+          ? this.renderLoadError(slice.error, () => this.store.ensureFriends(true))
+          : nothing}
+        ${items.length > 0
+          ? html`<div class="friends-grid">
+              ${items.map(
+                (friend) => html`
+                  <a class="friend" data-reveal href=${friend.url} target="_blank" rel="noopener noreferrer">
+                    <span class="friend-avatar" style=${styleMap({ '--cover': paletteFor(friend.url) })}>
+                      <span aria-hidden="true">${friend.name.slice(0, 1)}</span>
+                      ${friend.avatarUrl || friend.host
+                        ? html`<img
+                            src=${friend.avatarUrl || `https://${friend.host}/favicon.ico`}
+                            alt=""
+                            loading="lazy"
+                            @error=${(event: Event) => (event.currentTarget as HTMLImageElement).remove()}
+                          />`
+                        : nothing}
+                    </span>
+                    <div>
+                      <h3>${friend.name}</h3>
+                      <span class="furl">${friend.host}</span>
+                      <p>${friend.description}</p>
+                    </div>
+                  </a>
+                `,
+              )}
+            </div>`
+          : nothing}
+        ${slice.status === 'ready' && items.length === 0
+          ? html`<p class="search-hint">友链还空着，来做第一盏灯吧。</p>`
+          : nothing}
+        <section class="friend-apply" data-reveal>
+          <p class="component-kicker">交换友链</p>
+          <h2>也为你的站点留一盏灯？</h2>
+          ${this.friendApplyDone
+            ? html`<p class="apply-ok">申请已经收到，审核通过后就会出现在上面。谢谢你的灯。</p>`
+            : html`
+                <p class="apply-lede">
+                  留下站点信息，我看过之后就会挂到这里。favicon 可以留空，会自动取你站点的 /favicon.ico。
+                </p>
+                <form class="apply-form" @submit=${this.submitFriendApplication}>
+                  <label>站点名称<input name="name" required maxlength="40" placeholder="你的站点名字" /></label>
+                  <label>站点地址<input name="url" type="url" required placeholder="https://…" /></label>
+                  <label>联系邮箱<input name="email" type="email" required maxlength="254" placeholder="方便我回复你" /></label>
+                  <label>favicon 链接（选填）<input name="avatar_url" type="url" maxlength="2048" placeholder="留空则自动获取" /></label>
+                  <label class="wide">一句话介绍<textarea name="description" rows="2" maxlength="120" placeholder="这个站点在记录什么？"></textarea></label>
+                  ${this.friendApplyError ? html`<p class="apply-err">${this.friendApplyError}</p>` : nothing}
+                  <button type="submit" ?disabled=${this.friendApplyBusy}>
+                    ${this.friendApplyBusy ? '提交中…' : '提交申请'}
+                  </button>
+                </form>
+              `}
+        </section>
+      </main>
+    `;
+  }
+
+  private renderSearchPage() {
+    const params = new URLSearchParams(window.location.search);
+    const query = params.get('q')?.trim() ?? '';
+    const category = params.get('category') ?? '';
+    const tag = params.get('tag') ?? '';
+    const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
+    const facetItems = this.store.facets.data?.items ?? [];
+    const categories = [
+      ...new Map(
+        facetItems
+          .map((item) => item.category)
+          .filter((item): item is api.PublicTerm => item !== null)
+          .map((item) => [item.slug, item]),
+      ).values(),
+    ];
+    const tags = [
+      ...new Map(
+        facetItems.flatMap((item) => item.tags).map((item) => [item.slug, item]),
+      ).values(),
+    ];
+    // 分类/标签筛选与关键词互斥：搜索 API 只认 q，筛选走文章列表 API（与 SSR 分工一致）。
+    const filterHref = (key: 'category' | 'tag', value: string) => {
+      const current = key === 'category' ? category : tag;
+      const next = new URLSearchParams();
+      if (current !== value) next.set(key, value);
+      const otherKey = key === 'category' ? 'tag' : 'category';
+      const otherValue = key === 'category' ? tag : category;
+      if (otherValue) next.set(otherKey, otherValue);
+      const search = next.toString();
+      return `/search${search ? `?${search}` : ''}`;
+    };
+    return html`
+      <main class="inner-page">
+        ${this.pageHead('YukiLog — Search', '搜索', '在文章、动态与随记里，找一段你还记得的话。')}
+        <form class="search-box" method="get" action="/search" @submit=${this.handleSiteSubmit}>
+          <input name="q" value=${query} maxlength="100" aria-label="搜索关键词" placeholder=${tags.length > 0 ? `试着搜搜：${tags.slice(0, 3).map((item) => item.name).join('、')}……` : '试着搜搜：夜色、长风、重构……'} />
+          <button type="submit">搜索</button>
+        </form>
+        <p class="search-hint">ENTER 搜索 · 支持标题 / 正文 / 标签</p>
+        ${categories.length + tags.length > 0
+          ? html`<div class="filter-bar">
+              ${categories.map(
+                (item) =>
+                  html`<a
+                    class="filter-chip${category === item.slug ? ' on' : ''}"
+                    href=${filterHref('category', item.slug)}
+                    >${item.name}</a
+                  >`,
+              )}
+              ${tags.map(
+                (item) =>
+                  html`<a
+                    class="filter-chip${tag === item.slug ? ' on' : ''}"
+                    href=${filterHref('tag', item.slug)}
+                    >#${item.name}</a
+                  >`,
+              )}
+            </div>`
+          : nothing}
+        ${this.renderSearchResults(query, category, tag, page, params)}
+      </main>
+    `;
+  }
+
+  private renderSearchResults(
+    query: string,
+    category: string,
+    tag: string,
+    page: number,
+    params: URLSearchParams,
+  ) {
+    if (query) {
+      const slice = this.store.search;
+      if (slice.status === 'idle' || slice.status === 'loading') {
+        return html`<div class="results" aria-hidden="true">
+          <div class="skel skel-line" style="width: 64%"></div>
+          <div class="skel skel-line" style="width: 88%"></div>
+          <div class="skel skel-line" style="width: 72%"></div>
+        </div>`;
+      }
+      if (slice.status === 'error') {
+        return this.renderLoadError(slice.error, () => this.store.loadSearch(query, page, true));
+      }
+      const data = slice.data;
+      const articleItems = data?.articles.items ?? [];
+      const dynamicItems = data?.dynamics.items ?? [];
+      const articleTotal = data?.articles.total ?? 0;
+      const dynamicTotal = data?.dynamics.total ?? 0;
+      if (articleItems.length + dynamicItems.length === 0) {
+        return html`<p class="search-hint">没有找到和「${query}」相关的内容。</p>`;
+      }
+      const searchHref = (target: number) => {
+        const next = new URLSearchParams(params);
+        next.set('q', query);
+        if (target > 1) next.set('page', String(target));
+        else next.delete('page');
+        return `/search?${next.toString()}`;
+      };
+      return html`
+        <p class="cap results-cap" data-reveal>
+          「${query}」· 文章 ${articleTotal} 条 · 动态 ${dynamicTotal} 条
+        </p>
+        ${this.renderIndexRows(articleItems, query)}
+        ${dynamicItems.length > 0
+          ? html`<p class="cap results-cap" data-reveal>动态</p>`
+          : nothing}
+        ${this.renderDynamicRows(dynamicItems, query)}
+        ${page > 1 || articleTotal > page * api.SEARCH_PAGE_SIZE
+          ? html`<nav class="pager" aria-label="分页" data-reveal>
+              ${page > 1
+                ? html`<a class="pager-step" href=${searchHref(page - 1)}>← 上一页</a>`
+                : nothing}
+              ${articleTotal > page * api.SEARCH_PAGE_SIZE
+                ? html`<a class="pager-step" href=${searchHref(page + 1)}>下一页 →</a>`
+                : nothing}
+            </nav>`
+          : nothing}
+      `;
+    }
+    if (category || tag) {
+      const slice = this.store.archive;
+      const items = slice.data?.items ?? [];
+      if (slice.status === 'idle' || slice.status === 'loading') {
+        return html`<div class="results" aria-hidden="true">
+          <div class="skel skel-line" style="width: 64%"></div>
+          <div class="skel skel-line" style="width: 88%"></div>
+        </div>`;
+      }
+      if (slice.status === 'error') {
+        return this.renderLoadError(slice.error, () =>
+          this.store.loadArchive({ category, tag, page }, true),
+        );
+      }
+      if (items.length === 0) {
+        return html`<p class="search-hint">没有符合这些条件的文章。</p>`;
+      }
+      return html`
+        <p class="cap results-cap" data-reveal>${slice.data?.total ?? items.length} 篇</p>
+        ${this.renderIndexRows(items, '')}
+        ${slice.data
+          ? this.renderPager('/search', params, slice.data.page, slice.data.totalPages)
+          : nothing}
+      `;
+    }
+    return html`<p class="search-hint">输入关键词，或者从下面的分类与标签开始逛。</p>`;
+  }
+
   private renderSite() {
     const home = window.location.pathname === '/' || this.previewOnly;
     return html`
       <div
-        class="site theme-${this.layout.theme} shell-${this.layout.shell.navigation}${
+        class="site theme-${this.layout.theme} shell-${this.shell.navigation}${
           this.previewOnly ? ' is-studio-preview' : ''
         }"
+        style=${styleMap(this.siteThemeStyle())}
       >
         ${this.studio || this.previewOnly ? nothing : this.renderNavigation()}
         ${home

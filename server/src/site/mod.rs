@@ -1,5 +1,6 @@
 pub mod article;
 mod components;
+pub mod gateway;
 pub mod home;
 pub mod lists;
 
@@ -51,6 +52,7 @@ struct SiteView {
     avatar_url: String,
     masthead_url: String,
     favicon_url: String,
+    origin: String,
     social_links: Vec<SocialLink>,
     navigation_class: &'static str,
     navigation_options: &'static str,
@@ -241,6 +243,20 @@ struct HomeStats {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{ site.description }}">
+  <link rel="canonical" href="{{ canonical_url }}">
+  <meta property="og:title" content="{{ og_title }}">
+  <meta property="og:description" content="{{ og_description }}">
+  <meta property="og:type" content="{{ og_type }}">
+  <meta property="og:url" content="{{ canonical_url }}">
+  <meta property="og:site_name" content="{{ site.title }}">
+  {% if og_image != "" %}<meta property="og:image" content="{{ og_image }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="{{ og_image }}">
+  {% else %}<meta name="twitter:card" content="summary">
+  {% endif %}
+  <meta name="twitter:title" content="{{ og_title }}">
+  <meta name="twitter:description" content="{{ og_description }}">
+  {% if json_ld != "" %}<script type="application/ld+json">{{ json_ld|safe }}</script>{% endif %}
   <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
   {% if site.favicon_url != "" %}<link rel="icon" href="{{ site.favicon_url }}">{% endif %}
   <title data-away="唔, 不看我了吗...Ծ‸Ծ">{{ page_title }} · {{ site.title }}</title>
@@ -570,15 +586,9 @@ struct HomeStats {
     .masthead-editorial .kicker{margin:0 0 12px;color:var(--secondary-d)}
     .masthead-editorial h1{margin:0;font-family:var(--serif);font-size:clamp(34px,4.6vw,48px)}
     .masthead-editorial .lead{margin:10px 0 0;color:var(--muted)}
-    .page-head.has-bg,.masthead.has-bg{position:relative;isolation:isolate;overflow:hidden;padding:64px 44px;border:0;border-radius:20px;color:#eef3f8}
+    .page-head.has-bg,.masthead.has-bg{position:relative;isolation:isolate;overflow:hidden;padding:64px 44px;border:0;border-radius:20px}
     .masthead-bg{position:absolute;z-index:-2;inset:0;background:center/cover no-repeat}
-    .page-head.has-bg::before,.masthead.has-bg::before{position:absolute;z-index:-1;inset:0;content:'';background:linear-gradient(180deg,rgb(9 17 30/52%),rgb(9 17 30/62%));backdrop-filter:blur(8px)}
-    .page-head.has-bg h1,.masthead.has-bg h1{text-shadow:0 3px 22px rgb(0 0 0/38%)}
-    .page-head.has-bg .kicker,.masthead.has-bg .kicker{color:rgb(232 164 180/94%)}
-    .page-head.has-bg .inner-lede,.masthead.has-bg .lead{color:rgb(238 243 248/84%)}
-    .masthead.has-bg .sort-tabs a{border-color:rgb(255 255 255/30%);color:rgb(238 243 248/82%)}
-    .masthead.has-bg .sort-tabs a:hover{border-color:#fff;color:#fff}
-    .masthead.has-bg .sort-tabs a.active{border-color:#fff;background:#fff;color:#1c2733}
+    .page-head.has-bg::before,.masthead.has-bg::before{position:absolute;z-index:-1;inset:0;content:'';background:color-mix(in srgb,var(--page) 82%,transparent)}
     .profile-card{width:min(100%,420px)}
     .profile-button{display:block;width:100%;padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);text-align:center}
     .profile-face{display:block}
@@ -1126,9 +1136,46 @@ struct PageTemplate<'a> {
     content: &'a str,
     immersive_home: bool,
     current_section: &'a str,
+    canonical_url: &'a str,
+    og_title: &'a str,
+    og_description: &'a str,
+    og_type: &'a str,
+    og_image: &'a str,
+    json_ld: &'a str,
 }
 
-fn page(site: &SiteView, title: &str, content: &str) -> Result<Html<String>, AppError> {
+struct PageMeta {
+    title: String,
+    canonical_path: String,
+    description: String,
+    og_type: String,
+    og_image: String,
+    json_ld: String,
+}
+
+impl PageMeta {
+    fn new(site: &SiteView, title: &str, canonical_path: &str) -> Self {
+        Self {
+            title: title.to_owned(),
+            canonical_path: canonical_path.to_owned(),
+            description: site.description.clone(),
+            og_type: "website".to_owned(),
+            og_image: absolute_url(&site.origin, &site.avatar_url),
+            json_ld: String::new(),
+        }
+    }
+}
+
+fn absolute_url(origin: &str, url: &str) -> String {
+    if url.is_empty() || url.starts_with("http://") || url.starts_with("https://") {
+        url.to_owned()
+    } else {
+        format!("{origin}{url}")
+    }
+}
+
+fn page(site: &SiteView, meta: &PageMeta, content: &str) -> Result<Html<String>, AppError> {
+    let title = meta.title.as_str();
     let current_section = match title {
         "首页" => "home",
         "文章" => "articles",
@@ -1137,12 +1184,20 @@ fn page(site: &SiteView, title: &str, content: &str) -> Result<Html<String>, App
         "搜索" => "search",
         _ => "",
     };
+    let canonical_url = format!("{}{}", site.origin, meta.canonical_path);
+    let og_title = format!("{title} · {}", site.title);
     PageTemplate {
         site,
         page_title: title,
         content,
         immersive_home: title == "首页",
         current_section,
+        canonical_url: &canonical_url,
+        og_title: &og_title,
+        og_description: &meta.description,
+        og_type: &meta.og_type,
+        og_image: &meta.og_image,
+        json_ld: &meta.json_ld,
     }
     .render()
     .map(Html)
@@ -1218,6 +1273,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         avatar_url,
         masthead_url,
         favicon_url,
+        origin: state.auth.public_origin().to_owned(),
         social_links: settings.social_links,
         navigation_class,
         navigation_options,
@@ -1667,5 +1723,85 @@ mod tests {
         let recent_sql = sea_orm::QueryTrait::build(&recent, sea_orm::DatabaseBackend::Postgres)
             .to_string();
         assert!(!recent_sql.contains("JOIN"), "recent must not join: {recent_sql}");
+    }
+
+    fn test_site() -> SiteView {
+        SiteView {
+            title: "YukiLog".to_owned(),
+            description: "夜航西飞".to_owned(),
+            owner_name: "Sakurine".to_owned(),
+            owner_bio: String::new(),
+            avatar_url: "/media/ab/avatar.png".to_owned(),
+            masthead_url: String::new(),
+            favicon_url: String::new(),
+            origin: "https://blog.example.com".to_owned(),
+            social_links: Vec::new(),
+            navigation_class: "topbar",
+            navigation_options: "",
+            page_width_class: "width-wide",
+            show_search: true,
+            mail_enabled: false,
+            font_class: "font-system",
+            background: "#ffffff".to_owned(),
+            surface: "#ffffff".to_owned(),
+            surface_muted: "#f2f4f8".to_owned(),
+            text: "#20232a".to_owned(),
+            text_muted: "#667085".to_owned(),
+            primary: "#3278d4".to_owned(),
+            secondary: "#ef78ac".to_owned(),
+            border: "#dfe3ea".to_owned(),
+            radius: 16,
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn page_renders_canonical_and_social_meta() {
+        let site = test_site();
+        let meta = PageMeta::new(&site, "文章", "/articles");
+        let Html(html) = page(&site, &meta, "<p>content</p>").expect("render");
+        assert!(
+            html.contains(r#"<link rel="canonical" href="https://blog.example.com/articles">"#),
+            "missing canonical: {html}"
+        );
+        assert!(html.contains(r#"<meta property="og:title" content="文章 · YukiLog">"#));
+        assert!(html.contains(r#"<meta property="og:type" content="website">"#));
+        assert!(
+            html.contains(
+                r#"<meta property="og:url" content="https://blog.example.com/articles">"#
+            )
+        );
+        assert!(html.contains(r#"<meta property="og:site_name" content="YukiLog">"#));
+        assert!(
+            html.contains(
+                r#"<meta property="og:image" content="https://blog.example.com/media/ab/avatar.png">"#
+            )
+        );
+        assert!(html.contains(r#"<meta name="twitter:card" content="summary_large_image">"#));
+        assert!(html.contains(r#"<meta name="description" content="夜航西飞">"#));
+        assert!(!html.contains("application/ld+json"), "unexpected json-ld");
+    }
+
+    #[test]
+    fn page_without_image_uses_summary_card() {
+        let mut site = test_site();
+        site.avatar_url = String::new();
+        let mut meta = PageMeta::new(&site, "动态", "/dynamics");
+        assert_eq!(meta.og_image, "");
+        meta.json_ld = r#"{"@type":"Article"}"#.to_owned();
+        let Html(html) = page(&site, &meta, "<p>content</p>").expect("render");
+        assert!(html.contains(r#"<meta name="twitter:card" content="summary">"#));
+        assert!(!html.contains("og:image"));
+        assert!(html.contains(r#"<script type="application/ld+json">{"@type":"Article"}</script>"#));
+    }
+
+    #[test]
+    fn absolute_url_only_prefixes_relative_paths() {
+        assert_eq!(absolute_url("https://a.com", ""), "");
+        assert_eq!(
+            absolute_url("https://a.com", "https://cdn.com/x.png"),
+            "https://cdn.com/x.png"
+        );
+        assert_eq!(absolute_url("https://a.com", "/m/x.png"), "https://a.com/m/x.png");
     }
 }

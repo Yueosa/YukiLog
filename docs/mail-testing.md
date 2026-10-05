@@ -13,6 +13,18 @@
 
 假 SMTP 不连接互联网，不会向真实地址发送邮件。
 
+## 邮件模板
+
+所有外发邮件（订阅确认、新文章、新动态、管理员通知）都是
+`multipart/alternative`：`text/plain` 兜底 + `text/html` 品牌模板。HTML
+模板（`server/src/ops/mail.rs` 的 `brand_html`）是 table + 内联样式布局
+（兼容 QQ 邮箱、Outlook，不用 flex/grid）：浅色背景、主题色 `#3278d4`
+标题栏、白色圆角内容卡、底部小字区（订阅邮件放退订链接）。文章邮件含封面
+`<img>`（`{origin}/media/{storage_key}` 绝对 URL）与「阅读全文」按钮；
+动态邮件正文由 `markup::render` 渲染，附图最多 4 张，超出时标注「共 N 张图」。
+内容构建器是纯函数（`*_content` 系列），单测直接断言 HTML/纯文本结构，
+不依赖数据库与 SMTP。
+
 ## PostgreSQL 故障注入
 
 数据库测试被标记为 `ignored`，因为它会清空指定数据库。测试 URL 的数据库名必须

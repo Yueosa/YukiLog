@@ -13,7 +13,7 @@ use crate::{
     markup,
 };
 
-use super::{avatar_fallback, date, host_of, load_site, media_url, page};
+use super::{PageMeta, avatar_fallback, date, host_of, load_site, media_url, page};
 
 struct CommentCard {
     display_name: String,
@@ -117,7 +117,117 @@ pub async fn article_detail(
     }
     .render()
     .map_err(|_| AppError::Internal("render article"))?;
-    page(&site, &article.title, &content)
+    let mut meta = PageMeta::new(&site, &article.title, &format!("/articles/{}", article.slug));
+    meta.og_type = "article".to_owned();
+    if let Some(summary) = article.summary.as_deref() {
+        if !summary.is_empty() {
+            meta.description = summary.to_owned();
+        }
+    }
+    if !cover_url.is_empty() {
+        meta.og_image = super::absolute_url(&site.origin, &cover_url);
+    }
+    meta.json_ld = article_json_ld(
+        &site.origin,
+        &site.owner_name,
+        &article,
+        &meta.og_image,
+        &meta.description,
+    );
+    page(&site, &meta, &content)
+}
+
+fn article_json_ld(
+    origin: &str,
+    owner_name: &str,
+    article: &articles::Model,
+    image: &str,
+    description: &str,
+) -> String {
+    let mut value = serde_json::json!({
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": article.title,
+        "description": description,
+        "datePublished": article.published_at.map(|at| at.to_rfc3339()),
+        "dateModified": article.updated_at.to_rfc3339(),
+        "author": {
+            "@type": "Person",
+            "name": owner_name,
+        },
+        "mainEntityOfPage": {
+            "@type": "WebPage",
+            "@id": format!("{origin}/articles/{}", article.slug),
+        },
+    });
+    if !image.is_empty() {
+        value["image"] = serde_json::Value::String(image.to_owned());
+    }
+    serde_json::to_string(&value)
+        .unwrap_or_default()
+        .replace("</", "<\\/")
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{TimeZone, Utc};
+    use sea_orm::entity::prelude::Uuid;
+
+    use super::*;
+
+    fn test_article(title: &str) -> articles::Model {
+        let now = Utc.with_ymd_and_hms(2026, 10, 1, 12, 0, 0).unwrap();
+        articles::Model {
+            id: Uuid::nil(),
+            category_id: Uuid::nil(),
+            cover_media_id: None,
+            title: title.to_owned(),
+            slug: "hello-world".to_owned(),
+            summary: Some("摘要".to_owned()),
+            body_markdown: String::new(),
+            status: "published".to_owned(),
+            allow_comments: true,
+            published_at: Some(now.fixed_offset()),
+            featured_at: None,
+            created_at: now.fixed_offset(),
+            updated_at: now.fixed_offset(),
+        }
+    }
+
+    #[test]
+    fn json_ld_describes_article_and_escapes_script_close() {
+        let article = test_article("你好 </script><script>alert(1)</script>");
+        let json_ld = article_json_ld(
+            "https://blog.example.com",
+            "Sakurine",
+            &article,
+            "https://blog.example.com/media/ab/cover.png",
+            "摘要",
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json_ld.replace("<\\/", "</")).expect("valid json");
+        assert_eq!(parsed["@type"], "Article");
+        assert_eq!(parsed["author"]["name"], "Sakurine");
+        assert_eq!(
+            parsed["mainEntityOfPage"]["@id"],
+            "https://blog.example.com/articles/hello-world"
+        );
+        assert_eq!(parsed["image"], "https://blog.example.com/media/ab/cover.png");
+        assert!(parsed["datePublished"].as_str().unwrap().starts_with("2026-10-01"));
+        assert!(json_ld.contains("dateModified"));
+        assert!(
+            !json_ld.contains("</script"),
+            "json-ld must not break out of the script tag: {json_ld}"
+        );
+        assert!(json_ld.contains("<\\/script"));
+    }
+
+    #[test]
+    fn json_ld_omits_image_without_cover() {
+        let article = test_article("无封面");
+        let json_ld = article_json_ld("https://blog.example.com", "Sakurine", &article, "", "摘要");
+        assert!(!json_ld.contains("\"image\""));
+    }
 }
 
 fn comment_datetime(value: DateTime<FixedOffset>) -> String {

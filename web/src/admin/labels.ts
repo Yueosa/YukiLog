@@ -85,6 +85,29 @@ export const mediaPickerLabel: Record<string, string> = {
   clear: '清除',
 };
 
+export const articleStatusFilterLabel: Record<string, string> = {
+  all: '全部',
+  published: '已发布',
+  draft: '草稿',
+  scheduled: '已定时',
+};
+
+export const articleCardLabel: Record<string, string> = {
+  noCover: '未设置封面',
+  featured: '精选',
+  uncategorized: '未分类',
+  unpublished: '未发布',
+};
+
+export const heroBackgroundLabel: Record<string, string> = {
+  title: '沉浸式首屏背景',
+  note: '首页顶部沉浸式首屏的背景图，与布局工作室里首屏组件的背景是同一项，改动即时保存。',
+  missing: '当前首页布局里没有沉浸式首屏组件，请先到',
+  missingLink: '布局工作室',
+  missingTail: '添加。',
+  unset: '未设置',
+};
+
 export function enumLabel(map: Record<string, string>, value: string): string {
   return map[value] ?? value;
 }

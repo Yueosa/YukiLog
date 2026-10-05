@@ -20,6 +20,7 @@ pub struct AppState {
     pub(crate) content: content::ContentState,
     pub(crate) media: ops::media::MediaStorage,
     pub(crate) subscriptions: ops::subscriptions::SubscriptionState,
+    pub(crate) shell: site::gateway::ShellState,
 }
 
 impl AppState {
@@ -38,6 +39,7 @@ impl AppState {
             content: content::ContentState::default(),
             media,
             subscriptions,
+            shell: site::gateway::ShellState::from_env(),
         })
     }
 
@@ -52,6 +54,7 @@ impl AppState {
                 "test subscription signing secret with more than 32 bytes".into(),
             )
             .unwrap(),
+            shell: site::gateway::ShellState::from_env(),
         }
     }
 }

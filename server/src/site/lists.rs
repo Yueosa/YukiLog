@@ -14,9 +14,10 @@ use crate::{
 };
 
 use super::{
-    ARTICLE_LIMIT, ARTICLE_PAGE_SIZE, ArticleFilter, ArticleSort, DynamicCard, avatar_fallback,
-    cover_class, escape_html, host_of, load_articles, load_dynamics, load_moment_comments,
-    load_site, media_url, moment_comment_count, moment_comments_html, page, page_head,
+    ARTICLE_LIMIT, ARTICLE_PAGE_SIZE, ArticleFilter, ArticleSort, DynamicCard, PageMeta,
+    avatar_fallback, cover_class, escape_html, host_of, load_articles, load_dynamics,
+    load_moment_comments, load_site, media_url, moment_comment_count, moment_comments_html, page,
+    page_head,
 };
 
 struct FriendCard {
@@ -130,7 +131,11 @@ pub async fn article_list(
         cursor = end;
     }
     let pagination = pagination_html(&query, page_number, has_next);
-    page(&site, "文章", &format!("{content}{pagination}"))
+    page(
+        &site,
+        &PageMeta::new(&site, "文章", "/articles"),
+        &format!("{content}{pagination}"),
+    )
 }
 
 pub async fn dynamic_list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
@@ -161,7 +166,7 @@ pub async fn dynamic_list(State(state): State<AppState>) -> Result<Html<String>,
             false,
         )
     );
-    page(&site, "动态", &content)
+    page(&site, &PageMeta::new(&site, "动态", "/dynamics"), &content)
 }
 
 pub async fn friend_list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
@@ -201,7 +206,7 @@ pub async fn friend_list(State(state): State<AppState>) -> Result<Html<String>, 
     }
     .render()
     .map_err(|_| AppError::Internal("render friend links"))?;
-    page(&site, "友链", &content)
+    page(&site, &PageMeta::new(&site, "友链", "/friends"), &content)
 }
 
 #[derive(Deserialize)]
@@ -279,7 +284,7 @@ pub async fn search(
             content.push_str("</div>");
         }
     }
-    page(&site, "搜索", &content)
+    page(&site, &PageMeta::new(&site, "搜索", "/search"), &content)
 }
 
 fn first_page() -> u64 {

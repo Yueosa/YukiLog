@@ -15,7 +15,7 @@ use tower_http::{
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
-    use crate::content::{admin, design, overview, public, settings};
+    use crate::content::{admin, design, overview, public, public_api, settings};
 
     let media_files = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::overriding(
@@ -25,15 +25,38 @@ pub fn router(state: AppState) -> Router {
         .service(ServeDir::new(state.media.public_dir()));
 
     Router::new()
-        .route("/", get(crate::site::home::home))
-        .route("/articles", get(crate::site::lists::article_list))
-        .route("/articles/{slug}", get(crate::site::article::article_detail))
-        .route("/dynamics", get(crate::site::lists::dynamic_list))
-        .route("/friends", get(crate::site::lists::friend_list))
-        .route("/search", get(crate::site::lists::search))
+        .route("/", get(crate::site::gateway::home_page))
+        .route("/articles", get(crate::site::gateway::article_list_page))
+        .route(
+            "/articles/{slug}",
+            get(crate::site::gateway::article_detail_page),
+        )
+        .route("/dynamics", get(crate::site::gateway::dynamic_list_page))
+        .route("/friends", get(crate::site::gateway::friend_list_page))
+        .route("/search", get(crate::site::gateway::search_page))
         .route("/feed.xml", get(crate::ops::feed::all))
         .route("/feeds/articles.xml", get(crate::ops::feed::articles))
         .route("/feeds/dynamics.xml", get(crate::ops::feed::dynamics))
+        .route("/sitemap.xml", get(crate::ops::seo::sitemap))
+        .route("/robots.txt", get(crate::ops::seo::robots))
+        .route("/api/public/site", get(public_api::site))
+        .route("/api/public/articles", get(public_api::articles))
+        .route(
+            "/api/public/articles/{slug}",
+            get(public_api::article_detail),
+        )
+        .route(
+            "/api/public/articles/{slug}/comments",
+            get(public_api::article_comments),
+        )
+        .route("/api/public/dynamics", get(public_api::dynamic_list))
+        .route(
+            "/api/public/dynamics/{id}/comments",
+            get(public_api::dynamic_comments),
+        )
+        .route("/api/public/friends", get(public_api::friends))
+        .route("/api/public/search", get(public_api::search))
+        .route("/api/hitokoto", get(crate::ops::hitokoto::hitokoto))
         .route(
             "/api/friend-link-applications",
             post(public::apply_friend_link),

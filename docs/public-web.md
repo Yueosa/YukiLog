@@ -1,9 +1,33 @@
 # 公开 Web
 
-公开站点由 Axum 查询 PostgreSQL，Askama 输出完整 HTML。浏览器不执行 JavaScript
-也能阅读首页、文章、动态、评论、友链和搜索结果；Lit 只负责后续渐进增强。
+公开站点是「Lit SPA 给人类访客，SSR 给爬虫与无 JS 环境」的双形态架构：同一组
+路由按请求分流，人类拿到 SPA 壳（加载 `yuki-app`，数据走 `/api/public/*`），
+爬虫与 `?ssr=1` 调试请求拿到 Askama 服务端渲染的完整 HTML。浏览器不执行
+JavaScript 也能通过 SSR 版本阅读首页、文章、动态、评论、友链和搜索结果。
+
+## UA 分流
+
+`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/friends`、`/search` 由
+`server/src/site/gateway.rs` 分流，判定顺序：
+
+1. query 含 `ssr=1` → SSR（调试与降级通道）；
+2. User-Agent 大小写不敏感匹配爬虫标记（`bot|spider|crawler|slurp|
+   facebookexternalhit|twitterbot|telegrambot|whatsapp|discordbot|
+   google-inspectiontool|baiduspider|sogou|yisouspider|bytespider`）→ SSR；
+3. 其余 → SPA 壳。
+
+壳 HTML 带正确的 `<title>`、`<meta name="description">`、favicon、
+`<meta name="robots" content="index,follow">` 与 `<yuki-app>` 挂载点；模块脚本
+与 CSS 由服务端解析 `$YUKILOG_WEB_DIR/.vite/manifest.json`（默认 `admin/`，即
+发布目录下的 web 构建产物）里 `name: "yuki-app"` 的 chunk 得到，URL 形如
+`/admin/assets/yuki-app-<hash>.js`。`<noscript>` 提示并链接当前 URL 加
+`?ssr=1` 的无脚本版本；manifest 缺失时所有访客回退 SSR。`/feed.xml`、`/api/*`、
+`/media/*`、`/admin` 不参与分流。
 
 ## 路由
+
+以下路由的 SSR 版本（爬虫与 `?ssr=1` 所见）行为如下；人类访客看到的 Lit SPA
+通过 `/api/public/*` 获取同一口径的数据（见 docs/content-api.md）。
 
 - `/`：读取 `page_layouts.home` 并递归渲染注册组件；支持 `?sort=featured|popular|recent`
   切换首页文章排序，默认 `featured`，非法值返回 `422`；
@@ -18,6 +42,20 @@
 - `/feed.xml`：文章与动态聚合 RSS；
 - `/feeds/articles.xml`：文章 RSS；
 - `/feeds/dynamics.xml`：动态 RSS。
+- `/sitemap.xml`：首页、文章、动态、友链四个列表页加每篇已发布文章详情页
+  （不含 `/search`），`lastmod` 取 `published_at` 与 `updated_at` 的较晚者；
+- `/robots.txt`：放行公开页，`Disallow: /admin` 与 `/api`，并以
+  `YUKILOG_PUBLIC_ORIGIN` 的绝对 URL 指向 sitemap。
+
+## SEO 元信息
+
+SSR 页面（`server/src/site/mod.rs` 的 base 模板）统一输出：canonical（origin +
+当前路径，不含 query）、Open Graph（`og:title/description/type/url/site_name`，
+有图时 `og:image`）、Twitter card（有图 `summary_large_image`，否则
+`summary`）。默认 og 图是站点头像的绝对 URL；文章详情页改为
+`og:type=article`、描述取摘要、og 图取封面，并输出 `@type: Article` 的
+JSON-LD（`headline/datePublished/dateModified/author/mainEntityOfPage`，
+序列化后转义 `</` 防止穿出 `<script>`）。
 
 公开查询只选择 `status = published` 且发布时间不晚于当前时间的内容。站点设置或
 首页布局不存在时返回 `503 site_not_configured`，不会使用隐藏默认值或测试数据。
