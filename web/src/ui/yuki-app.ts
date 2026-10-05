@@ -396,10 +396,8 @@ export class YukiApp extends LitElement {
   private studioAnnouncement = '';
   private moveTargetId: string | null = null;
   private studioViewport: 'desktop' | 'tablet' | 'mobile' = 'desktop';
-  private mediaLibrary: StudioMedia[] = [
-    // 开发预览种子：旧版刊头 gif（生产环境由工作室从媒体库注入真实媒体）
-    { id: 'seed-mc', url: '/media/seed/mc.gif', mediaType: 'image/gif', name: 'mc.gif' },
-  ];
+  // 生产环境由工作室从媒体库注入真实媒体；仓库不提供默认图片（版权考虑）
+  private mediaLibrary: StudioMedia[] = [];
   private siteData: PublicSiteData = structuredClone(defaultSiteData);
   private mobileMenuOpen = false;
   private nodeSequence = 0;

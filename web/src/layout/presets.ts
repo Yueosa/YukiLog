@@ -113,7 +113,6 @@ export const layoutPresets: LayoutDocument[] = [
                     title: '最近文章',
                     lead: 'ARCHIVE / 6',
                     alignment: 'left',
-                    backgroundMediaId: 'seed-mc',
                   },
                 },
                 {

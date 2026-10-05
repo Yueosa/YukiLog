@@ -4,6 +4,9 @@
 /.release-build/
 /.rehearsal/
 /design-reference/
+/web/public/media/
+/docs/deployment-rehearsal-20261004.md
+/docs/frontend-handoff.md
 node_modules/
 /.pnpm-store/
 /web/dist/
