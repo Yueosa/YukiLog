@@ -5,10 +5,14 @@
 
 ## 路由
 
-- `/`：读取 `page_layouts.home` 并递归渲染注册组件；
+- `/`：读取 `page_layouts.home` 并递归渲染注册组件；支持 `?sort=featured|popular|recent`
+  切换首页文章排序，默认 `featured`，非法值返回 `422`；
 - `/articles`：已发布文章列表；支持 `tag`、`category`、`year` 与 `page` 查询参数；
 - `/articles/{slug}`：文章正文和公开评论；
-- `/dynamics`：已发布动态；
+- `/dynamics`：已发布动态；朋友圈形态卡片（头像 + 昵称 + 相对时间与可选心情、
+  Markdown 正文、配图——单图限宽展示、多图九宫格（2/4 张两列）、点赞与评论计数、
+  灰底内联评论区含楼中楼缩进、作者徽章与常驻一行输入框，输入框聚焦/提交时展开
+  昵称等字段，评论身份存 `localStorage`）；
 - `/friends`：公开友链；
 - `/search?q=`：在已发布文章标题、摘要和正文中搜索。
 - `/feed.xml`：文章与动态聚合 RSS；
@@ -39,3 +43,37 @@ RSS 使用配置中的公开 Origin 生成绝对链接和稳定 GUID，最多返
 首页以旧版花恋的沉浸首屏、三栏内容区和双态导航作为首发视觉基准。无脚本时页面仍
 完整可读；少量脚本只增强顶部感应导航和滚动状态。后续视觉调整不改变内容查询、
 布局 schema 或安全边界。
+
+## 首页排序与渐进增强
+
+首页文章排序由 `?sort=` 决定：`featured` 按 `featured_at` 降序（未精选文章排在
+最后，并列按发布时间）、`popular` 在 SQL 层按 `like_count * 20 + view_count` 加权
+降序、`recent` 按发布时间倒序。minimal 刊头的排序 tab 与标题同处一行，是普通
+链接，无脚本也可切换；刊头标题随当前排序在「精选文章 / 最热文章 / 最近文章」间
+联动。
+
+脚本增强还包括：动态时间线每条下的爱心按钮（点击调用动态点赞接口，成功才更新
+计数与按下态，失败保持原样，无脚本时按钮不产生行为）；右下角回到顶部按钮，圆环
+显示阅读进度；归档列表行悬停时展开封面与摘要；滚动浮现使用
+`IntersectionObserver`（`threshold: 0.1`、`rootMargin: '0px 0px 10% 0px'`），
+让下方内容提前进入过渡。
+
+## 文章页
+
+`/articles/{slug}` 依次输出刊头（分类、标题、发布时间与摘要）、目录、封面、
+`prose` 正文和评论区。Markdown 渲染时收集 h1–h3 并注入 `h-{序号}` 锚点 id
+（支持 `{#custom-id}`，仅保留 `[a-zA-Z0-9._:-]`）。目录多于一项时：宽屏
+（≥1100px）显示正文左侧 sticky 的 `nav.post-toc`，窄屏显示正文前可折叠的
+`details.post-toc-mobile`；宽屏下滚动监听（IntersectionObserver，
+`rootMargin: '-90px 0px -70% 0px'`）为当前小节链接加 `is-active`。正文排版对齐
+Lit 设计：h2 蓝色刻度线、serif 蓝边引用块、深色代码块、蓝色列表 marker、任务清单
+复选框与脚注样式，标题带 `scroll-margin-top` 避免被导航遮挡。
+
+评论区对齐 Lit 端设计：输入区在列表之前，收起态是一行 `.comment-compose` 引导条
+（头像 SVG + 提示 + chevron），增强脚本点击展开完整表单（含「先不写了」收回按钮；
+提交走 fetch POST `/api/articles/{id}/comments`，成功后显示审核提示并复原引导条，
+无脚本时表单保持收起）。每条评论头为两行结构：`.comment-line`（昵称——留网站时
+昵称本身即链接——加时间）与 `.comment-meta`（mono 11px 浅灰的 website 域名链接 ·
+邮箱 · `agent_label` 访客环境标签）。头像用响应的 `avatar_url`，加载失败经 onerror
+回退到内联 SVG 插画（蓝粉渐变星/墨底月夜/粉底海浪三款，按昵称哈希 `% 3` 选款，
+与 Lit 端 `avatarFallback()` 同一算法）；`avatar_url` 为空时直接渲染 SVG。

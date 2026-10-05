@@ -11,14 +11,27 @@
 - `/api/admin/tags`、`/api/admin/tags/{id}`：标签 CRUD；
 - `/api/admin/articles`、`/api/admin/articles/{id}`：文章 CRUD；
 - `/api/admin/articles/{id}/publish|withdraw`：发布与撤回；
+- `PUT /api/admin/articles/{id}/featured`：设置或取消精选，请求体
+  `{ "featured": true|false }`，响应中的文章带 `featured_at`；撤回文章会同时清空精选；
 - `/api/admin/dynamics`、`/api/admin/dynamics/{id}`：动态 CRUD；
 - `/api/admin/dynamics/{id}/publish|withdraw`：发布与撤回；
-- `/api/admin/comments`、`/api/admin/comments/{id}`：审核与删除；
+- `/api/admin/comments`、`/api/admin/comments/{id}`：审核与删除；状态只接受
+  `pending` / `visible` / `hidden`，非法值返回 `400`；
 - `/api/admin/friend-links`、`/api/admin/friend-links/{id}`：友链 CRUD；
-- `GET /api/admin/media`：媒体选择列表。
+- `GET /api/admin/media`：媒体选择列表；
+- `DELETE /api/admin/media/{id}`：删除媒体记录并尝试删除磁盘文件。仍被引用时
+  返回 `409` 与 `references` 引用清单（文章封面 `article_cover`、动态配图
+  `dynamic_media`、站点头像 `site_avatar`、友链头像 `friend_link_avatar`）；
 - `GET|PUT /api/admin/settings`：站点资料、主题 Token 与页面外壳；
 - `GET /api/admin/layouts`、`GET|PUT /api/admin/layouts/{page_key}`：页面布局；
 - `GET /api/admin/subscribers`：订阅者列表；
+- `DELETE /api/admin/subscribers/{id}`：硬删除订阅者，其投递记录随外键级联删除；
+- `GET /api/admin/overview`：仪表盘聚合——`counts`（文章总数/已发布、动态、待审
+  评论、媒体、活跃订阅、失败投递、当前管理员未读通知）、`totals`（总浏览、文章
+  与动态合计点赞）、`top_viewed` / `top_liked_articles`（各 TOP5，含
+  id/title/slug/value）、`top_liked_dynamics`（TOP5，含 id/正文前 40 字
+  excerpt/like_count）、`recent_comments`（最近 5 条，正文前 80 字 excerpt，
+  `target_title` 为文章标题或动态前 40 字）、`recent_notifications`（最近 5 条）；
 - `GET /api/admin/deliveries`：邮件投递列表；
 - `POST /api/admin/deliveries/{id}/retry|cancel`：重试或取消投递。
 - `GET /api/admin/notifications`：当前管理员最近 100 条站内消息；
@@ -35,6 +48,14 @@
 一致，不依赖额外常驻调度器。未提供请求体或时间时立即发布；已公开内容不能直接改回
 未来时间，必须先撤回再重新安排。
 
+动态创建/更新请求体另接受可选 `mood`（心情短句，去空白后为空存 `null`，最长
+40 字，超长返回 `422`）与可选 `media_ids`（UUID 数组）：缺省或 `null` 表示不改动
+现有配图；提供数组则在事务中校验后整体替换配图——最多 9 张、不允许重复、每个
+UUID 必须存在于媒体库，数组顺序即 `position` 展示顺序，传 `[]` 即清空配图。动态
+响应带 `media` 数组，每项含 `id`、`url`、`original_name`、`media_type`、
+`width`、`height`，按 `position` 升序。RSS 动态条目在正文 HTML 后追加第一张
+`image/*` 配图的 `<img>`（绝对 URL）。
+
 ## 公开互动
 
 - `POST /api/friend-link-applications`
@@ -43,18 +64,29 @@
 - `GET /api/articles/{id}/metrics`
 - `POST /api/articles/{id}/view`
 - `PUT|DELETE /api/articles/{id}/like`
+- `GET /api/dynamics/{id}/metrics`
+- `POST|DELETE /api/dynamics/{id}/like`
 
 评论默认进入 `pending`，仅 `visible` 评论公开。评论表单中的昵称、邮箱、网站与
-正文按页面声明公开；订阅邮箱仍然私密。
+正文按页面声明公开——邮箱选填，但填了就会随评论公开展示，表单底部有文字提醒；
+订阅邮箱仍然私密。公开响应另带两个服务端派生字段：`avatar_url`（评论者网站存在
+时取其 `https://{host}/favicon.ico`，否则用邮箱 trim+小写后的 SHA-256 拼
+Gravatar `?d=404`，两者皆无则为空串）和 `agent_label`——提交时服务端从
+User-Agent 请求头捕获原文（截断到 512 字符，不从请求体收），公开时解析成
+「Desktop Edge 146 · Windows 10」式短标签（设备 Desktop/Mobile/Tablet + 浏览器
+主版本 · 系统主版本），解析不出则为空串。
 
 友链申请只接收名称、HTTP(S) URL、简介和联系邮箱，不抓取访客 URL 或远程头像。
 申请以不可见友链保存，管理员通过后才公开，并同时建立站内通知。
 
 浏览量按 IP、文章和 30 秒窗口进行进程内限频。仅当请求来自本机反向代理时才信任
-`X-Real-IP`。评论按目标和 IP 限制为每分钟一次。
+`X-Real-IP`。评论按目标和 IP 限制为每分钟一次。nginx 前置另有第二层限流
+（`ops/nginx/yukilog.conf`）：`/api/` 整体每 IP 10 r/s，评论、订阅、友链申请与
+管理员登录等写操作仅按 POST/PUT/DELETE 计每 IP 12 次/分（burst 12），超限返回 429。
 
 点赞使用一年有效的 HttpOnly 匿名访客 Cookie。Cookie 保存随机令牌，数据库只
-保存 SHA-256；联合主键和触发器负责去重及维护点赞数。
+保存 SHA-256；联合主键和触发器负责去重及维护点赞数。文章与动态点赞共用同一
+访客 Cookie 和限频窗口；动态不统计浏览量，动态点赞也不产生站内通知。
 
 Markdown 原文由公开 Askama 页面统一安全渲染。管理后台不接收或保存生成后的
 HTML。

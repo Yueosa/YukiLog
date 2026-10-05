@@ -5,7 +5,7 @@
 - 管理员登录；
 - 文章、分类、标签、动态和评论；
 - 文件媒体、友链和站点外观配置；
-- 文章浏览量、匿名点赞和热门排序；
+- 文章浏览量、文章/动态匿名点赞和热门排序；
 - 文章/动态邮件订阅；
 - RSS 直接查询已发布内容，不需要专用表。
 
@@ -101,11 +101,13 @@ outbox 或邮件供应商 webhook。
 | `status` | `draft` 或 `published`；保存/发布时写。 |
 | `allow_comments` | 是否接受新评论；编辑时写，评论接口读取。 |
 | `published_at` | 首次/当前发布时间；发布时写，撤回草稿时清空。 |
+| `featured_at` | 精选标记时间；后台设置或取消精选时写，首页精选排序读取，撤回时清空。 |
 | `created_at` | 创建时间。 |
 | `updated_at` | 内容最近变化；触发器维护。 |
 
 数据库保证已发布文章一定有 `published_at`，草稿一定没有。不存在修订表和
-Slug 历史表。
+Slug 历史表。部分索引 `articles_featured_idx` 只覆盖已发布且带精选时间的行，
+供首页精选排序使用。
 
 ### `article_tags`
 
@@ -122,13 +124,28 @@ Slug 历史表。
 | --- | --- |
 | `id` | 动态 UUID。 |
 | `content_markdown` | 动态 Markdown 内容；编辑时写，时间线读取。 |
+| `mood` | 可选心情短句（1–40 字符，去空白后为空则存 NULL）；编辑时写，动态卡片读取。 |
 | `status` | `draft` 或 `published`。 |
 | `allow_comments` | 是否接受新评论。 |
 | `published_at` | 发布时间；发布时写，撤回时清空。 |
 | `created_at` | 创建时间。 |
 | `updated_at` | 最近修改时间；触发器维护。 |
 
-动态中的图片通过 Markdown 引用 `media_assets` 对应文件，不增加专用关联表。
+动态正文通过 Markdown 引用 `media_assets` 文件；除正文内嵌外，动态还可以关联
+最多 9 张配图（见下表）。删除动态或媒体时关联行级联删除。
+
+### `dynamic_media`
+
+| 字段 | 含义与读写 |
+| --- | --- |
+| `dynamic_id` | 动态 UUID。 |
+| `media_id` | 配图媒体 UUID，指向 `media_assets`。 |
+| `position` | 展示顺序，0–8；创建/编辑动态配图时按请求数组顺序写入。 |
+
+联合主键 `(dynamic_id, media_id)` 防止同一媒体重复挂载；保存动态配图时在同一
+事务中整体替换关联。索引 `dynamic_media_dynamic_idx` 按 `(dynamic_id, position)`
+有序读取一条动态的全部配图。`CHECK (position BETWEEN 0 AND 8)` 与后端「最多
+9 张」校验对应。
 
 ### `comments`
 
@@ -139,9 +156,10 @@ Slug 历史表。
 | `dynamic_id` | 被评论动态；与 `article_id` 必须且只能有一个。 |
 | `parent_id` | 可选父评论；回复时写。 |
 | `display_name` | 访客公开昵称；提交时写，评论区读取。 |
-| `email` | 访客按表单声明公开的邮箱；提交时写。 |
+| `email` | 可选邮箱；提交时写，填了随评论公开展示，另用于派生 Gravatar。可空；非空时受 `comments_email_shape` 约束（3–254 字符且含非首尾 `@`）。 |
 | `website` | 可选公开网站；提交时写。 |
 | `content` | 评论正文；提交时写，审核和评论区读取。 |
+| `user_agent` | 提交时的 User-Agent 请求头原文（截断 512 字符）；公开时解析为 `agent_label` 短标签展示。 |
 | `status` | `pending`、`visible` 或 `hidden`；提交和审核时写。 |
 | `created_at` | 提交时间。 |
 
@@ -157,8 +175,8 @@ Slug 历史表。
 | `like_count` | 当前点赞数；由点赞表触发器维护。 |
 | `updated_at` | 最近一次浏览或点赞变化时间。 |
 
-文章创建后触发器自动建立指标行。首页热门排序先比较点赞数，再比较浏览量；
-暂不记录每日趋势。
+文章创建后触发器自动建立指标行。首页热门排序在 SQL 层按
+`like_count * 20 + view_count` 加权降序，并列时按发布时间倒序；暂不记录每日趋势。
 
 ### `article_likes`
 
@@ -170,15 +188,37 @@ Slug 历史表。
 
 联合主键保证同一匿名令牌对同一文章最多一个点赞。删除该行就是取消点赞。
 
+### `dynamic_metrics`
+
+| 字段 | 含义与读写 |
+| --- | --- |
+| `dynamic_id` | 动态 UUID，同时是主键。 |
+| `like_count` | 当前点赞数；由点赞表触发器维护。 |
+| `updated_at` | 最近一次点赞变化时间。 |
+
+动态创建后触发器自动建立指标行。动态不统计浏览量。
+
+### `dynamic_likes`
+
+| 字段 | 含义与读写 |
+| --- | --- |
+| `dynamic_id` | 被点赞动态。 |
+| `visitor_token_hash` | 浏览器匿名令牌的 SHA-256，与文章点赞共用同一访客 Cookie。 |
+| `created_at` | 点赞时间。 |
+
+联合主键保证同一匿名令牌对同一动态最多一个点赞。删除该行就是取消点赞。
+
 ### `friend_links`
 
 | 字段 | 含义与读写 |
 | --- | --- |
 | `id` | 友链 UUID。 |
-| `avatar_media_id` | 可选站点头像。 |
+| `avatar_media_id` | 可选站点头像（本地媒体）。 |
+| `avatar_url` | 可选外部头像链接（申请者自填的 favicon）；优先级高于 `avatar_media_id`，都为空时公开页回退到对方站点 `/favicon.ico`。 |
 | `name` | 站点名称。 |
 | `url` | 站点地址，全局唯一。 |
 | `description` | 可选简介。 |
+| `application_email` | 友链申请者留下的联系邮箱；管理端添加时为 NULL。 |
 | `is_visible` | 是否在公开友链页显示。 |
 | `sort_order` | 展示顺序。 |
 | `created_at` | 创建时间。 |
@@ -256,6 +296,13 @@ HMAC-SHA-256 签名生成；数据库不保存令牌明文或可直接使用的�
 提交订阅时生成确认邮件任务；发布内容的事务直接为活跃订阅者生成通知任务。
 数据库保证任务类型与内容目标匹配，同一订阅者对同一内容最多一条任务。初始系统
 不建立通用 outbox。
+
+## 基线种子
+
+基线迁移在建表之后写入首装即可用的最小数据：单行 `site_settings`（夜航主题
+Token 与顶栏外壳）、`page_layouts.home`（夜航首页布局树）、默认分类「夜航手记」，
+以及一篇已发布且带 `featured_at` 的欢迎文章，保证首次启动时精选排序和首页文章流
+不为空。种子内容均可在后台直接修改或删除。
 
 ## 并发与锁
 

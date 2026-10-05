@@ -26,6 +26,23 @@ Browser
 - 初始系统不依赖 Redis；确实出现跨进程短期状态需求时再引入。
 - 媒体文件保存在发布目录之外，数据库只保存元数据与引用。
 
+## 代码组织
+
+`server/src/` 按职责分层：
+
+- 根部：`main.rs`/`lib.rs`/`config.rs`/`error.rs`/`database.rs`，以及布局 schema
+  `layout.rs` 与单文件 `auth.rs`；
+- `entities/`：SeaORM 实体；
+- `http/`：路由注册、中间件与健康检查；
+- `markup/`：Markdown 渲染与 User-Agent 短标签解析；
+- `content/`：内容与互动的 API handler（`public`/`admin`/`design`/`settings`，
+  以及仪表盘聚合 `overview`）；
+- `site/`：公开 SSR——`mod.rs` 是页面外壳（PageTemplate/共享 loader/共享卡片模型），
+  `home.rs` 首页与排序，`article.rs` 文章详情与评论区，`lists.rs` 归档/动态/友链/搜索
+  列表页，`components.rs` 布局节点渲染与组件模板；
+- `ops/`：站点运营链路——`feed`（RSS）、`mail`（SMTP worker）、`notifications`、
+  `subscriptions`、`media`（上传与存储）。
+
 ## 新代码规则
 
 1. 仓库根目录只包含新系统，不引用历史源码、构建产物或运行配置。
