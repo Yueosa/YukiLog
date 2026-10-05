@@ -112,6 +112,7 @@ install -d -m 755 /var/www/yukilog/releases /var/www/yukilog/incoming
 install -d -o yukilog -g yukilog -m 750 \
     /var/lib/yukilog /var/lib/yukilog/media /var/lib/yukilog/media/assets \
     /var/lib/yukilog/media/staging
+usermod -aG yukilog www-data
 install -d -m 700 /var/backups/yukilog
 install -d -m 755 /usr/local/lib/yukilog/nginx
 install -d -m 755 /etc/letsencrypt/renewal-hooks/deploy

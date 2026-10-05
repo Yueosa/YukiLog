@@ -930,6 +930,31 @@ export class YukiApp extends LitElement {
     this.requestUpdate();
   }
 
+  /** 管理端上传完成后回写：收入媒体库并设为当前选中节点的背景图。 */
+  applyUploadedMedia(media: StudioMedia) {
+    if (!media.mediaType.startsWith('image/')) return;
+    this.mediaLibrary = [...this.mediaLibrary.filter((item) => item.id !== media.id), media];
+    const selected = indexLayout(this.layout.root).get(this.selectedNodeId)?.node;
+    if (
+      selected &&
+      componentRegistry[selected.type]?.properties.backgroundMediaId?.kind === 'media-image'
+    ) {
+      this.setSelectedProperty('backgroundMediaId', media.id);
+    } else {
+      this.requestUpdate();
+    }
+  }
+
+  private requestMediaUpload(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    this.dispatchEvent(
+      new CustomEvent('yuki-media-upload', { detail: { file }, bubbles: true, composed: true }),
+    );
+  }
+
   setSiteData(siteData: PublicSiteData) {
     this.siteData = structuredClone(siteData);
     this.requestUpdate();
@@ -4416,6 +4441,42 @@ export class YukiApp extends LitElement {
       line-height: 1.5;
     }
 
+    .media-picker-preview {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 1px solid #303b49;
+      border-radius: 8px;
+      background: #101721;
+    }
+
+    .media-picker-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .media-picker-empty {
+      color: #69778b;
+      font-size: 11px;
+    }
+
+    .media-picker-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .media-picker-actions button {
+      flex: 1;
+      padding: 7px 9px;
+      border: 1px solid #303b49;
+      border-radius: 8px;
+      background: #1b2330;
+      color: #c8d0dd;
+      font-size: 11px;
+    }
+
     .property-toggle {
       display: flex !important;
       align-items: center;
@@ -6616,12 +6677,21 @@ export class YukiApp extends LitElement {
 
   private renderPropertyEditor(node: LayoutNode, name: string, schema: PropertySchema) {
     const value = node.props[name];
-    const label = propertyLabels[name] ?? name;
+    const label =
+      name === 'backgroundMediaId' && node.type === 'masthead'
+        ? '刊头背景'
+        : (propertyLabels[name] ?? name);
 
     if (schema.kind === 'media-image') {
+      const current = this.mediaLibrary.find((media) => media.id === String(value ?? ''));
       return html`
-        <label class="property-field">
+        <div class="property-field media-picker">
           <span>${label}</span>
+          <div class="media-picker-preview">
+            ${current
+              ? html`<img src=${current.url} alt=${current.name} />`
+              : html`<span class="media-picker-empty">未选择背景图</span>`}
+          </div>
           <select
             .value=${String(value ?? '')}
             @change=${(event: Event) => {
@@ -6634,10 +6704,34 @@ export class YukiApp extends LitElement {
               (media) => html`<option value=${media.id}>${media.name}</option>`,
             )}
           </select>
+          <div class="media-picker-actions">
+            <button
+              type="button"
+              @click=${(event: Event) =>
+                (event.currentTarget as HTMLElement)
+                  .closest('.media-picker')
+                  ?.querySelector<HTMLInputElement>('.media-picker-file')
+                  ?.click()}
+            >
+              上传新图
+            </button>
+            ${value
+              ? html`<button type="button" @click=${() => this.setSelectedProperty(name, undefined)}>
+                  清除背景
+                </button>`
+              : nothing}
+          </div>
+          <input
+            class="media-picker-file"
+            type="file"
+            accept="image/*"
+            style="display: none"
+            @change=${this.requestMediaUpload}
+          />
           ${this.mediaLibrary.length === 0
-            ? html`<small class="property-help">请先在后台媒体页面上传图片。</small>`
+            ? html`<small class="property-help">媒体库还没有图片，可以直接「上传新图」。</small>`
             : nothing}
-        </label>
+        </div>
       `;
     }
 

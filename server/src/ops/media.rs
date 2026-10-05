@@ -134,12 +134,21 @@ pub async fn delete(
     let settings = site_settings::Entity::find_by_id(true)
         .one(&state.database)
         .await?;
-    if settings.is_some_and(|row| row.avatar_media_id == Some(id)) {
-        references.push(MediaReference {
-            kind: "site_avatar",
-            id: None,
-            label: "站点头像".to_owned(),
-        });
+    if let Some(row) = settings {
+        if row.avatar_media_id == Some(id) {
+            references.push(MediaReference {
+                kind: "site_avatar",
+                id: None,
+                label: "站点头像".to_owned(),
+            });
+        }
+        if row.masthead_media_id == Some(id) {
+            references.push(MediaReference {
+                kind: "site_masthead",
+                id: None,
+                label: "刊头背景".to_owned(),
+            });
+        }
     }
     let linked = friend_links::Entity::find()
         .filter(friend_links::Column::AvatarMediaId.eq(id))

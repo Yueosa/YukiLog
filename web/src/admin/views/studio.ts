@@ -97,7 +97,7 @@ export class AdmStudio extends AdmView {
       siteDescription: settings.siteDescription ?? '',
       ownerName: settings.ownerName,
       ownerBio: settings.ownerBio,
-      avatarUrl: avatar?.url ?? '',
+      avatarUrl: avatar?.url ?? settings.avatarExternalUrl ?? '',
       socialLinks: settings.socialLinks.map((link) => ({ ...link })),
     };
   }
@@ -128,6 +128,20 @@ export class AdmStudio extends AdmView {
     await this.store.saveHomeLayout(layout);
   }
 
+  private async uploadStudioMedia(event: CustomEvent<{ file: File }>) {
+    const file = event.detail?.file;
+    if (!file) return;
+    const uploaded = await this.store.uploadMedia(file);
+    if (uploaded) {
+      this.studio()?.applyUploadedMedia({
+        id: uploaded.id,
+        url: uploaded.url,
+        mediaType: uploaded.media_type,
+        name: uploaded.original_name,
+      });
+    }
+  }
+
   protected render() {
     const saved = this.store.layouts.find((item) => item.pageKey === 'home');
     return html`
@@ -145,7 +159,9 @@ export class AdmStudio extends AdmView {
         </div>
         <p class="faint hint">编辑完成后点击保存，首页布局立即生效。</p>
       </section>
-      <div class="studio-frame"><yuki-app id="layout-studio"></yuki-app></div>
+      <div class="studio-frame">
+        <yuki-app id="layout-studio" @yuki-media-upload=${this.uploadStudioMedia}></yuki-app>
+      </div>
     `;
   }
 }

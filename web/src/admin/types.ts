@@ -126,6 +126,8 @@ export type SiteSettings = {
   ownerName: string;
   ownerBio: string;
   avatarMediaId: string | null;
+  avatarExternalUrl: string | null;
+  mastheadMediaId: string | null;
   socialLinks: Array<{ label: string; url: string }>;
   theme: ThemeTokens;
   shellLayout: ShellLayout;

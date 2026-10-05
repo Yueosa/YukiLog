@@ -58,16 +58,29 @@ RSS 使用配置中的公开 Origin 生成绝对链接和稳定 GUID，最多返
 `IntersectionObserver`（`threshold: 0.1`、`rootMargin: '0px 0px 10% 0px'`），
 让下方内容提前进入过渡。
 
+全站外观细节：favicon 取站点设置中的外部头像 URL，缺省回退到本地头像媒体；页面
+`<title>` 带 `data-away` 文案，标签页隐藏时切换为卖萌文本、回来恢复；跨页导航
+启用 `@view-transition { navigation: auto }`（240ms 淡入加轻微位移，尊重
+`prefers-reduced-motion`）。站点设置配置刊头背景媒体后，文章/动态/友链/搜索等
+列表页刊头（`.page-head` / `.masthead` 的 `has-bg` 变体）以背景图加暗色模糊
+遮罩渲染，保证文字可读。
+
+`/friends` 页底部有友链申请表单（名称、站点 URL、邮箱、可选图标 URL 与简介），
+内联脚本 POST `/api/friend-link-applications`，成功提示审核后展示，失败显示
+后端返回的 message。
+
 ## 文章页
 
 `/articles/{slug}` 依次输出刊头（分类、标题、发布时间与摘要）、目录、封面、
 `prose` 正文和评论区。Markdown 渲染时收集 h1–h3 并注入 `h-{序号}` 锚点 id
 （支持 `{#custom-id}`，仅保留 `[a-zA-Z0-9._:-]`）。目录多于一项时：宽屏
-（≥1100px）显示正文左侧 sticky 的 `nav.post-toc`，窄屏显示正文前可折叠的
-`details.post-toc-mobile`；宽屏下滚动监听（IntersectionObserver，
-`rootMargin: '-90px 0px -70% 0px'`）为当前小节链接加 `is-active`。正文排版对齐
-Lit 设计：h2 蓝色刻度线、serif 蓝边引用块、深色代码块、蓝色列表 marker、任务清单
-复选框与脚注样式，标题带 `scroll-margin-top` 避免被导航遮挡。
+（≥1280px）显示正文左侧 sticky 的 `nav.post-toc`（细滚动条悬停显现），窄屏
+显示正文前可折叠的 `details.post-toc-mobile`；宽屏下滚动监听
+（IntersectionObserver，`rootMargin: '-90px 0px -70% 0px'`）为当前小节链接加
+`is-active`。正文排版对齐 Lit 设计：h2 蓝色刻度线、serif 蓝边引用块、蓝色列表
+marker、任务清单复选框与脚注样式，标题带 `scroll-margin-top` 避免被导航遮挡。
+围栏代码块由 syntect 以 InspiredGitHub 浅色主题在服务端高亮（内联样式的
+`pre/span` 经 ammonia 放行）；`mermaid` 与未知语言保持原样输出为普通代码块。
 
 评论区对齐 Lit 端设计：输入区在列表之前，收起态是一行 `.comment-compose` 引导条
 （头像 SVG + 提示 + chevron），增强脚本点击展开完整表单（含「先不写了」收回按钮；

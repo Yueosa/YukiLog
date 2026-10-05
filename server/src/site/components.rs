@@ -25,7 +25,7 @@ pub(super) struct RenderContext<'a> {
 
 #[derive(Template)]
 #[template(
-    source = r#"<header class="masthead masthead-{{ variant }}" data-reveal><p class="kicker">{{ kicker }}</p><h1>{{ title }}</h1>{% if show_tabs %}<div class="sort-tabs" role="group" aria-label="文章排序"><a href="/?sort=featured"{% if sort == "featured" %} class="active" aria-pressed="true"{% endif %}>精选</a><a href="/?sort=popular"{% if sort == "popular" %} class="active" aria-pressed="true"{% endif %}>最热</a><a href="/?sort=recent"{% if sort == "recent" %} class="active" aria-pressed="true"{% endif %}>最近</a></div>{% else %}<p class="lead">{{ lead }}</p>{% endif %}</header>"#,
+    source = r#"<header class="masthead masthead-{{ variant }}{% if masthead_url != "" %} has-bg{% endif %}" data-reveal>{% if masthead_url != "" %}<div class="masthead-bg" aria-hidden="true" style="background-image:url({{ masthead_url }})"></div>{% endif %}<p class="kicker">{{ kicker }}</p><h1>{{ title }}</h1>{% if show_tabs %}<div class="sort-tabs" role="group" aria-label="文章排序"><a href="/?sort=featured"{% if sort == "featured" %} class="active" aria-pressed="true"{% endif %}>精选</a><a href="/?sort=popular"{% if sort == "popular" %} class="active" aria-pressed="true"{% endif %}>最热</a><a href="/?sort=recent"{% if sort == "recent" %} class="active" aria-pressed="true"{% endif %}>最近</a></div>{% else %}<p class="lead">{{ lead }}</p>{% endif %}</header>"#,
     ext = "html"
 )]
 struct MastheadTemplate<'a> {
@@ -35,6 +35,7 @@ struct MastheadTemplate<'a> {
     variant: &'a str,
     show_tabs: bool,
     sort: &'a str,
+    masthead_url: &'a str,
 }
 
 #[derive(Template)]
@@ -234,6 +235,7 @@ pub(super) fn render_node(node: &LayoutNode, context: &RenderContext<'_>) -> Res
                 variant,
                 show_tabs: linked,
                 sort: context.sort.as_str(),
+                masthead_url: &context.site.masthead_url,
             }
             .render()
         }

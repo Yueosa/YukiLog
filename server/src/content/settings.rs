@@ -26,6 +26,8 @@ pub struct SiteSettingsWrite {
     pub owner_name: String,
     pub owner_bio: String,
     pub avatar_media_id: Option<Uuid>,
+    pub avatar_external_url: Option<String>,
+    pub masthead_media_id: Option<Uuid>,
     pub social_links: Vec<SocialLink>,
     pub theme: ThemeTokens,
     pub shell_layout: ShellLayout,
@@ -156,6 +158,7 @@ pub async fn put_settings(
     auth::authorize_write(&state, &headers, &jar).await?;
     settings.validate()?;
     validate_avatar(&state, settings.avatar_media_id).await?;
+    validate_masthead(&state, settings.masthead_media_id).await?;
     let social_links = serde_json::to_value(&settings.social_links)
         .map_err(|_| AppError::Internal("serialize social links"))?;
     let theme =
@@ -173,6 +176,8 @@ pub async fn put_settings(
         active.owner_name = Set(settings.owner_name);
         active.owner_bio = Set(settings.owner_bio);
         active.avatar_media_id = Set(settings.avatar_media_id);
+        active.avatar_external_url = Set(settings.avatar_external_url);
+        active.masthead_media_id = Set(settings.masthead_media_id);
         active.social_links = Set(social_links);
         active.theme = Set(theme);
         active.shell_layout = Set(shell_layout);
@@ -185,6 +190,8 @@ pub async fn put_settings(
             owner_name: Set(settings.owner_name),
             owner_bio: Set(settings.owner_bio),
             avatar_media_id: Set(settings.avatar_media_id),
+            avatar_external_url: Set(settings.avatar_external_url),
+            masthead_media_id: Set(settings.masthead_media_id),
             social_links: Set(social_links),
             theme: Set(theme),
             shell_layout: Set(shell_layout),
@@ -203,6 +210,15 @@ impl SiteSettingsWrite {
         }
         if self.social_links.len() > 12 {
             return Err(AppError::InvalidRequest("社交链接不能超过 12 个"));
+        }
+        if let Some(url) = &self.avatar_external_url {
+            let valid = url.len() <= 512
+                && url.parse::<Uri>().is_ok_and(|uri| {
+                    matches!(uri.scheme_str(), Some("http" | "https")) && uri.authority().is_some()
+                });
+            if !valid {
+                return Err(AppError::InvalidRequest("外部头像 URL 必须是 http(s) 链接且不超过 512 字符"));
+            }
         }
         let mut labels = HashSet::new();
         for link in &self.social_links {
@@ -260,6 +276,8 @@ impl TryFrom<site_settings::Model> for SiteSettingsResponse {
             owner_name: model.owner_name,
             owner_bio: model.owner_bio,
             avatar_media_id: model.avatar_media_id,
+            avatar_external_url: model.avatar_external_url,
+            masthead_media_id: model.masthead_media_id,
             social_links,
             theme,
             shell_layout,
@@ -275,15 +293,28 @@ impl TryFrom<site_settings::Model> for SiteSettingsResponse {
 }
 
 async fn validate_avatar(state: &AppState, id: Option<Uuid>) -> Result<(), AppError> {
+    validate_image_media(state, id, "头像媒体不存在", "头像媒体必须是图片").await
+}
+
+async fn validate_masthead(state: &AppState, id: Option<Uuid>) -> Result<(), AppError> {
+    validate_image_media(state, id, "刊头媒体不存在", "刊头媒体必须是图片").await
+}
+
+async fn validate_image_media(
+    state: &AppState,
+    id: Option<Uuid>,
+    missing: &'static str,
+    not_image: &'static str,
+) -> Result<(), AppError> {
     let Some(id) = id else {
         return Ok(());
     };
     let media = media_assets::Entity::find_by_id(id)
         .one(&state.database)
         .await?
-        .ok_or(AppError::InvalidRequest("头像媒体不存在"))?;
+        .ok_or(AppError::InvalidRequest(missing))?;
     if !media.media_type.starts_with("image/") {
-        return Err(AppError::InvalidRequest("头像媒体必须是图片"));
+        return Err(AppError::InvalidRequest(not_image));
     }
     Ok(())
 }
@@ -317,6 +348,8 @@ mod tests {
             "ownerName": "Sakurine",
             "ownerBio": "Hello",
             "avatarMediaId": null,
+            "avatarExternalUrl": null,
+            "mastheadMediaId": null,
             "socialLinks": [
                 {"label": "GitHub", "url": "https://github.com/example"},
                 {"label": "Mail", "url": "mailto:hello@example.com"}
@@ -362,6 +395,21 @@ mod tests {
 
         let mut input = settings();
         input.social_links[0].url = "javascript:alert(1)".into();
+        assert!(input.validate().is_err());
+    }
+
+    #[test]
+    fn validates_external_avatar_url() {
+        let mut input = settings();
+        input.avatar_external_url = Some("https://example.com/avatar.png".into());
+        assert!(input.validate().is_ok());
+
+        let mut input = settings();
+        input.avatar_external_url = Some("ftp://example.com/avatar.png".into());
+        assert!(input.validate().is_err());
+
+        let mut input = settings();
+        input.avatar_external_url = Some(format!("https://example.com/{}", "a".repeat(512)));
         assert!(input.validate().is_err());
     }
 }

@@ -153,6 +153,7 @@ export class AdmMedia extends AdmView {
 
   private siteUsageOf(item: MediaAsset): string | null {
     if (this.store.settings.avatarMediaId === item.id) return '站点头像';
+    if (this.store.settings.mastheadMediaId === item.id) return '刊头背景';
     for (const record of this.store.layouts) {
       const usage = this.nodeUsage(record.layout.root, item);
       if (usage === 'hero') return '首屏背景';
@@ -194,7 +195,7 @@ export class AdmMedia extends AdmView {
 
   private async copyUrl(item: MediaAsset) {
     try {
-      await navigator.clipboard.writeText(item.url);
+      await navigator.clipboard.writeText(new URL(item.url, window.location.origin).href);
       this.store.toast('链接已复制');
     } catch {
       this.store.toast('复制失败，请手动复制', 'err');

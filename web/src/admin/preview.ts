@@ -343,6 +343,8 @@ export const previewSettings: SiteSettings = {
   ownerName: '恋',
   ownerBio: '我能走到这里，是因为你没有放弃',
   avatarMediaId: 'med-2',
+  avatarExternalUrl: 'https://q1.qlogo.cn/g?b=qq&nk=1303028790&s=640',
+  mastheadMediaId: null,
   socialLinks: [
     { label: 'GitHub', url: 'https://github.com/Yueosa' },
     { label: '邮箱', url: 'mailto:lian@yeastar.xin' },

@@ -21,8 +21,12 @@
 - `GET /api/admin/media`：媒体选择列表；
 - `DELETE /api/admin/media/{id}`：删除媒体记录并尝试删除磁盘文件。仍被引用时
   返回 `409` 与 `references` 引用清单（文章封面 `article_cover`、动态配图
-  `dynamic_media`、站点头像 `site_avatar`、友链头像 `friend_link_avatar`）；
-- `GET|PUT /api/admin/settings`：站点资料、主题 Token 与页面外壳；
+  `dynamic_media`、站点头像 `site_avatar`、刊头背景 `site_masthead`、友链头像
+  `friend_link_avatar`）；
+- `GET|PUT /api/admin/settings`：站点资料、主题 Token 与页面外壳；站点资料另含
+  `avatarExternalUrl`（可选外部头像 URL，仅 `http(s)` 且不超过 512 字符，本地头像
+  为空时作为公开头像与 favicon 回退）与 `mastheadMediaId`（可选刊头背景图片，
+  校验媒体存在且为 `image/*`）；
 - `GET /api/admin/layouts`、`GET|PUT /api/admin/layouts/{page_key}`：页面布局；
 - `GET /api/admin/subscribers`：订阅者列表；
 - `DELETE /api/admin/subscribers/{id}`：硬删除订阅者，其投递记录随外键级联删除；
@@ -76,8 +80,9 @@ User-Agent 请求头捕获原文（截断到 512 字符，不从请求体收）�
 「Desktop Edge 146 · Windows 10」式短标签（设备 Desktop/Mobile/Tablet + 浏览器
 主版本 · 系统主版本），解析不出则为空串。
 
-友链申请只接收名称、HTTP(S) URL、简介和联系邮箱，不抓取访客 URL 或远程头像。
-申请以不可见友链保存，管理员通过后才公开，并同时建立站内通知。
+友链申请只接收名称、HTTP(S) URL、简介、联系邮箱与可选图标 URL，不抓取访客 URL
+或远程头像。申请以不可见友链保存，管理员通过后才公开，并同时建立站内通知。
+`/friends` 页底部的申请表单直接提交到该接口。
 
 浏览量按 IP、文章和 30 秒窗口进行进程内限频。仅当请求来自本机反向代理时才信任
 `X-Real-IP`。评论按目标和 IP 限制为每分钟一次。nginx 前置另有第二层限流

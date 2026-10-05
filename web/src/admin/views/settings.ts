@@ -2,7 +2,7 @@ import { css, html, nothing } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
-import { fontLabel, maxWidthLabel, motionLabel } from '../labels.js';
+import { fontLabel, maxWidthLabel, mediaPickerLabel, motionLabel } from '../labels.js';
 import type { SiteSettings, ThemeTokens } from '../types.js';
 import type { NavigationVariant, ShellLayout } from '../../layout/types.js';
 
@@ -85,6 +85,40 @@ export class AdmSettings extends AdmView {
         min-width: 220px;
         display: grid;
         gap: 10px;
+      }
+
+      .masthead-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 14px;
+        flex-wrap: wrap;
+      }
+
+      .masthead-preview {
+        width: 240px;
+        flex: none;
+        aspect-ratio: 16 / 9;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface-muted);
+        color: var(--faint);
+        display: grid;
+        place-items: center;
+        font-size: 11.5px;
+      }
+
+      .masthead-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .note {
+        margin: 10px 0 0;
+        color: var(--faint);
+        font-size: 12px;
       }
 
       .links {
@@ -243,6 +277,8 @@ export class AdmSettings extends AdmView {
       ownerName: draft.ownerName,
       ownerBio: draft.ownerBio,
       avatarMediaId: draft.avatarMediaId,
+      avatarExternalUrl: draft.avatarExternalUrl?.trim() || null,
+      mastheadMediaId: draft.mastheadMediaId,
       socialLinks: draft.socialLinks.filter((link) => link.label.trim() || link.url.trim()),
       theme: structuredClone(draft.theme),
       shellLayout: structuredClone(draft.shellLayout),
@@ -306,9 +342,63 @@ export class AdmSettings extends AdmView {
                   ${images.map((item) => html`<option value=${item.id} ?selected=${item.id === draft.avatarMediaId}>${item.original_name}</option>`)}
                 </select>
               </label>
+              <label class="field">
+                <span>头像外链 URL</span>
+                <input
+                  type="url"
+                  placeholder="https://q1.qlogo.cn/g?b=qq&nk=QQ号&s=640"
+                  .value=${draft.avatarExternalUrl ?? ''}
+                  @input=${(e: InputEvent) =>
+                    this.setField('avatarExternalUrl', (e.currentTarget as HTMLInputElement).value.trim() || null)}
+                />
+              </label>
+              <p class="note">填 QQ 头像直链可随 QQ 头像自动更新；本地上传的头像优先于外链。</p>
             </div>
           </div>
         </div>
+      </section>
+    `;
+  }
+
+  private renderMasthead(draft: SiteSettings) {
+    const current = draft.mastheadMediaId
+      ? this.store.media.find((item) => item.id === draft.mastheadMediaId)
+      : null;
+    const images = this.store.media.filter((item) => item.media_type.startsWith('image/'));
+    return html`
+      <section class="panel">
+        <h2 class="panel-title">刊头背景</h2>
+        <div class="masthead-row">
+          <div class="masthead-preview">
+            ${current ? html`<img src=${current.url} alt="刊头背景预览" />` : html`未设置`}
+          </div>
+          <div class="avatar-side">
+            <adm-upload
+              accept="image/*"
+              compact
+              text=${mediaPickerLabel.upload}
+              @adm-upload=${(e: CustomEvent<{ media: { id: string } }>) => this.setField('mastheadMediaId', e.detail.media.id)}
+            ></adm-upload>
+            <label class="field">
+              <span>${mediaPickerLabel.selectFromLibrary}</span>
+              <select
+                .value=${draft.mastheadMediaId ?? ''}
+                @change=${(e: Event) => this.setField('mastheadMediaId', (e.currentTarget as HTMLSelectElement).value || null)}
+              >
+                <option value="">${mediaPickerLabel.none}</option>
+                ${images.map((item) => html`<option value=${item.id} ?selected=${item.id === draft.mastheadMediaId}>${item.original_name}</option>`)}
+              </select>
+            </label>
+            ${draft.mastheadMediaId
+              ? html`<div>
+                  <button class="btn secondary small" type="button" @click=${() => this.setField('mastheadMediaId', null)}>
+                    ${mediaPickerLabel.clear}
+                  </button>
+                </div>`
+              : nothing}
+          </div>
+        </div>
+        <p class="note">全站文章 / 动态 / 友链 / 搜索页刊头的背景图。</p>
       </section>
     `;
   }
@@ -527,6 +617,7 @@ export class AdmSettings extends AdmView {
     if (!draft) return html`<adm-empty text="正在加载设置…"></adm-empty>`;
     return html`
       ${this.renderInfo(draft)}
+      ${this.renderMasthead(draft)}
       ${this.renderLinks(draft)}
       ${this.renderTheme(draft)}
       ${this.renderLayout(draft)}

@@ -49,6 +49,8 @@ struct SiteView {
     owner_name: String,
     owner_bio: String,
     avatar_url: String,
+    masthead_url: String,
+    favicon_url: String,
     social_links: Vec<SocialLink>,
     navigation_class: &'static str,
     navigation_options: &'static str,
@@ -240,11 +242,18 @@ struct HomeStats {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{ site.description }}">
   <link rel="alternate" type="application/rss+xml" title="{{ site.title }}" href="/feed.xml">
-  <title>{{ page_title }} · {{ site.title }}</title>
+  {% if site.favicon_url != "" %}<link rel="icon" href="{{ site.favicon_url }}">{% endif %}
+  <title data-away="唔, 不看我了吗...Ծ‸Ծ">{{ page_title }} · {{ site.title }}</title>
   <script>(()=>{const d=document.documentElement;try{if(window.sessionStorage.getItem('yukilog.splash'))return}catch{return}d.classList.add('splash-run','is-intro')})();</script>
   <style>
     :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
     *{box-sizing:border-box}
+    @view-transition{navigation:auto}
+    ::view-transition-old(root),::view-transition-new(root){animation-duration:240ms;animation-timing-function:cubic-bezier(.22,.61,.36,1)}
+    ::view-transition-old(root){animation-name:page-leave}
+    ::view-transition-new(root){animation-name:page-enter}
+    @keyframes page-leave{to{opacity:0;translate:0 -10px}}
+    @keyframes page-enter{from{opacity:0;translate:0 14px}}
     body{margin:0;min-height:100dvh;background:var(--page);color:var(--ink);font-family:'Noto Sans CJK SC','Noto Sans CJK HK','PingFang SC','Microsoft YaHei',system-ui,sans-serif;font-size:calc(16px * var(--scale));line-height:1.75;scroll-behavior:smooth}
     body.font-serif{font-family:var(--serif)}
     body.font-rounded{font-family:ui-rounded,'Noto Sans SC',sans-serif}
@@ -383,6 +392,22 @@ struct HomeStats {
     .friend h3{margin:0;font-family:var(--serif);font-size:19px}
     .friend .furl{display:block;margin:2px 0 8px;color:var(--primary-d);font-family:var(--mono);font-size:11px;letter-spacing:.08em}
     .friend p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.8}
+    .friend-apply{margin-top:40px;padding:34px 36px;border:1px solid var(--line);border-radius:16px;background:var(--surface)}
+    .friend-apply .kicker{margin:0 0 10px;color:var(--secondary-d)}
+    .friend-apply h2{margin:0;font-family:var(--serif);font-size:24px}
+    .friend-apply-lede{margin:8px 0 22px;color:var(--muted);font-size:14px;line-height:1.8}
+    .friend-apply-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+    .friend-apply label{display:flex;flex-direction:column;gap:7px;color:var(--faint);font-family:var(--mono);font-size:11px;letter-spacing:.12em}
+    .friend-apply input,.friend-apply textarea{box-sizing:border-box;width:100%;padding:10px 14px;border:1px solid var(--line);border-radius:10px;background:transparent;color:var(--ink);font-family:inherit;font-size:14px;transition:border-color 250ms ease,box-shadow 250ms ease}
+    .friend-apply input:focus,.friend-apply textarea:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 18%,transparent)}
+    .friend-apply textarea{resize:vertical;line-height:1.8}
+    .friend-apply-desc{margin-bottom:16px}
+    .friend-apply-foot{display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .friend-apply-note{margin:0;color:var(--faint);font-size:12.5px}
+    .friend-apply-note.ok{color:var(--primary-d)}
+    .friend-apply button{flex:none;padding:10px 26px;border:0;border-radius:999px;background:var(--ink);color:var(--page);font-size:13.5px;letter-spacing:.08em;cursor:pointer;transition:background 250ms ease,transform 250ms ease}
+    .friend-apply button:hover{background:var(--primary-d);transform:translateY(-1px)}
+    .friend-apply button:disabled{opacity:.6;cursor:default;transform:none}
     .search-box{display:flex;max-width:680px;align-items:center;gap:12px;margin:0 auto;padding:6px 8px 6px 26px;border:1px solid var(--line);border-radius:999px;background:var(--surface);transition:border-color 300ms ease,box-shadow 300ms ease}
     .search-box:focus-within{border-color:var(--primary);box-shadow:0 12px 32px -12px rgb(74 147 194/40%)}
     .search-box input{min-width:0;flex:1;padding:12px 0;border:0;outline:0;background:none;color:var(--ink);font-family:var(--serif);font-size:17px}
@@ -415,15 +440,21 @@ struct HomeStats {
     .post-toc-mobile{margin:0 0 28px;padding:14px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
     .post-toc-mobile summary{color:var(--muted);font-family:var(--mono);font-size:12px;letter-spacing:.14em;cursor:pointer}
     .post-toc-mobile .post-toc-item{margin-top:10px}
-    .post-toc-kicker{margin:0 0 10px;color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.26em;text-transform:uppercase}
-    .post-toc-item{display:block;padding:3px 0;color:var(--muted);font-family:var(--mono);font-size:12px;line-height:1.7;transition:color 200ms ease}
+    .post-toc-kicker{margin:0 0 14px;color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.26em;text-transform:uppercase}
+    .post-toc-item{display:block;padding:6px 0;color:var(--muted);font-family:var(--mono);font-size:12px;line-height:1.85;transition:color 200ms ease}
     .post-toc-item:hover{color:var(--primary-d)}
     .post-toc-item.level-2{padding-left:12px}
     .post-toc-item.level-3{padding-left:24px}
     .post-toc-item.is-active{color:var(--primary-d)}
-    @media(min-width:1100px){
-      .post-toc{position:absolute;top:0;right:calc(100% + 44px);display:block;width:200px;height:100%}
-      .post-toc-sticky{position:sticky;top:110px;max-height:calc(100dvh - 140px);overflow:auto;padding-left:16px;border-left:1px solid var(--line)}
+    @media(min-width:1280px){
+      .post-toc{position:absolute;top:0;right:calc(100% + 56px);display:block;width:220px;height:100%}
+      .post-toc-sticky{position:sticky;top:110px;max-height:calc(100dvh - 140px);overflow-y:auto;padding-right:8px;padding-left:16px;border-left:1px solid var(--line);scrollbar-width:thin;scrollbar-color:transparent transparent}
+      .post-toc-sticky:hover{scrollbar-color:rgb(28 39 51/22%) transparent}
+      .post-toc-sticky::-webkit-scrollbar{width:5px}
+      .post-toc-sticky::-webkit-scrollbar-track{background:transparent}
+      .post-toc-sticky::-webkit-scrollbar-thumb{border-radius:3px;background:transparent}
+      .post-toc-sticky:hover::-webkit-scrollbar-thumb{background:rgb(28 39 51/20%)}
+      .post-toc-sticky::-webkit-scrollbar-thumb:hover{background:rgb(28 39 51/34%)}
       .post-toc-mobile{display:none}
     }
     .article-page .prose{margin-top:32px;font-size:16.5px;line-height:2}
@@ -539,6 +570,15 @@ struct HomeStats {
     .masthead-editorial .kicker{margin:0 0 12px;color:var(--secondary-d)}
     .masthead-editorial h1{margin:0;font-family:var(--serif);font-size:clamp(34px,4.6vw,48px)}
     .masthead-editorial .lead{margin:10px 0 0;color:var(--muted)}
+    .page-head.has-bg,.masthead.has-bg{position:relative;isolation:isolate;overflow:hidden;padding:64px 44px;border:0;border-radius:20px;color:#eef3f8}
+    .masthead-bg{position:absolute;z-index:-2;inset:0;background:center/cover no-repeat}
+    .page-head.has-bg::before,.masthead.has-bg::before{position:absolute;z-index:-1;inset:0;content:'';background:linear-gradient(180deg,rgb(9 17 30/52%),rgb(9 17 30/62%));backdrop-filter:blur(8px)}
+    .page-head.has-bg h1,.masthead.has-bg h1{text-shadow:0 3px 22px rgb(0 0 0/38%)}
+    .page-head.has-bg .kicker,.masthead.has-bg .kicker{color:rgb(232 164 180/94%)}
+    .page-head.has-bg .inner-lede,.masthead.has-bg .lead{color:rgb(238 243 248/84%)}
+    .masthead.has-bg .sort-tabs a{border-color:rgb(255 255 255/30%);color:rgb(238 243 248/82%)}
+    .masthead.has-bg .sort-tabs a:hover{border-color:#fff;color:#fff}
+    .masthead.has-bg .sort-tabs a.active{border-color:#fff;background:#fff;color:#1c2733}
     .profile-card{width:min(100%,420px)}
     .profile-button{display:block;width:100%;padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);text-align:center}
     .profile-face{display:block}
@@ -661,7 +701,7 @@ struct HomeStats {
     .prose blockquote p{margin:0 0 .8em}
     .prose blockquote p:last-child{margin-bottom:0}
     .prose code{padding:2px 7px;border-radius:6px;background:color-mix(in srgb,var(--primary) 14%,transparent);font-family:var(--mono);font-size:.86em}
-    .prose pre{margin:2em 0;padding:20px 22px;overflow-x:auto;border-radius:14px;background:var(--ink);color:#dde5ec;font-size:13.5px;line-height:1.8}
+    .prose pre{margin:2em 0;padding:20px 22px;overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#f6f8fa;color:var(--ink);font-size:13.5px;line-height:1.8}
     .prose pre code{padding:0;background:none;font-size:inherit}
     .prose ul,.prose ol{margin:0 0 1.5em;padding-left:1.5em}
     .prose li{margin:.45em 0}
@@ -704,7 +744,7 @@ struct HomeStats {
     @media(max-width:968px){.nav-corners{padding:0 24px}.nav-corners .nav-links{display:none}.nav-corners .nav-actions{display:flex}}
     @media(max-width:900px){.nav-sidebar{position:sticky;top:0;width:100%;height:auto;padding:80px 18px 14px;border-right:0;border-bottom:1px solid var(--line)}.nav-sidebar .nav-links{flex-direction:row;margin-top:14px;overflow:auto}.shell-sidebar main{margin-left:0}.layout-bento{width:min(100% - 24px,680px);grid-template-columns:1fr;grid-auto-rows:auto}.is-sticky{position:relative;top:auto}.layout-split,.layout-split.split-right{grid-template-columns:1fr}}
     @media(max-width:760px){.page{width:min(100% - 40px,1180px);padding-top:108px}.archive-row{grid-template-columns:64px minmax(0,1fr)}.archive-row .meta{display:none}.friends-grid{grid-template-columns:1fr}.feed-alternating .article,.feed-alternating .article:nth-of-type(even),.feed-alternating .article:has(.is-portrait),.feed-alternating .article:nth-of-type(even):has(.is-portrait){grid-template-columns:1fr}.feed-alternating .article:nth-of-type(even) .article-cover{order:0}.feed-alternating .article-cover.is-portrait{width:min(320px,88%)}.layout-grid,.layout-grid.grid-three-rail{grid-template-columns:minmax(0,1fr);gap:20px;padding:76px 16px 56px}}
-    @media(max-width:760px){.comment-form-grid{grid-template-columns:1fr}}
+    @media(max-width:760px){.comment-form-grid,.friend-apply-grid{grid-template-columns:1fr}}
     @media(max-width:640px){.hero h1{font-size:clamp(36px,11vw,48px)}.hero-inner{gap:4vh}.welcome-quote{padding:22px 20px}.quote-text{font-size:15px}.nav-topbar .nav-links{display:none}.nav-hamburger{display:grid}.mobile-menu{padding-inline:24px}.layout-grid.grid-identity{width:min(100% - 40px,1180px);gap:20px}.layout-grid.grid-feed-rail{width:min(100% - 40px,1180px);gap:48px;padding:56px 0 72px}.site-footer{flex-direction:column;align-items:center;gap:6px;text-align:center}}
     .prelude{position:fixed;inset:0;z-index:300;display:none;overflow:hidden;background:var(--page)}
     html.splash-run .prelude{display:grid;grid-template-rows:1fr auto;animation:prelude-exit .9s cubic-bezier(.22,.7,.2,1) 2.3s forwards}
@@ -727,7 +767,7 @@ struct HomeStats {
     @keyframes prelude-bloom{0%{opacity:0;transform:translate(-50%,-50%) scale(.8)}22%{opacity:.85;transform:translate(-50%,-50%) scale(1.02)}58%{opacity:.3;transform:translate(-50%,-50%) scale(1.1)}100%{opacity:0;transform:translate(-50%,-50%) scale(1.22)}}
     @keyframes prelude-flake{to{opacity:1;transform:scale(1)}}
     @keyframes prelude-trace{0%{stroke-dashoffset:1}70%{stroke-dashoffset:0;opacity:.6}100%{stroke-dashoffset:0;opacity:.25}}
-    @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}}
+    @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important}::view-transition-old(root),::view-transition-new(root){animation-duration:.01ms!important}}
   </style>
 </head>
 <body class="{{ site.font_class }} shell-{{ site.navigation_class }}{% if immersive_home %} immersive-home{% endif %}">
@@ -774,6 +814,15 @@ struct HomeStats {
   <button class="to-top" type="button" aria-label="回到顶部"><svg class="ring" viewBox="0 0 46 46" aria-hidden="true"><circle class="ring-bg" cx="23" cy="23" r="20"></circle><circle class="ring-fg" cx="23" cy="23" r="20"></circle></svg><svg class="arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-7 7 7-7 7 7"/></svg></button>
   <script>
     (() => {
+      const titleElement = document.querySelector('title[data-away]');
+      if (titleElement) {
+        const homeTitle = titleElement.textContent;
+        document.addEventListener('visibilitychange', () => {
+          titleElement.textContent = document.hidden
+            ? titleElement.getAttribute('data-away')
+            : homeTitle;
+        });
+      }
       const nav = document.getElementById('site-nav');
       const corners = document.getElementById('nav-corners');
       const mobileMenu = document.getElementById('mobile-menu');
@@ -1111,6 +1160,8 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         owner_name: model.owner_name,
         owner_bio: model.owner_bio,
         avatar_media_id: model.avatar_media_id,
+        avatar_external_url: model.avatar_external_url,
+        masthead_media_id: model.masthead_media_id,
         social_links: serde_json::from_value(model.social_links)
             .map_err(|_| AppError::Internal("decode social links"))?,
         theme: serde_json::from_value(model.theme)
@@ -1121,7 +1172,19 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
     settings
         .validate()
         .map_err(|_| AppError::Internal("stored site settings failed validation"))?;
-    let avatar_url = media_url(state, settings.avatar_media_id).await?;
+    let avatar_media_url = media_url(state, settings.avatar_media_id).await?;
+    let avatar_external_url = settings.avatar_external_url.clone().unwrap_or_default();
+    let avatar_url = if avatar_media_url.is_empty() {
+        avatar_external_url.clone()
+    } else {
+        avatar_media_url.clone()
+    };
+    let favicon_url = if avatar_external_url.is_empty() {
+        avatar_media_url
+    } else {
+        avatar_external_url
+    };
+    let masthead_url = media_url(state, settings.masthead_media_id).await?;
     let navigation_class = match settings.shell_layout.navigation {
         NavigationVariant::Topbar => "topbar",
         NavigationVariant::Sidebar => "sidebar",
@@ -1153,6 +1216,8 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         owner_name: settings.owner_name,
         owner_bio: settings.owner_bio,
         avatar_url,
+        masthead_url,
+        favicon_url,
         social_links: settings.social_links,
         navigation_class,
         navigation_options,
@@ -1467,6 +1532,31 @@ async fn media_url(state: &AppState, id: Option<Uuid>) -> Result<String, AppErro
 
 fn date(value: DateTime<FixedOffset>) -> String {
     value.format("%Y-%m-%d").to_string()
+}
+
+fn masthead_backdrop(site: &SiteView) -> String {
+    if site.masthead_url.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<div class="masthead-bg" aria-hidden="true" style="background-image:url({})"></div>"#,
+            escape_html(&site.masthead_url)
+        )
+    }
+}
+
+fn page_head(site: &SiteView, kicker: &str, title: &str, lede: &str, center: bool) -> String {
+    let mut class = String::from("page-head");
+    if center {
+        class.push_str(" center");
+    }
+    if !site.masthead_url.is_empty() {
+        class.push_str(" has-bg");
+    }
+    format!(
+        r#"<header class="{class}" data-reveal>{}<p class="kicker caps">{kicker}</p><h1>{title}</h1><p class="inner-lede">{lede}</p></header>"#,
+        masthead_backdrop(site)
+    )
 }
 
 fn cover_class(index: usize) -> &'static str {

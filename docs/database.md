@@ -238,6 +238,8 @@ Slug 历史表。部分索引 `articles_featured_idx` 只覆盖已发布且带�
 | `owner_name` | 个人卡正面名称。 |
 | `owner_bio` | 个人卡背面/About 内容。 |
 | `avatar_media_id` | 个人头像媒体。 |
+| `avatar_external_url` | 可选外部头像链接；仅允许 `http(s)`、最长 512 字符。本地上传头像存在时优先，否则公开页与 favicon 使用此外部链接。 |
+| `masthead_media_id` | 可选刊头背景图片媒体；设置后各列表页刊头以暗色遮罩背景图渲染。 |
 | `social_links` | 社交链接 JSON 数组。 |
 | `theme` | 当前颜色、字体和视觉 token JSON 对象。 |
 | `shell_layout` | 全局导航、页宽和外壳组件 JSON 对象。 |

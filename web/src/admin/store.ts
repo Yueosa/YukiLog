@@ -40,6 +40,8 @@ export const defaultSettings: SiteSettings = {
   ownerName: 'Sakurine',
   ownerBio: '',
   avatarMediaId: null,
+  avatarExternalUrl: null,
+  mastheadMediaId: null,
   socialLinks: [],
   theme: {
     schemaVersion: 1,

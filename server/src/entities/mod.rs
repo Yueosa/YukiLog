@@ -428,6 +428,8 @@ pub mod site_settings {
         pub owner_name: String,
         pub owner_bio: String,
         pub avatar_media_id: Option<Uuid>,
+        pub avatar_external_url: Option<String>,
+        pub masthead_media_id: Option<Uuid>,
         pub social_links: Json,
         pub theme: Json,
         pub shell_layout: Json,

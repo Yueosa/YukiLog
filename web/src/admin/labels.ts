@@ -1,4 +1,4 @@
-/** 管理端文案集中地：所有枚举 → 中文显示，时间格式化。 */
+/** 管理端文案集中地：所有枚举 → 中文显示，共用 UI 文案，时间格式化。 */
 
 export function contentStatusLabel(item: {
   status: string;
@@ -76,6 +76,13 @@ export const motionLabel: Record<string, string> = {
   none: '无动效',
   subtle: '柔和',
   expressive: '丰富',
+};
+
+export const mediaPickerLabel: Record<string, string> = {
+  none: '无',
+  selectFromLibrary: '从媒体库选择',
+  upload: '上传新图',
+  clear: '清除',
 };
 
 export function enumLabel(map: Record<string, string>, value: string): string {

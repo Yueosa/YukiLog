@@ -16,7 +16,7 @@ use crate::{
 use super::{
     ARTICLE_LIMIT, ARTICLE_PAGE_SIZE, ArticleFilter, ArticleSort, DynamicCard, avatar_fallback,
     cover_class, escape_html, host_of, load_articles, load_dynamics, load_moment_comments,
-    load_site, media_url, moment_comment_count, moment_comments_html, page,
+    load_site, media_url, moment_comment_count, moment_comments_html, page, page_head,
 };
 
 struct FriendCard {
@@ -43,11 +43,12 @@ struct DynamicListTemplate<'a> {
 
 #[derive(Template)]
 #[template(
-    source = r#"<header class="page-head" data-reveal><p class="kicker caps">YukiLog — Friends</p><h1>友链</h1><p class="inner-lede">互联网很大，但总有一些站点值得互相留一盏灯。</p></header>{% if friends.is_empty() %}<p class="empty">暂时还没有公开友链。</p>{% else %}<div class="friends-grid">{% for friend in friends %}<a class="friend" data-reveal href="{{ friend.url }}" target="_blank" rel="friend noopener"><span class="friend-avatar {{ friend.cover_class }}">{{ friend.initial }}{% if friend.avatar_url != "" %}<img src="{{ friend.avatar_url }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}</span><div><h3>{{ friend.name }}</h3><span class="furl">{{ friend.host }}</span><p>{{ friend.description }}</p></div></a>{% endfor %}</div>{% endif %}"#,
+    source = r#"<header class="page-head{% if masthead_url != "" %} has-bg{% endif %}" data-reveal>{% if masthead_url != "" %}<div class="masthead-bg" aria-hidden="true" style="background-image:url({{ masthead_url }})"></div>{% endif %}<p class="kicker caps">YukiLog — Friends</p><h1>友链</h1><p class="inner-lede">互联网很大，但总有一些站点值得互相留一盏灯。</p></header>{% if friends.is_empty() %}<p class="empty">暂时还没有公开友链。</p>{% else %}<div class="friends-grid">{% for friend in friends %}<a class="friend" data-reveal href="{{ friend.url }}" target="_blank" rel="friend noopener"><span class="friend-avatar {{ friend.cover_class }}">{{ friend.initial }}{% if friend.avatar_url != "" %}<img src="{{ friend.avatar_url }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}</span><div><h3>{{ friend.name }}</h3><span class="furl">{{ friend.host }}</span><p>{{ friend.description }}</p></div></a>{% endfor %}</div>{% endif %}<section class="friend-apply" data-reveal><p class="kicker caps">Link Exchange</p><h2>交换友链</h2><p class="friend-apply-lede">互联网很大，但总有一些站点值得互相留一盏灯。留下你的站点，通过审核后就会出现在这里。</p><form id="friend-apply-form"><div class="friend-apply-grid"><label>名称<input name="name" required maxlength="100" placeholder="站点名称" autocomplete="off"></label><label>站点 URL<input name="url" type="url" required maxlength="2048" placeholder="https://" autocomplete="url"></label><label>邮箱<input name="email" type="email" required maxlength="254" placeholder="you@example.com" autocomplete="email"></label><label>图标 URL（选填）<input name="avatar_url" type="url" maxlength="2048" placeholder="https://…/favicon.ico" autocomplete="off"></label></div><label class="friend-apply-desc">简介（选填）<textarea name="description" rows="3" maxlength="300" placeholder="一句话介绍你的站点"></textarea></label><div class="friend-apply-foot"><p class="friend-apply-note" role="status"></p><button type="submit">提交申请</button></div></form></section><script>(()=>{const form=document.getElementById('friend-apply-form');if(!form)return;const note=form.querySelector('.friend-apply-note');form.addEventListener('submit',async(event)=>{event.preventDefault();const field=(name)=>{const input=form.elements.namedItem(name);return input?input.value.trim():''};const button=form.querySelector('button[type="submit"]');if(button)button.disabled=true;try{const response=await fetch('/api/friend-link-applications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:field('name'),url:field('url'),email:field('email'),description:field('description')||null,avatar_url:field('avatar_url')||null})});if(!response.ok){const data=await response.json().catch(()=>null);if(note){note.classList.remove('ok');note.textContent=(data&&data.message)||'提交失败，请稍后再试。'}return}form.reset();if(note){note.classList.add('ok');note.textContent='申请已提交，通过审核后会出现在这里。'}}catch{if(note){note.classList.remove('ok');note.textContent='网络异常，请稍后再试。'}}finally{if(button)button.disabled=false}})})();</script>"#,
     ext = "html"
 )]
 struct FriendListTemplate<'a> {
     friends: &'a [FriendCard],
+    masthead_url: &'a str,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -77,8 +78,12 @@ pub async fn article_list(
     .await?;
     let has_next = articles.len() as u64 > ARTICLE_PAGE_SIZE;
     articles.truncate(ARTICLE_PAGE_SIZE as usize);
-    let mut content = String::from(
-        r#"<header class="page-head" data-reveal><p class="kicker caps">YukiLog — Archive</p><h1>文章</h1><p class="inner-lede">长文、随笔与手记，按时间倒序。写得慢，但每一篇都算数。</p></header>"#,
+    let mut content = page_head(
+        &site,
+        "YukiLog — Archive",
+        "文章",
+        "长文、随笔与手记，按时间倒序。写得慢，但每一篇都算数。",
+        false,
     );
     if articles.is_empty() {
         content.push_str(r#"<p class="empty">这里还没有公开文章。</p>"#);
@@ -147,7 +152,14 @@ pub async fn dynamic_list(State(state): State<AppState>) -> Result<Html<String>,
     .render()
     .map_err(|_| AppError::Internal("render dynamics"))?;
     let content = format!(
-        r#"<header class="page-head" data-reveal><p class="kicker caps">YukiLog — Moments</p><h1>动态</h1><p class="inner-lede">短句与片刻，散落在时间里的星。不必完整，真实就好。</p></header>{timeline}"#
+        "{}{timeline}",
+        page_head(
+            &site,
+            "YukiLog — Moments",
+            "动态",
+            "短句与片刻，散落在时间里的星。不必完整，真实就好。",
+            false,
+        )
     );
     page(&site, "动态", &content)
 }
@@ -183,9 +195,12 @@ pub async fn friend_list(State(state): State<AppState>) -> Result<Html<String>, 
             cover_class: cover_class(index).to_owned(),
         });
     }
-    let content = FriendListTemplate { friends: &friends }
-        .render()
-        .map_err(|_| AppError::Internal("render friend links"))?;
+    let content = FriendListTemplate {
+        friends: &friends,
+        masthead_url: &site.masthead_url,
+    }
+    .render()
+    .map_err(|_| AppError::Internal("render friend links"))?;
     page(&site, "友链", &content)
 }
 
@@ -215,8 +230,12 @@ pub async fn search(
         )
         .await?
     };
-    let mut content = String::from(
-        r#"<header class="page-head center" data-reveal><p class="kicker caps">YukiLog — Search</p><h1>搜索</h1><p class="inner-lede">在文章、动态与随记里，找一段你还记得的话。</p></header>"#,
+    let mut content = page_head(
+        &site,
+        "YukiLog — Search",
+        "搜索",
+        "在文章、动态与随记里，找一段你还记得的话。",
+        true,
     );
     let hint_tags = tags::Entity::find()
         .order_by_asc(tags::Column::Name)

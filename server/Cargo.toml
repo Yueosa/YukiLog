@@ -27,6 +27,7 @@ serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 subtle.workspace = true
+syntect.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tower.workspace = true
