@@ -318,7 +318,7 @@ export class AdmDynamicEdit extends AdmView {
                 ?disabled=${this.store.busy}
                 @click=${() => this.store.dynamicAction(item.id, 'withdraw')}
               >
-                撤回
+                撤回为草稿
               </button>`
             : nothing}
           ${item

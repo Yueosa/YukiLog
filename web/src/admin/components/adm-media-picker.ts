@@ -252,7 +252,13 @@ export class AdmMediaPicker extends LitElement {
   }
 
   private groupOf(item: MediaAsset): GroupKey {
-    if (store.settings.avatarMediaId === item.id || store.settings.mastheadMediaId === item.id) return 'site';
+    if (
+      store.settings.avatarMediaId === item.id ||
+      store.settings.mastheadMediaId === item.id ||
+      (store.settings.heroBackgroundMediaIds ?? []).includes(item.id)
+    ) {
+      return 'site';
+    }
     if (store.layouts.some((record) => this.nodeUsesMedia(record.layout.root, item))) return 'site';
     if (store.articles.some((article) => article.cover_media_id === item.id)) return 'article-cover';
     if (store.dynamics.some((dynamic) => dynamic.media.some((media) => media.id === item.id))) return 'dynamic';

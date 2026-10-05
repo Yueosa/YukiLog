@@ -359,7 +359,7 @@ export class PublicStore {
       // 动态数优先用站点接口的 dynamicCount，与动态列表请求解耦
       dynamics: this.site.data?.dynamicCount ?? this.dynamics.data?.total ?? null,
       friends: this.friends.data?.length ?? null,
-      views: null,
+      views: this.site.data?.totalViews ?? null,
     };
   }
 }

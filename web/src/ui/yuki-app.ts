@@ -712,6 +712,9 @@ export class YukiApp extends LitElement {
     if (!this.previewOnly) {
       // 滚动恢复由 SPA 自己管理，浏览器原生恢复会让列表页跳动。
       if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+      // 冷进入一律从顶部开始：浏览器原生恢复会在 JS 执行前把页面拉回旧位置，
+      // 开屏 → 首屏的编排建立在顶部状态上（刷新后回到首屏）。
+      window.scrollTo(0, 0);
       this.unsubscribeStore = this.store.subscribe(() => {
         this.syncDocumentTitle();
         this.requestUpdate();
@@ -3901,7 +3904,7 @@ export class YukiApp extends LitElement {
       left: 0;
       width: 100%;
       height: 132%;
-      background: center / cover no-repeat;
+      background: var(--hero-pos, center) / cover no-repeat;
       will-change: transform;
     }
 
@@ -4083,6 +4086,8 @@ export class YukiApp extends LitElement {
 
     /* 刊头背景（如旧版的 gif 标题背景）：压一层页面色保证文字可读 */
     .masthead.has-bg {
+      background-position: var(--masthead-pos, center);
+      background-size: var(--masthead-fit, cover);
       position: relative;
       overflow: hidden;
       padding: 30px 32px;
@@ -4107,6 +4112,18 @@ export class YukiApp extends LitElement {
         transparent 56%,
         color-mix(in srgb, var(--page) 88%, transparent)
       );
+    }
+
+
+    .masthead.has-bg h1,
+    .masthead.has-bg .kicker,
+    .masthead.has-bg .lead,
+    .page-head.has-bg h1,
+    .page-head.has-bg .kicker,
+    .page-head.has-bg .inner-lede {
+      text-shadow:
+        0 1px 14px rgb(255 255 255 / 70%),
+        0 0 4px rgb(255 255 255 / 50%);
     }
 
     .masthead.has-bg > * {
@@ -5664,7 +5681,7 @@ export class YukiApp extends LitElement {
     .hero-bg-layer {
       position: absolute;
       inset: 0;
-      background-position: center;
+      background-position: var(--hero-pos, center);
       background-size: cover;
       background-repeat: no-repeat;
       opacity: 0;
@@ -6129,6 +6146,8 @@ export class YukiApp extends LitElement {
 
     /* 列表页刊头背景：轻压一层页面色 + 底部渐变加深，保证文字对比 */
     .page-head.has-bg {
+      background-position: var(--masthead-pos, center);
+      background-size: var(--masthead-fit, cover);
       position: relative;
       overflow: hidden;
       padding: 40px 36px 36px;
@@ -6594,6 +6613,11 @@ export class YukiApp extends LitElement {
     const overlay = theme?.mastheadOverlay;
     if (typeof overlay === 'number' && overlay >= 0 && overlay <= 0.95) {
       style['--masthead-tint'] = `${Math.round(overlay * 100)}%`;
+    }
+    if (theme?.heroBackgroundPosition) style['--hero-pos'] = theme.heroBackgroundPosition;
+    if (theme?.mastheadPosition) style['--masthead-pos'] = theme.mastheadPosition;
+    if (theme?.mastheadFit) {
+      style['--masthead-fit'] = theme.mastheadFit === 'stretch' ? '100% 100%' : theme.mastheadFit;
     }
     return style;
   }

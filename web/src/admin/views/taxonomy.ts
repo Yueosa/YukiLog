@@ -76,6 +76,61 @@ export class AdmTaxonomy extends AdmView {
         white-space: nowrap;
       }
 
+      .tag-cloud {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .tag-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        font-size: 12.5px;
+        transition: border-color 200ms ease;
+      }
+
+      .tag-chip:hover {
+        border-color: var(--primary);
+      }
+
+      .tag-chip i {
+        color: var(--faint);
+        font-size: 11px;
+        font-style: normal;
+      }
+
+      .tag-chip .chip-ops {
+        display: none;
+        gap: 2px;
+        margin-left: 2px;
+      }
+
+      .tag-chip:hover .chip-ops {
+        display: inline-flex;
+      }
+
+      .tag-chip .chip-ops button {
+        padding: 0 4px;
+        border: 0;
+        background: none;
+        color: var(--faint);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .tag-chip .chip-ops button:hover {
+        color: var(--ink);
+      }
+
+      .tag-chip .chip-ops button.danger:hover {
+        color: var(--secondary-d);
+      }
+
       .tag-more {
         margin-top: 10px;
       }
@@ -299,28 +354,19 @@ export class AdmTaxonomy extends AdmView {
               </div>
               ${items.length
                 ? html`
-                    <div class="table-wrap">
-                      <table>
-                        <thead>
-                          <tr><th>名称</th><th>slug</th><th>操作</th></tr>
-                        </thead>
-                        <tbody>
-                          ${items.map(
-                            (item) => html`
-                              <tr>
-                                <td><b>${item.name}</b></td>
-                                <td class="mono">${item.slug}</td>
-                                <td>
-                                  <span class="ops">
-                                    <button class="btn secondary small" @click=${() => this.editTag(item)}>编辑</button>
-                                    <button class="btn danger small" @click=${() => this.store.removeTaxonomy('tags', item.id)}>删除</button>
-                                  </span>
-                                </td>
-                              </tr>
-                            `,
-                          )}
-                        </tbody>
-                      </table>
+                    <div class="tag-cloud">
+                      ${items.map(
+                        (item) => html`
+                          <span class="tag-chip" title=${item.slug}>
+                            <b>${item.name}</b>
+                            <i class="mono">${item.slug}</i>
+                            <span class="chip-ops">
+                              <button aria-label="编辑" @click=${() => this.editTag(item)}>✎</button>
+                              <button aria-label="删除" class="danger" @click=${() => this.store.removeTaxonomy('tags', item.id)}>✕</button>
+                            </span>
+                          </span>
+                        `,
+                      )}
                     </div>
                     ${collapsed || (!query && this.tagsExpanded && matched.length > TAG_COLLAPSE_AT)
                       ? html`<div class="tag-more">

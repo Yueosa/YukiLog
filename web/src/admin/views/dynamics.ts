@@ -6,7 +6,6 @@ import { api } from '../api.js';
 import { contentStatusLabel, formatRelative } from '../labels.js';
 import type { Dynamic } from '../types.js';
 
-const THUMB_LIMIT = 4;
 
 /** 动态列表：卡片流——正文截断、心情/状态徽标、配图缩略、评论/喜欢数、编辑删除。 */
 export class AdmDynamics extends AdmView {
@@ -35,15 +34,57 @@ export class AdmDynamics extends AdmView {
       }
 
       .card {
-        display: grid;
-        gap: 10px;
-        padding: 16px 18px;
+        display: flex;
+        gap: 16px;
+        padding: 14px;
         border: 1px solid var(--line);
         border-radius: 16px;
         background: var(--surface);
         transition:
           border-color 220ms ease,
           translate 220ms ease;
+      }
+
+      .cover {
+        position: relative;
+        flex: none;
+        display: grid;
+        width: 118px;
+        height: 118px;
+        place-items: center;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface-muted);
+        font-size: 30px;
+      }
+
+      .cover img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .cover em {
+        position: absolute;
+        right: 6px;
+        bottom: 6px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: rgb(20 26 36 / 72%);
+        color: #fff;
+        font-size: 11px;
+        font-style: normal;
+      }
+
+      .body {
+        display: grid;
+        flex: 1;
+        min-width: 0;
+        align-content: start;
+        gap: 8px;
+        padding: 2px 4px 2px 0;
       }
 
       .card:hover {
@@ -76,7 +117,7 @@ export class AdmDynamics extends AdmView {
         word-break: break-word;
         display: -webkit-box;
         -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
+        -webkit-line-clamp: 2;
         overflow: hidden;
       }
 
@@ -88,39 +129,16 @@ export class AdmDynamics extends AdmView {
         color: var(--primary-d);
       }
 
-      .thumbs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-      }
 
-      .thumbs img {
-        width: 64px;
-        height: 64px;
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        object-fit: cover;
-        display: block;
-      }
 
-      .thumbs .more {
-        width: 64px;
-        height: 64px;
-        border: 1px dashed var(--line);
-        border-radius: 10px;
-        display: grid;
-        place-items: center;
-        color: var(--faint);
-        font-size: 12px;
-      }
 
       .foot {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 12px;
-        padding-top: 9px;
-        border-top: 1px solid var(--surface-muted);
+        margin-top: auto;
+        padding-top: 4px;
         color: var(--faint);
         font-size: 12px;
       }
@@ -165,32 +183,34 @@ export class AdmDynamics extends AdmView {
   private renderCard(item: Dynamic) {
     const comments = this.commentCount(item);
     const likes = this.likes.get(item.id);
-    const thumbs = item.media.slice(0, THUMB_LIMIT);
     this.ensureLikes(item);
+    const cover = item.media[0];
     return html`
       <article class="card">
-        <div class="head">
-          ${item.mood ? html`<span class="badge warn">${item.mood}</span>` : nothing}
-          <span class="badge ${item.status === 'published' ? 'ok' : ''}">${contentStatusLabel(item)}</span>
-          <span class="spacer"></span>
-          <time title=${item.published_at ?? item.created_at}>
-            ${formatRelative(item.published_at ?? item.created_at)}
-          </time>
-        </div>
-        <a class="text" href=${`#/dynamics/${item.id}`} title=${item.content_markdown}>${item.content_markdown.trim() || '（无内容）'}</a>
-        ${item.media.length
-          ? html`<div class="thumbs">
-              ${thumbs.map((media) => html`<img src=${media.url} alt=${media.original_name} loading="lazy" />`)}
-              ${item.media.length > THUMB_LIMIT ? html`<span class="more">+${item.media.length - THUMB_LIMIT}</span>` : nothing}
-            </div>`
-          : nothing}
-        <div class="foot">
-          <span class="stats">${comments} 评论${likes != null ? html` · ${likes} 喜欢` : nothing}</span>
-          <span class="spacer"></span>
-          <span class="ops">
-            <a class="btn secondary small" href=${`#/dynamics/${item.id}`}>编辑</a>
-            <button class="btn danger small" @click=${() => this.store.deleteDynamic(item.id)}>删除</button>
-          </span>
+        ${cover
+          ? html`<span class="cover">
+              <img src=${cover.url} alt=${cover.original_name} loading="lazy" />
+              ${item.media.length > 1 ? html`<em>+${item.media.length - 1}</em>` : nothing}
+            </span>`
+          : html`<span class="cover mood-fallback">${item.mood ?? '💬'}</span>`}
+        <div class="body">
+          <div class="head">
+            ${item.mood ? html`<span class="badge warn">${item.mood}</span>` : nothing}
+            <span class="badge ${item.status === 'published' ? 'ok' : ''}">${contentStatusLabel(item)}</span>
+            <span class="spacer"></span>
+            <time title=${item.published_at ?? item.created_at}>
+              ${formatRelative(item.published_at ?? item.created_at)}
+            </time>
+          </div>
+          <a class="text" href=${`#/dynamics/${item.id}`} title=${item.content_markdown}>${item.content_markdown.trim() || '（无内容）'}</a>
+          <div class="foot">
+            <span class="stats">${comments} 评论${likes != null ? html` · ${likes} 喜欢` : nothing}</span>
+            <span class="spacer"></span>
+            <span class="ops">
+              <a class="btn secondary small" href=${`#/dynamics/${item.id}`}>编辑</a>
+              <button class="btn danger small" @click=${() => this.store.deleteDynamic(item.id)}>删除</button>
+            </span>
+          </div>
         </div>
       </article>
     `;

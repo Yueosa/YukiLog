@@ -121,6 +121,12 @@ export type ThemeTokens = {
   motion: 'none' | 'subtle' | 'expressive';
   /** 刊头背景蒙版强度（0-0.95），null 时前端默认 0.58。 */
   mastheadOverlay?: number | null;
+  /** 首屏背景对齐。 */
+  heroBackgroundPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
+  /** 刊头背景对齐。 */
+  mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
+  /** 刊头背景适应。 */
+  mastheadFit?: 'cover' | 'contain' | 'stretch' | null;
 };
 
 export type SiteSettings = {

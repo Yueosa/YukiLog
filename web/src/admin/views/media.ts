@@ -148,6 +148,23 @@ export class AdmMedia extends AdmView {
         color: var(--primary-d);
       }
 
+      .usages {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 4px;
+      }
+
+      .usages em {
+        padding: 1px 7px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+        color: var(--primary-d);
+        font-size: 10.5px;
+        font-style: normal;
+        white-space: nowrap;
+      }
+
       .hint {
         margin: 0;
         color: var(--faint);
@@ -179,12 +196,17 @@ export class AdmMedia extends AdmView {
     return null;
   }
 
-  private groupOf(item: MediaAsset): string {
+  private usagesOf(item: MediaAsset): string[] {
+    const usages: string[] = [];
     const site = this.siteUsageOf(item);
-    if (site) return site;
-    if (this.store.articles.some((article) => article.cover_media_id === item.id)) return '文章封面';
-    if (this.store.dynamics.some((dynamic) => dynamic.media.some((media) => media.id === item.id))) return '动态配图';
-    return '图床 · 未引用';
+    if (site) usages.push(site);
+    if (this.store.articles.some((article) => article.cover_media_id === item.id)) usages.push('文章封面');
+    if (this.store.dynamics.some((dynamic) => dynamic.media.some((media) => media.id === item.id))) usages.push('动态配图');
+    return usages;
+  }
+
+  private groupOf(item: MediaAsset): string {
+    return this.usagesOf(item)[0] ?? '图床 · 未引用';
   }
 
   private groups(): MediaGroup[] {
@@ -218,6 +240,9 @@ export class AdmMedia extends AdmView {
             : html`<span class="kind">${item.media_type}</span>`}
         </div>
         <div class="meta">
+          ${this.usagesOf(item).length > 1
+            ? html`<span class="usages">${this.usagesOf(item).map((usage) => html`<em>${usage}</em>`)}</span>`
+            : nothing}
           <span class="name" title=${item.original_name}>${item.original_name}</span>
           <span class="spec">
             ${item.width && item.height ? `${item.width}×${item.height} · ` : ''}${formatBytes(item.byte_size)}

@@ -89,6 +89,12 @@ export interface SiteTheme {
   shape?: Partial<{ radius: number; borderedCards: boolean }>;
   /** 刊头背景蒙版强度（0-0.95），缺省前端用 0.58。 */
   mastheadOverlay?: number | null;
+  /** 首屏背景对齐，缺省 center。 */
+  heroBackgroundPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
+  /** 刊头背景对齐，缺省 center。 */
+  mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
+  /** 刊头背景适应，缺省 cover。 */
+  mastheadFit?: 'cover' | 'contain' | 'stretch' | null;
 }
 
 export interface PublicSite {
@@ -104,6 +110,7 @@ export interface PublicSite {
   shellLayout: ShellLayout | null;
   /** 动态总数（统计卡使用，独立于动态列表请求）。 */
   dynamicCount?: number;
+  totalViews?: number;
   /** 首屏背景图池：多张时冷进入随机抽一张并每 8 秒淡切。 */
   heroBackgrounds?: string[];
   /** 首屏语录卡文本；为空时回退 siteDescription。 */

@@ -375,10 +375,10 @@ export class AdmArticleEdit extends AdmView {
             ? html`<span class="faint">发布于 ${formatDateTime(article.published_at)}</span>`
             : html`<span class="faint">尚未发布</span>`}
         </div>
-        <button class="btn primary" ?disabled=${this.store.busy} @click=${this.save}>保存草稿</button>
+        <button class="btn primary" ?disabled=${this.store.busy} @click=${this.save}>保存</button>
         <div class="row">
           ${article?.status === 'published'
-            ? html`<button class="btn secondary" ?disabled=${this.store.busy} @click=${this.withdraw}>撤回</button>`
+            ? html`<button class="btn secondary" ?disabled=${this.store.busy} @click=${this.withdraw}>撤回为草稿</button>`
             : html`
                 <button class="btn secondary" ?disabled=${this.store.busy} @click=${this.publish}>立即发布</button>
                 <button class="btn secondary" ?disabled=${this.store.busy} @click=${this.schedule}>定时发布</button>
