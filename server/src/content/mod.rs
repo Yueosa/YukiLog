@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod design;
+pub mod overview;
 pub mod public;
 pub mod settings;
 

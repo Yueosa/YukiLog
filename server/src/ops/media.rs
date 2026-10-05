@@ -6,12 +6,16 @@ use std::{
 
 use axum::{
     Json,
-    extract::{Multipart, State, multipart::Field},
-    http::HeaderMap,
+    extract::{Multipart, Path as AxumPath, State, multipart::Field},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
 };
 use axum_extra::extract::cookie::CookieJar;
 use rand::{RngCore, rngs::OsRng};
-use sea_orm::{ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, EntityTrait, QueryFilter, Set};
+use sea_orm::{
+    ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, EntityTrait, QueryFilter, Set,
+    prelude::Uuid,
+};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::{
@@ -19,7 +23,11 @@ use tokio::{
     io::AsyncWriteExt,
 };
 
-use crate::{AppState, auth, entities::media_assets, error::AppError};
+use crate::{
+    AppState, auth,
+    entities::{articles, dynamic_media, dynamics, friend_links, media_assets, site_settings},
+    error::AppError,
+};
 
 pub const MAX_UPLOAD_BYTES: usize = 200 * 1024 * 1024;
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
@@ -67,6 +75,106 @@ pub struct MediaResponse {
     byte_size: i64,
     width: Option<i32>,
     height: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MediaReference {
+    kind: &'static str,
+    id: Option<Uuid>,
+    label: String,
+}
+
+#[derive(Debug, Serialize)]
+struct MediaDeleteConflict {
+    code: &'static str,
+    message: &'static str,
+    references: Vec<MediaReference>,
+}
+
+pub async fn delete(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<Response, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let media = media_assets::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let mut references = Vec::new();
+    let covering = articles::Entity::find()
+        .filter(articles::Column::CoverMediaId.eq(id))
+        .all(&state.database)
+        .await?;
+    references.extend(covering.into_iter().map(|article| MediaReference {
+        kind: "article_cover",
+        id: Some(article.id),
+        label: article.title,
+    }));
+    let attachments = dynamic_media::Entity::find()
+        .filter(dynamic_media::Column::MediaId.eq(id))
+        .all(&state.database)
+        .await?;
+    if !attachments.is_empty() {
+        let attached = dynamics::Entity::find()
+            .filter(
+                dynamics::Column::Id
+                    .is_in(attachments.iter().map(|row| row.dynamic_id).collect::<Vec<_>>()),
+            )
+            .all(&state.database)
+            .await?;
+        references.extend(attached.into_iter().map(|dynamic| MediaReference {
+            kind: "dynamic_media",
+            id: Some(dynamic.id),
+            label: dynamic.content_markdown.chars().take(40).collect(),
+        }));
+    }
+    let settings = site_settings::Entity::find_by_id(true)
+        .one(&state.database)
+        .await?;
+    if settings.is_some_and(|row| row.avatar_media_id == Some(id)) {
+        references.push(MediaReference {
+            kind: "site_avatar",
+            id: None,
+            label: "站点头像".to_owned(),
+        });
+    }
+    let linked = friend_links::Entity::find()
+        .filter(friend_links::Column::AvatarMediaId.eq(id))
+        .all(&state.database)
+        .await?;
+    references.extend(linked.into_iter().map(|friend| MediaReference {
+        kind: "friend_link_avatar",
+        id: Some(friend.id),
+        label: friend.name,
+    }));
+
+    if !references.is_empty() {
+        return Ok((
+            StatusCode::CONFLICT,
+            Json(MediaDeleteConflict {
+                code: "media_in_use",
+                message: "媒体仍被引用，无法删除",
+                references,
+            }),
+        )
+            .into_response());
+    }
+
+    media_assets::Entity::delete_by_id(id)
+        .exec(&state.database)
+        .await?;
+    let path = state.media.public_dir.join(&media.storage_key);
+    match fs::remove_file(&path).await {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => {
+            tracing::warn!(path = %path.display(), %error, "failed to remove media file");
+        }
+    }
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 pub async fn upload(

@@ -13,6 +13,8 @@ pub enum AppError {
     Database(#[from] DbErr),
     #[error("invalid request: {0}")]
     InvalidRequest(&'static str),
+    #[error("bad request: {0}")]
+    BadRequest(&'static str),
     #[error("authentication required")]
     Unauthorized,
     #[error("resource not found")]
@@ -50,6 +52,7 @@ impl IntoResponse for AppError {
                 "invalid_request",
                 *message,
             ),
+            Self::BadRequest(message) => (StatusCode::BAD_REQUEST, "bad_request", *message),
             Self::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
                 "invalid_credentials",
@@ -166,6 +169,12 @@ fn classify_postgres_code(code: &str) -> (StatusCode, &'static str, &'static str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bad_request_maps_to_400() {
+        let response = AppError::BadRequest("状态无效").into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
 
     #[test]
     fn maps_postgres_constraint_codes() {

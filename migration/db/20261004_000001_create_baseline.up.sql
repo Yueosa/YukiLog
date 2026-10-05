@@ -1,25 +1,3 @@
-use sea_orm_migration::prelude::*;
-
-#[derive(DeriveMigrationName)]
-pub struct Migration;
-
-#[async_trait::async_trait]
-impl MigrationTrait for Migration {
-    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager.get_connection().execute_unprepared(UP_SQL).await?;
-        Ok(())
-    }
-
-    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        manager
-            .get_connection()
-            .execute_unprepared(DOWN_SQL)
-            .await?;
-        Ok(())
-    }
-}
-
-const UP_SQL: &str = r#"
 CREATE EXTENSION IF NOT EXISTS citext;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -156,6 +134,7 @@ CREATE TABLE articles (
     status text NOT NULL DEFAULT 'draft',
     allow_comments boolean NOT NULL DEFAULT true,
     published_at timestamptz,
+    featured_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT articles_title_length
@@ -178,6 +157,9 @@ CREATE INDEX articles_category_id_idx ON articles (category_id);
 CREATE INDEX articles_published_at_idx
     ON articles (published_at DESC)
     WHERE status = 'published';
+CREATE INDEX articles_featured_idx
+    ON articles (featured_at DESC)
+    WHERE status = 'published' AND featured_at IS NOT NULL;
 
 CREATE TABLE article_tags (
     article_id uuid NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
@@ -189,6 +171,7 @@ CREATE INDEX article_tags_tag_id_idx ON article_tags (tag_id, article_id);
 CREATE TABLE dynamics (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     content_markdown text NOT NULL,
+    mood varchar(40),
     status text NOT NULL DEFAULT 'draft',
     allow_comments boolean NOT NULL DEFAULT true,
     published_at timestamptz,
@@ -196,6 +179,8 @@ CREATE TABLE dynamics (
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT dynamics_content_not_blank
         CHECK (char_length(btrim(content_markdown)) > 0),
+    CONSTRAINT dynamics_mood_length
+        CHECK (mood IS NULL OR char_length(btrim(mood)) BETWEEN 1 AND 40),
     CONSTRAINT dynamics_status_valid
         CHECK (status IN ('draft', 'published')),
     CONSTRAINT dynamics_publish_state_valid
@@ -208,15 +193,26 @@ CREATE INDEX dynamics_published_at_idx
     ON dynamics (published_at DESC)
     WHERE status = 'published';
 
+CREATE TABLE dynamic_media (
+    dynamic_id uuid NOT NULL REFERENCES dynamics(id) ON DELETE CASCADE,
+    media_id uuid NOT NULL REFERENCES media_assets(id) ON DELETE CASCADE,
+    position smallint NOT NULL,
+    PRIMARY KEY (dynamic_id, media_id),
+    CONSTRAINT dynamic_media_position_range
+        CHECK (position BETWEEN 0 AND 8)
+);
+CREATE INDEX dynamic_media_dynamic_idx ON dynamic_media (dynamic_id, position);
+
 CREATE TABLE comments (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     article_id uuid REFERENCES articles(id) ON DELETE CASCADE,
     dynamic_id uuid REFERENCES dynamics(id) ON DELETE CASCADE,
     parent_id uuid REFERENCES comments(id) ON DELETE CASCADE,
     display_name varchar(80) NOT NULL,
-    email citext NOT NULL,
+    email citext,
     website text,
     content text NOT NULL,
+    user_agent text,
     status text NOT NULL DEFAULT 'pending',
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT comments_one_target
@@ -227,13 +223,18 @@ CREATE TABLE comments (
         CHECK (char_length(btrim(display_name)) BETWEEN 1 AND 80),
     CONSTRAINT comments_email_shape
         CHECK (
-            char_length(email::text) BETWEEN 3 AND 254
-            AND position('@' IN email::text) > 1
+            email IS NULL
+            OR (
+                char_length(email::text) BETWEEN 3 AND 254
+                AND position('@' IN email::text) > 1
+            )
         ),
     CONSTRAINT comments_website_length
         CHECK (website IS NULL OR char_length(website) <= 2048),
     CONSTRAINT comments_content_length
         CHECK (char_length(btrim(content)) BETWEEN 1 AND 5000),
+    CONSTRAINT comments_user_agent_length
+        CHECK (user_agent IS NULL OR char_length(user_agent) <= 512),
     CONSTRAINT comments_status_valid
         CHECK (status IN ('pending', 'visible', 'hidden'))
 );
@@ -348,9 +349,66 @@ CREATE TRIGGER article_likes_update_count
 AFTER INSERT OR DELETE ON article_likes
 FOR EACH ROW EXECUTE FUNCTION yukilog_update_article_like_count();
 
+CREATE TABLE dynamic_metrics (
+    dynamic_id uuid PRIMARY KEY REFERENCES dynamics(id) ON DELETE CASCADE,
+    like_count bigint NOT NULL DEFAULT 0,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT dynamic_metrics_like_count_nonnegative
+        CHECK (like_count >= 0)
+);
+
+CREATE TABLE dynamic_likes (
+    dynamic_id uuid NOT NULL REFERENCES dynamics(id) ON DELETE CASCADE,
+    visitor_token_hash bytea NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (dynamic_id, visitor_token_hash),
+    CONSTRAINT dynamic_likes_visitor_hash_length
+        CHECK (octet_length(visitor_token_hash) = 32)
+);
+
+CREATE FUNCTION yukilog_create_dynamic_metrics()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    INSERT INTO dynamic_metrics (dynamic_id) VALUES (NEW.id);
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER dynamics_create_metrics
+AFTER INSERT ON dynamics
+FOR EACH ROW EXECUTE FUNCTION yukilog_create_dynamic_metrics();
+
+CREATE FUNCTION yukilog_update_dynamic_like_count()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF TG_OP = 'INSERT' THEN
+        UPDATE dynamic_metrics
+           SET like_count = like_count + 1,
+               updated_at = now()
+         WHERE dynamic_id = NEW.dynamic_id;
+        RETURN NEW;
+    END IF;
+
+    UPDATE dynamic_metrics
+       SET like_count = GREATEST(like_count - 1, 0),
+           updated_at = now()
+     WHERE dynamic_id = OLD.dynamic_id;
+    RETURN OLD;
+END;
+$$;
+
+CREATE TRIGGER dynamic_likes_update_count
+AFTER INSERT OR DELETE ON dynamic_likes
+FOR EACH ROW EXECUTE FUNCTION yukilog_update_dynamic_like_count();
+
 CREATE TABLE friend_links (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     avatar_media_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
+    avatar_url text,
     name varchar(100) NOT NULL,
     url text NOT NULL UNIQUE,
     description varchar(300),
@@ -363,6 +421,14 @@ CREATE TABLE friend_links (
         CHECK (char_length(btrim(name)) BETWEEN 1 AND 100),
     CONSTRAINT friend_links_url_length
         CHECK (char_length(url) BETWEEN 8 AND 2048),
+    CONSTRAINT friend_links_avatar_url_shape
+        CHECK (
+            avatar_url IS NULL
+            OR (
+                char_length(avatar_url) BETWEEN 8 AND 2048
+                AND (avatar_url LIKE 'http://%' OR avatar_url LIKE 'https://%')
+            )
+        ),
     CONSTRAINT friend_links_description_length
         CHECK (description IS NULL OR char_length(description) <= 300),
     CONSTRAINT friend_links_application_email_shape
@@ -597,41 +663,438 @@ FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
 CREATE TRIGGER subscribers_set_updated_at
 BEFORE UPDATE ON subscribers
 FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
-"#;
 
-const DOWN_SQL: &str = r#"
-DROP TRIGGER IF EXISTS subscribers_set_updated_at ON subscribers;
-DROP TRIGGER IF EXISTS page_layouts_set_updated_at ON page_layouts;
-DROP TRIGGER IF EXISTS site_settings_set_updated_at ON site_settings;
-DROP TRIGGER IF EXISTS admin_notifications_set_updated_at ON admin_notifications;
-DROP TRIGGER IF EXISTS friend_links_set_updated_at ON friend_links;
-DROP TRIGGER IF EXISTS dynamics_set_updated_at ON dynamics;
-DROP TRIGGER IF EXISTS articles_set_updated_at ON articles;
-DROP TRIGGER IF EXISTS categories_set_updated_at ON categories;
-DROP TRIGGER IF EXISTS admin_accounts_set_updated_at ON admin_accounts;
+INSERT INTO site_settings (
+    singleton, site_title, site_description, owner_name, owner_bio,
+    social_links, theme, shell_layout
+)
+VALUES (
+    true,
+    'YukiLog',
+    '这里分享她所热爱的技术、思考，以及情绪、挣扎',
+    '恋',
+    '我能走到这里，是因为你没有放弃',
+    '[]'::jsonb,
+    '{"schemaVersion":1,"colors":{"background":"#f7f8f7","surface":"#ffffff","surfaceMuted":"#eef2f5","text":"#1c2733","textMuted":"#6d7f90","primary":"#7eb6d9","secondary":"#e8a4b4","border":"#dde5ec"},"typography":{"body":"system","display":"serif","scale":1.0},"shape":{"radius":14,"borderedCards":true},"motion":"subtle"}'::jsonb,
+    '{"schemaVersion":1,"navigation":"topbar","brandPosition":"start","showSearch":true,"translucent":true,"maxWidth":"wide"}'::jsonb
+);
 
-DROP TABLE IF EXISTS email_deliveries;
-DROP TABLE IF EXISTS subscribers;
-DROP TABLE IF EXISTS page_layouts;
-DROP TABLE IF EXISTS site_settings;
-DROP TABLE IF EXISTS admin_notifications;
-DROP TABLE IF EXISTS friend_links;
-DROP TRIGGER IF EXISTS article_likes_update_count ON article_likes;
-DROP FUNCTION IF EXISTS yukilog_update_article_like_count();
-DROP TABLE IF EXISTS article_likes;
-DROP TRIGGER IF EXISTS articles_create_metrics ON articles;
-DROP FUNCTION IF EXISTS yukilog_create_article_metrics();
-DROP TABLE IF EXISTS article_metrics;
-DROP TRIGGER IF EXISTS comments_validate_parent ON comments;
-DROP FUNCTION IF EXISTS yukilog_validate_comment_parent();
-DROP TABLE IF EXISTS comments;
-DROP TABLE IF EXISTS dynamics;
-DROP TABLE IF EXISTS article_tags;
-DROP TABLE IF EXISTS articles;
-DROP TABLE IF EXISTS media_assets;
-DROP TABLE IF EXISTS tags;
-DROP TABLE IF EXISTS categories;
-DROP TABLE IF EXISTS admin_sessions;
-DROP TABLE IF EXISTS admin_accounts;
-DROP FUNCTION IF EXISTS yukilog_set_updated_at();
-"#;
+INSERT INTO page_layouts (page_key, layout)
+VALUES (
+    'home',
+    '{"schemaVersion":1,"id":"nightflight-continuum","label":"夜航","description":"沉浸首屏、个人带、交错文章流与发丝线侧栏。","root":{"id":"nf-root","type":"stack","props":{"gap":"none","maxWidth":"full"},"children":[{"id":"nf-hero","type":"hero","props":{"variant":"cinematic","title":"欢迎来看恋的博客","accent":"恋","lead":"这里分享她所热爱的技术、思考，以及情绪、挣扎","showSocials":true,"showEnter":true,"backgroundPosition":"center","overlay":"medium"}},{"id":"nf-identity","type":"grid","props":{"columns":"auto minmax(0, 1fr) auto","gap":"lg","align":"center","maxWidth":"full"},"responsive":{"mobile":{"columns":"1fr"}},"children":[{"id":"nf-avatar","type":"avatar","props":{"source":"site-owner","size":"xl","shape":"circle","label":"恋的头像"}},{"id":"nf-who","type":"stack","props":{"gap":"sm","maxWidth":"full"},"children":[{"id":"nf-name","type":"text-block","props":{"source":"owner-name","variant":"heading","text":"Lian（恋）","alignment":"left"}},{"id":"nf-bio","type":"text-block","props":{"source":"owner-bio","variant":"body","text":"我能走到这里，是因为你没有放弃","alignment":"left"}},{"id":"nf-traits","type":"text-block","props":{"source":"literal","variant":"caption","text":"代码 · 记忆 · 夜航","alignment":"left"}}]},{"id":"nf-syslog","type":"status-line","props":{"text":"system.log\n这不是你亲手开启的故事吗？\n[2024-06-09 08:48:29]\n","tone":"neutral"}}]},{"id":"nf-stage","type":"grid","props":{"columns":"minmax(0, 1fr) 300px","gap":"xl","align":"start","maxWidth":"full"},"responsive":{"mobile":{"columns":"1fr"}},"children":[{"id":"nf-main","type":"stack","props":{"gap":"xl","maxWidth":"full"},"children":[{"id":"nf-masthead","type":"masthead","props":{"variant":"minimal","kicker":"01","title":"最近文章","lead":"ARCHIVE / 6","alignment":"left"}},{"id":"nf-feed","type":"article-feed","props":{"variant":"alternating","fields":["cover","title","summary","date","category","tags","views","likes"],"columns":1,"limit":5,"sort":"latest"}}]},{"id":"nf-rail","type":"stack","props":{"gap":"lg","maxWidth":"full","sticky":true},"children":[{"id":"nf-stats","type":"stats","props":{"fields":["articles","dynamics","friends","views"],"compact":true}},{"id":"nf-hitokoto","type":"quote","props":{"text":"把每一个今天过得比昨天好一点，这样就够了。","attribution":"—— 《比宇宙更远的地方》","alignment":"left"}},{"id":"nf-dynamics","type":"dynamic-strip","props":{"limit":4,"variant":"compact"}}]}]}]}}'::jsonb
+);
+
+INSERT INTO categories (name, slug, description, sort_order)
+VALUES ('夜航手记', 'nightflight-notes', '长文、随笔与手记。', 0);
+
+INSERT INTO articles (
+    category_id, title, slug, summary, body_markdown,
+    status, allow_comments, published_at, featured_at
+)
+SELECT
+    id,
+    'YukiLog 渲染测试',
+    'yukilog-markdown',
+    '这一篇用于预览 YukiLog 的文章样式。',
+    $yukilog_seed$
+## 1️⃣ 标题测试
+
+```md
+# 一级标题
+
+## 二级标题
+
+### 三级标题
+
+#### 四级标题
+
+##### 五级标题
+
+###### 六级标题
+```
+
+# 一级标题
+
+## 二级标题
+
+### 三级标题
+
+#### 四级标题
+
+##### 五级标题
+
+###### 六级标题
+
+---
+
+## 2️⃣ 文本效果测试
+
+```md
+**文本加粗**
+
+*文本斜体*
+
+***加粗斜体***
+
+~~删除线~~
+
+`行内代码`
+
+HTML 下划线
+```
+
+**文本加粗**
+
+*文本斜体*
+
+***加粗斜体***
+
+~~删除线~~
+
+`行内代码`
+
+HTML 下划线
+
+---
+
+## 3️⃣ 列表测试
+
+```md
+* 无序列表一
+* 无序列表二
+  * 子列表一
+  * 子列表二
+* 无序列表三
+
+1. 有序列表1
+2. 有序列表2
+3. 有序列表3
+```
+
+* 无序列表一
+* 无序列表二
+  * 子列表一
+  * 子列表二
+* 无序列表三
+
+1. 有序列表1
+2. 有序列表2
+3. 有序列表3
+
+---
+
+## 4️⃣ 引用测试
+
+```md
+> 连续引用第一行
+> 连续引用第二行
+
+> 引用块
+>
+> 这是第二行引用
+
+> 嵌套引用第一层
+>> 嵌套引用第二层
+>>> 嵌套引用第三层
+
+```
+
+> 连续引用第一行
+> 连续引用第二行
+
+> 引用块
+>
+> 这是第二行引用
+
+> 嵌套引用第一层
+>
+>> 嵌套引用第二层
+>>
+>>> 嵌套引用第三层
+>>>
+>>
+
+---
+
+## 5️⃣ 代码块测试
+
+````md
+```md
+这是一个 `console.log("lian love")` 示例
+```
+````
+
+```md
+这是一个 `console.log("lian love")` 示例
+```
+
+````md
+```
+function lian() {
+    return "lian love";
+}
+```
+````
+
+```
+function lian() {
+    return "lian love";
+}
+```
+
+````md
+```rust
+fn main() {
+    println!("lian love");
+}
+```
+````
+
+```rust
+fn main() {
+    println!("lian love");
+}
+```
+
+````md
+```yaml
+boolean: 
+    - TRUE
+    - FALSE
+float:
+    - 3.14
+    - 6.8523015e+5
+int:
+    - 123
+    - 0b1010_0111_0100_1010_1110
+null:
+    nodeName: 'node'
+    parent: ~
+string:
+    - 哈哈
+    - 'Lian Love'
+    - newline
+      newline2
+date:
+    - 2018-02-17
+datetime: 
+    -  2018-02-17T15:02:31+08:00
+```
+````
+
+```yaml
+boolean: 
+    - TRUE
+    - FALSE
+float:
+    - 3.14
+    - 6.8523015e+5
+int:
+    - 123
+    - 0b1010_0111_0100_1010_1110
+null:
+    nodeName: 'node'
+    parent: ~
+string:
+    - 哈哈
+    - 'Lian Love'
+    - newline
+      newline2
+date:
+    - 2018-02-17
+datetime: 
+    -  2018-02-17T15:02:31+08:00
+```
+
+````md
+```mermaid
+graph LR
+    subgraph 本地["本地计算机"]
+        A[MySQL 客户端] --> B[localhost:3307]
+        B --> C[SSH 客户端]
+    end
+  
+    C -- "SSH 隧道 (加密)" --> D[远程服务器公网IP:22]
+  
+    subgraph 远程["远程服务器 (内网)"]
+        D --> E[MySQL127.0.0.1:3306]
+    end
+
+    style B fill:#c8e6c9
+    style E fill:#ffcdd2
+```
+````
+
+```mermaid
+graph LR
+    subgraph 本地["本地计算机"]
+        A[MySQL 客户端] --> B[localhost:3307]
+        B --> C[SSH 客户端]
+    end
+  
+    C -- "SSH 隧道 (加密)" --> D[远程服务器公网IP:22]
+  
+    subgraph 远程["远程服务器 (内网)"]
+        D --> E[MySQL127.0.0.1:3306]
+    end
+
+    style B fill:#c8e6c9
+    style E fill:#ffcdd2
+```
+
+---
+
+## 6️⃣ 链接/图片测试
+
+```md
+[链接 YukiKoi](https://yeastar.xin)
+```
+
+[链接 YukiKoi](https://yeastar.xin)
+
+
+
+---
+
+## 7️⃣ 表格测试
+
+```md
+| 表格 | 类型 | 说明 |
+|-|-|-|
+| `恋` | **人类** | 博主 |
+| `Arch` | **系统** | 折腾 |
+```
+
+
+| 表格   | 类型     | 说明 |
+| ------ | -------- | ---- |
+| `恋`   | **人类** | 博主 |
+| `Arch` | **系统** | 折腾 |
+
+---
+
+## 8️⃣ 任务清单测试
+
+```md
+- [x] 任务列表
+- [ ] 未完成
+
+```
+
+- [X]  任务列表
+- [ ]  未完成
+
+---
+
+## 9️⃣ 脚注测试
+
+```md
+这是一个脚注[^1]
+
+[^1]: 这是脚注内容
+```
+
+这是一个脚注[^1]
+
+---
+
+## 1️⃣0️⃣ 数学公式测试
+
+```md
+行内公式: $E = mc^2$
+
+块级公式:
+
+$$
+\int_0^1 x^2 dx
+$$
+```
+
+行内公式: $E = mc^2$
+
+块级公式:
+
+$$
+\int_0^1 x^2 dx
+$$
+
+---
+
+## 1️⃣1️⃣ HTML 测试
+
+```md
+
+    这是一个HTML容器
+
+```
+
+
+    这是一个HTML容器
+
+
+```md
+
+
+这是元素 **居中测试**, 标签为 ``
+
+
+```
+
+
+
+这是元素 **居中测试**, 标签为 ``
+
+
+
+---
+
+## 1️⃣2️⃣ 正文测试
+
+## ✨ 设计理念
+
+这个博客不是企业官网，也不是炫技舞台。
+
+它更像一本安静的笔记本。
+
+我在这里记录：
+
+- 技术
+- 思考
+- 情绪
+- 抱怨
+- 生活碎片
+- 以及那些突然想明白的瞬间
+
+它不追求锋利，不制造压迫感。
+它希望给人一种：
+
+**舒缓、柔软、真实的存在感。**
+
+---
+
+## 🎨 视觉语言
+
+### 核心色调
+
+```css
+--lian-blue:  #7EB6D9;
+--lian-pink:  #E8A4B4;
+--lian-white: #FAFAFA;
+--lian-bg:    #F6F7F9;
+```
+
+* 蓝色代表逻辑与秩序
+* 粉色代表感受与表达
+* 白色代表留白与呼吸
+
+整体配色偏低饱和，像彩铅画在纸上。
+
+[^1]: 这是脚注内容
+$yukilog_seed$,
+    'published',
+    true,
+    now(),
+    now()
+FROM categories
+WHERE slug = 'nightflight-notes';

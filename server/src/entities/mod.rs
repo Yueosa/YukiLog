@@ -134,12 +134,22 @@ pub mod articles {
         pub status: String,
         pub allow_comments: bool,
         pub published_at: Option<DateTimeWithTimeZone>,
+        pub featured_at: Option<DateTimeWithTimeZone>,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
+    pub enum Relation {
+        #[sea_orm(has_one = "super::article_metrics::Entity")]
+        ArticleMetrics,
+    }
+
+    impl Related<super::article_metrics::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::ArticleMetrics.def()
+        }
+    }
 
     impl ActiveModelBehavior for ActiveModel {}
 }
@@ -171,11 +181,93 @@ pub mod dynamics {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: Uuid,
         pub content_markdown: String,
+        pub mood: Option<String>,
         pub status: String,
         pub allow_comments: bool,
         pub published_at: Option<DateTimeWithTimeZone>,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod dynamic_media {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "dynamic_media")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub dynamic_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub media_id: Uuid,
+        pub position: i16,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::dynamics::Entity",
+            from = "Column::DynamicId",
+            to = "super::dynamics::Column::Id"
+        )]
+        Dynamics,
+        #[sea_orm(
+            belongs_to = "super::media_assets::Entity",
+            from = "Column::MediaId",
+            to = "super::media_assets::Column::Id"
+        )]
+        MediaAssets,
+    }
+
+    impl Related<super::dynamics::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Dynamics.def()
+        }
+    }
+
+    impl Related<super::media_assets::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::MediaAssets.def()
+        }
+    }
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod dynamic_metrics {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "dynamic_metrics")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub dynamic_id: Uuid,
+        pub like_count: i64,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
+pub mod dynamic_likes {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "dynamic_likes")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub dynamic_id: Uuid,
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub visitor_token_hash: Vec<u8>,
+        pub created_at: DateTimeWithTimeZone,
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -196,9 +288,10 @@ pub mod comments {
         pub dynamic_id: Option<Uuid>,
         pub parent_id: Option<Uuid>,
         pub display_name: String,
-        pub email: String,
+        pub email: Option<String>,
         pub website: Option<String>,
         pub content: String,
+        pub user_agent: Option<String>,
         pub status: String,
         pub created_at: DateTimeWithTimeZone,
     }
@@ -223,7 +316,20 @@ pub mod article_metrics {
     }
 
     #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
+    pub enum Relation {
+        #[sea_orm(
+            belongs_to = "super::articles::Entity",
+            from = "Column::ArticleId",
+            to = "super::articles::Column::Id"
+        )]
+        Articles,
+    }
+
+    impl Related<super::articles::Entity> for Entity {
+        fn to() -> RelationDef {
+            Relation::Articles.def()
+        }
+    }
 
     impl ActiveModelBehavior for ActiveModel {}
 }
@@ -256,6 +362,7 @@ pub mod friend_links {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: Uuid,
         pub avatar_media_id: Option<Uuid>,
+        pub avatar_url: Option<String>,
         pub name: String,
         pub url: String,
         pub description: Option<String>,

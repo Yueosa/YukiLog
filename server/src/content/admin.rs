@@ -7,18 +7,20 @@ use axum_extra::extract::cookie::CookieJar;
 use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
-    DatabaseTransaction, EntityTrait, IntoActiveModel, QueryFilter, QueryOrder, QuerySelect, Set,
-    Statement, TransactionTrait, prelude::Uuid,
+    DatabaseTransaction, EntityTrait, IntoActiveModel, PaginatorTrait, QueryFilter, QueryOrder,
+    QuerySelect, Set, Statement, TransactionTrait, prelude::Uuid,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 use crate::{
     AppState, auth,
     entities::{
-        article_tags, articles, categories, comments, dynamics, friend_links, media_assets, tags,
+        article_tags, articles, categories, comments, dynamic_media, dynamics, friend_links,
+        media_assets, tags,
     },
     error::AppError,
-    media::MediaResponse,
+    ops::media::MediaResponse,
 };
 
 #[derive(Debug, Deserialize)]
@@ -210,6 +212,7 @@ pub struct ArticleResponse {
     status: String,
     allow_comments: bool,
     published_at: Option<DateTime<FixedOffset>>,
+    featured_at: Option<DateTime<FixedOffset>>,
     created_at: DateTime<FixedOffset>,
     updated_at: DateTime<FixedOffset>,
     tag_ids: Vec<Uuid>,
@@ -218,6 +221,11 @@ pub struct ArticleResponse {
 #[derive(Debug, Default, Deserialize)]
 pub struct PublishWrite {
     published_at: Option<DateTime<FixedOffset>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FeaturedWrite {
+    featured: bool,
 }
 
 pub async fn list_articles(
@@ -269,6 +277,7 @@ pub async fn create_article(
         status: Set("draft".to_owned()),
         allow_comments: Set(input.allow_comments),
         published_at: Set(None),
+        featured_at: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
     }
@@ -373,9 +382,32 @@ pub async fn withdraw_article(
     let mut active = model.into_active_model();
     active.status = Set("draft".to_owned());
     active.published_at = Set(None);
+    active.featured_at = Set(None);
     let model = active.update(&transaction).await?;
     cancel_delivery(&transaction, "article_id", id).await?;
     transaction.commit().await?;
+    Ok(Json(article_response(&state, model).await?))
+}
+
+pub async fn set_article_featured(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(input): Json<FeaturedWrite>,
+) -> Result<Json<ArticleResponse>, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let model = articles::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    let mut active = model.into_active_model();
+    active.featured_at = Set(if input.featured {
+        Some(Utc::now().fixed_offset())
+    } else {
+        None
+    });
+    let model = active.update(&state.database).await?;
     Ok(Json(article_response(&state, model).await?))
 }
 
@@ -383,17 +415,33 @@ pub async fn withdraw_article(
 pub struct DynamicWrite {
     content_markdown: String,
     allow_comments: bool,
+    #[serde(default)]
+    mood: Option<String>,
+    #[serde(default)]
+    media_ids: Option<Vec<Uuid>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DynamicMediaItem {
+    id: Uuid,
+    url: String,
+    original_name: String,
+    media_type: String,
+    width: Option<i32>,
+    height: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct DynamicResponse {
     id: Uuid,
     content_markdown: String,
+    mood: Option<String>,
     status: String,
     allow_comments: bool,
     published_at: Option<DateTime<FixedOffset>>,
     created_at: DateTime<FixedOffset>,
     updated_at: DateTime<FixedOffset>,
+    media: Vec<DynamicMediaItem>,
 }
 
 pub async fn list_dynamics(
@@ -405,8 +453,19 @@ pub async fn list_dynamics(
         .order_by_desc(dynamics::Column::CreatedAt)
         .all(&state.database)
         .await?;
+    let mut media = load_dynamics_media(
+        &state.database,
+        models.iter().map(|model| model.id).collect(),
+    )
+    .await?;
     Ok(Json(
-        models.into_iter().map(DynamicResponse::from).collect(),
+        models
+            .into_iter()
+            .map(|model| {
+                let media = media.remove(&model.id).unwrap_or_default();
+                dynamic_response_from(model, media)
+            })
+            .collect(),
     ))
 }
 
@@ -417,18 +476,24 @@ pub async fn create_dynamic(
     Json(input): Json<DynamicWrite>,
 ) -> Result<Json<DynamicResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
+    let transaction = state.database.begin().await?;
     let model = dynamics::ActiveModel {
         id: NotSet,
         content_markdown: Set(input.content_markdown),
+        mood: Set(normalize_mood(input.mood)?),
         status: Set("draft".to_owned()),
         allow_comments: Set(input.allow_comments),
         published_at: Set(None),
         created_at: NotSet,
         updated_at: NotSet,
     }
-    .insert(&state.database)
+    .insert(&transaction)
     .await?;
-    Ok(Json(model.into()))
+    if let Some(media_ids) = input.media_ids {
+        replace_dynamic_media(&transaction, model.id, &media_ids).await?;
+    }
+    transaction.commit().await?;
+    dynamic_response(&state, model).await.map(Json)
 }
 
 pub async fn get_dynamic(
@@ -441,7 +506,7 @@ pub async fn get_dynamic(
         .one(&state.database)
         .await?
         .ok_or(AppError::NotFound)?;
-    Ok(Json(model.into()))
+    dynamic_response(&state, model).await.map(Json)
 }
 
 pub async fn update_dynamic(
@@ -452,14 +517,21 @@ pub async fn update_dynamic(
     Json(input): Json<DynamicWrite>,
 ) -> Result<Json<DynamicResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
+    let transaction = state.database.begin().await?;
     let model = dynamics::Entity::find_by_id(id)
-        .one(&state.database)
+        .one(&transaction)
         .await?
         .ok_or(AppError::NotFound)?;
     let mut active = model.into_active_model();
     active.content_markdown = Set(input.content_markdown);
+    active.mood = Set(normalize_mood(input.mood)?);
     active.allow_comments = Set(input.allow_comments);
-    Ok(Json(active.update(&state.database).await?.into()))
+    let model = active.update(&transaction).await?;
+    if let Some(media_ids) = input.media_ids {
+        replace_dynamic_media(&transaction, id, &media_ids).await?;
+    }
+    transaction.commit().await?;
+    dynamic_response(&state, model).await.map(Json)
 }
 
 pub async fn delete_dynamic(
@@ -508,7 +580,7 @@ pub async fn publish_dynamic(
         model
     };
     transaction.commit().await?;
-    Ok(Json(model.into()))
+    dynamic_response(&state, model).await.map(Json)
 }
 
 pub async fn withdraw_dynamic(
@@ -530,7 +602,7 @@ pub async fn withdraw_dynamic(
     let model = active.update(&transaction).await?;
     cancel_delivery(&transaction, "dynamic_id", id).await?;
     transaction.commit().await?;
-    Ok(Json(model.into()))
+    dynamic_response(&state, model).await.map(Json)
 }
 
 #[derive(Debug, Deserialize)]
@@ -545,7 +617,7 @@ pub struct CommentResponse {
     dynamic_id: Option<Uuid>,
     parent_id: Option<Uuid>,
     display_name: String,
-    email: String,
+    email: Option<String>,
     website: Option<String>,
     content: String,
     status: String,
@@ -574,6 +646,9 @@ pub async fn update_comment_status(
     Json(input): Json<CommentStatusWrite>,
 ) -> Result<Json<CommentResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
+    if !matches!(input.status.as_str(), "pending" | "visible" | "hidden") {
+        return Err(AppError::BadRequest("评论状态必须是 pending、visible 或 hidden"));
+    }
     let model = comments::Entity::find_by_id(id)
         .one(&state.database)
         .await?
@@ -602,6 +677,7 @@ pub async fn delete_comment(
 #[derive(Debug, Deserialize)]
 pub struct FriendLinkWrite {
     avatar_media_id: Option<Uuid>,
+    avatar_url: Option<String>,
     name: String,
     url: String,
     description: Option<String>,
@@ -613,6 +689,7 @@ pub struct FriendLinkWrite {
 pub struct FriendLinkResponse {
     id: Uuid,
     avatar_media_id: Option<Uuid>,
+    avatar_url: Option<String>,
     name: String,
     url: String,
     description: Option<String>,
@@ -643,9 +720,11 @@ pub async fn create_friend_link(
 ) -> Result<Json<FriendLinkResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
     validate_http_url(&input.url)?;
+    validate_optional_http_url(input.avatar_url.as_deref())?;
     let model = friend_links::ActiveModel {
         id: NotSet,
         avatar_media_id: Set(input.avatar_media_id),
+        avatar_url: Set(normalize_optional_http_url(input.avatar_url)),
         name: Set(input.name),
         url: Set(input.url),
         description: Set(input.description),
@@ -669,12 +748,14 @@ pub async fn update_friend_link(
 ) -> Result<Json<FriendLinkResponse>, AppError> {
     auth::authorize_write(&state, &headers, &jar).await?;
     validate_http_url(&input.url)?;
+    validate_optional_http_url(input.avatar_url.as_deref())?;
     let model = friend_links::Entity::find_by_id(id)
         .one(&state.database)
         .await?
         .ok_or(AppError::NotFound)?;
     let mut active = model.into_active_model();
     active.avatar_media_id = Set(input.avatar_media_id);
+    active.avatar_url = Set(normalize_optional_http_url(input.avatar_url));
     active.name = Set(input.name);
     active.url = Set(input.url);
     active.description = Set(input.description);
@@ -773,6 +854,7 @@ async fn article_response(
         status: article.status,
         allow_comments: article.allow_comments,
         published_at: article.published_at,
+        featured_at: article.featured_at,
         created_at: article.created_at,
         updated_at: article.updated_at,
         tag_ids,
@@ -784,7 +866,7 @@ async fn queue_article_delivery(
     article_id: Uuid,
     publish_at: DateTime<FixedOffset>,
 ) -> Result<(), AppError> {
-    if !crate::subscriptions::mail_enabled() {
+    if !crate::ops::subscriptions::mail_enabled() {
         return Ok(());
     }
     transaction
@@ -815,7 +897,7 @@ async fn queue_dynamic_delivery(
     dynamic_id: Uuid,
     publish_at: DateTime<FixedOffset>,
 ) -> Result<(), AppError> {
-    if !crate::subscriptions::mail_enabled() {
+    if !crate::ops::subscriptions::mail_enabled() {
         return Ok(());
     }
     transaction
@@ -870,6 +952,20 @@ fn validate_http_url(value: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+fn validate_optional_http_url(value: Option<&str>) -> Result<(), AppError> {
+    match value {
+        Some(url) if !url.trim().is_empty() => validate_http_url(url),
+        _ => Ok(()),
+    }
+}
+
+fn normalize_optional_http_url(value: Option<String>) -> Option<String> {
+    value.and_then(|url| {
+        let trimmed = url.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_owned())
+    })
+}
+
 fn resolve_publish_at(
     input: Option<PublishWrite>,
     now: DateTime<FixedOffset>,
@@ -899,18 +995,138 @@ impl From<tags::Model> for TagResponse {
     }
 }
 
-impl From<dynamics::Model> for DynamicResponse {
-    fn from(model: dynamics::Model) -> Self {
-        Self {
-            id: model.id,
-            content_markdown: model.content_markdown,
-            status: model.status,
-            allow_comments: model.allow_comments,
-            published_at: model.published_at,
-            created_at: model.created_at,
-            updated_at: model.updated_at,
-        }
+fn dynamic_response_from(model: dynamics::Model, media: Vec<DynamicMediaItem>) -> DynamicResponse {
+    DynamicResponse {
+        id: model.id,
+        content_markdown: model.content_markdown,
+        mood: model.mood,
+        status: model.status,
+        allow_comments: model.allow_comments,
+        published_at: model.published_at,
+        created_at: model.created_at,
+        updated_at: model.updated_at,
+        media,
     }
+}
+
+async fn dynamic_response(
+    state: &AppState,
+    model: dynamics::Model,
+) -> Result<DynamicResponse, AppError> {
+    let media = load_dynamics_media(&state.database, vec![model.id])
+        .await?
+        .remove(&model.id)
+        .unwrap_or_default();
+    Ok(dynamic_response_from(model, media))
+}
+
+async fn load_dynamics_media(
+    database: &sea_orm::DatabaseConnection,
+    dynamic_ids: Vec<Uuid>,
+) -> Result<HashMap<Uuid, Vec<DynamicMediaItem>>, AppError> {
+    if dynamic_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let attachments = dynamic_media::Entity::find()
+        .filter(dynamic_media::Column::DynamicId.is_in(dynamic_ids))
+        .order_by_asc(dynamic_media::Column::Position)
+        .all(database)
+        .await?;
+    let media = media_assets::Entity::find()
+        .filter(
+            media_assets::Column::Id.is_in(attachments.iter().map(|row| row.media_id).collect::<Vec<_>>()),
+        )
+        .all(database)
+        .await?
+        .into_iter()
+        .map(|media| (media.id, media))
+        .collect::<HashMap<_, _>>();
+    let mut grouped: HashMap<Uuid, Vec<DynamicMediaItem>> = HashMap::new();
+    for attachment in attachments {
+        let Some(media) = media.get(&attachment.media_id) else {
+            continue;
+        };
+        grouped
+            .entry(attachment.dynamic_id)
+            .or_default()
+            .push(DynamicMediaItem {
+                id: media.id,
+                url: format!("/media/{}", media.storage_key),
+                original_name: media.original_name.clone(),
+                media_type: media.media_type.clone(),
+                width: media.width,
+                height: media.height,
+            });
+    }
+    Ok(grouped)
+}
+
+fn normalize_mood(input: Option<String>) -> Result<Option<String>, AppError> {
+    let Some(mood) = input else {
+        return Ok(None);
+    };
+    let trimmed = mood.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.chars().count() > 40 {
+        return Err(AppError::InvalidRequest("心情最长 40 字"));
+    }
+    Ok(Some(trimmed.to_owned()))
+}
+
+fn validate_dynamic_media_shape(media_ids: &[Uuid]) -> Result<(), AppError> {
+    if media_ids.len() > 9 {
+        return Err(AppError::InvalidRequest("动态配图最多 9 张"));
+    }
+    let mut seen = std::collections::HashSet::with_capacity(media_ids.len());
+    if !media_ids.iter().all(|id| seen.insert(id)) {
+        return Err(AppError::InvalidRequest("动态配图不能重复"));
+    }
+    Ok(())
+}
+
+async fn ensure_dynamic_media_exists(
+    connection: &DatabaseTransaction,
+    media_ids: &[Uuid],
+) -> Result<(), AppError> {
+    validate_dynamic_media_shape(media_ids)?;
+    let count = media_assets::Entity::find()
+        .filter(media_assets::Column::Id.is_in(media_ids.to_vec()))
+        .count(connection)
+        .await?;
+    if count != media_ids.len() as u64 {
+        return Err(AppError::InvalidRequest("动态配图包含不存在的媒体"));
+    }
+    Ok(())
+}
+
+fn dynamic_media_models(dynamic_id: Uuid, media_ids: &[Uuid]) -> Vec<dynamic_media::ActiveModel> {
+    media_ids
+        .iter()
+        .enumerate()
+        .map(|(position, media_id)| dynamic_media::ActiveModel {
+            dynamic_id: Set(dynamic_id),
+            media_id: Set(*media_id),
+            position: Set(position as i16),
+        })
+        .collect()
+}
+
+async fn replace_dynamic_media(
+    transaction: &DatabaseTransaction,
+    dynamic_id: Uuid,
+    media_ids: &[Uuid],
+) -> Result<(), AppError> {
+    ensure_dynamic_media_exists(transaction, media_ids).await?;
+    dynamic_media::Entity::delete_many()
+        .filter(dynamic_media::Column::DynamicId.eq(dynamic_id))
+        .exec(transaction)
+        .await?;
+    for model in dynamic_media_models(dynamic_id, media_ids) {
+        model.insert(transaction).await?;
+    }
+    Ok(())
 }
 
 impl From<comments::Model> for CommentResponse {
@@ -935,6 +1151,7 @@ impl From<friend_links::Model> for FriendLinkResponse {
         Self {
             id: model.id,
             avatar_media_id: model.avatar_media_id,
+            avatar_url: model.avatar_url,
             name: model.name,
             url: model.url,
             description: model.description,
@@ -970,5 +1187,42 @@ mod tests {
             ),
             future
         );
+    }
+
+    #[test]
+    fn mood_is_trimmed_blank_becomes_none_and_long_is_rejected() {
+        assert_eq!(normalize_mood(None).unwrap(), None);
+        assert_eq!(normalize_mood(Some("   ".to_owned())).unwrap(), None);
+        assert_eq!(
+            normalize_mood(Some("  放晴  ".to_owned())).unwrap(),
+            Some("放晴".to_owned())
+        );
+        assert!(normalize_mood(Some("很长".repeat(21))).is_err());
+    }
+
+    #[test]
+    fn dynamic_media_shape_limits_count_and_rejects_duplicates() {
+        let nine: Vec<Uuid> = (1..=9).map(Uuid::from_u128).collect();
+        assert!(validate_dynamic_media_shape(&nine).is_ok());
+
+        let ten: Vec<Uuid> = (1..=10).map(Uuid::from_u128).collect();
+        assert!(validate_dynamic_media_shape(&ten).is_err());
+
+        let mut duplicated = nine.clone();
+        duplicated[8] = nine[0];
+        assert!(validate_dynamic_media_shape(&duplicated).is_err());
+    }
+
+    #[test]
+    fn dynamic_media_models_preserve_order_as_position() {
+        let dynamic_id = Uuid::from_u128(100);
+        let media_ids: Vec<Uuid> = [3_u128, 1, 2].into_iter().map(Uuid::from_u128).collect();
+        let models = dynamic_media_models(dynamic_id, &media_ids);
+        assert_eq!(models.len(), 3);
+        for (position, model) in models.iter().enumerate() {
+            assert_eq!(model.dynamic_id.clone().unwrap(), dynamic_id);
+            assert_eq!(model.media_id.clone().unwrap(), media_ids[position]);
+            assert_eq!(model.position.clone().unwrap(), position as i16);
+        }
     }
 }

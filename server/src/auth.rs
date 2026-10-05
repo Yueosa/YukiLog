@@ -30,6 +30,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     AppState,
+    content::client_ip,
     entities::{admin_accounts, admin_sessions},
     error::AppError,
 };
@@ -208,10 +209,12 @@ pub(crate) fn secure_cookies(auth: &AuthState) -> bool {
 pub async fn login(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    headers: HeaderMap,
     jar: CookieJar,
     Json(request): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<AdminResponse>), AppError> {
-    if !state.auth.login_limiter.register(peer.ip()).await {
+    let client = client_ip(&headers, peer);
+    if !state.auth.login_limiter.register(client).await {
         return Err(AppError::RateLimited);
     }
 
@@ -238,7 +241,7 @@ pub async fn login(
         return Err(AppError::Unauthorized);
     };
 
-    state.auth.login_limiter.clear(peer.ip()).await;
+    state.auth.login_limiter.clear(client).await;
     admin_sessions::Entity::delete_many()
         .filter(admin_sessions::Column::ExpiresAt.lte(Utc::now().fixed_offset()))
         .exec(&state.database)

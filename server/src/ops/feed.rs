@@ -7,9 +7,9 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder, QuerySelect};
 
 use crate::{
     AppState,
-    entities::{articles, dynamics, site_settings},
+    entities::{articles, dynamic_media, dynamics, media_assets, site_settings},
     error::AppError,
-    markdown,
+    markup,
 };
 
 const FEED_LIMIT: u64 = 50;
@@ -69,7 +69,7 @@ async fn render_feed(
                 guid: format!("urn:uuid:{}", article.id),
                 description_html: article
                     .summary
-                    .unwrap_or_else(|| markdown::render(&excerpt(&article.body_markdown, 500))),
+                    .unwrap_or_else(|| markup::render(&excerpt(&article.body_markdown, 500)).html),
                 published_at: article
                     .published_at
                     .expect("published article has timestamp"),
@@ -85,16 +85,59 @@ async fn render_feed(
             .limit(FEED_LIMIT)
             .all(&state.database)
             .await?;
+        let attachments = if models.is_empty() {
+            Vec::new()
+        } else {
+            dynamic_media::Entity::find()
+                .filter(dynamic_media::Column::DynamicId.is_in(models.iter().map(|m| m.id)))
+                .order_by_asc(dynamic_media::Column::Position)
+                .all(&state.database)
+                .await?
+        };
+        let mut first_images = std::collections::HashMap::new();
+        if !attachments.is_empty() {
+            let assets = media_assets::Entity::find()
+                .filter(
+                    media_assets::Column::Id
+                        .is_in(attachments.iter().map(|row| row.media_id).collect::<Vec<_>>()),
+                )
+                .all(&state.database)
+                .await?
+                .into_iter()
+                .map(|media| (media.id, media))
+                .collect::<std::collections::HashMap<_, _>>();
+            for attachment in attachments {
+                if first_images.contains_key(&attachment.dynamic_id) {
+                    continue;
+                }
+                if let Some(media) = assets
+                    .get(&attachment.media_id)
+                    .filter(|media| media.media_type.starts_with("image/"))
+                {
+                    first_images.insert(
+                        attachment.dynamic_id,
+                        format!(
+                            "<p><img src=\"{origin}/media/{}\" alt=\"{}\" /></p>",
+                            media.storage_key, media.original_name
+                        ),
+                    );
+                }
+            }
+        }
         items.extend(models.into_iter().map(|dynamic| {
             let link = format!("{origin}/dynamics#dynamic-{}", dynamic.id);
             let published_at = dynamic
                 .published_at
                 .expect("published dynamic has timestamp");
+            let mut description_html = markup::render(&dynamic.content_markdown).html;
+            if let Some(image_html) = first_images.get(&dynamic.id) {
+                description_html.push_str(image_html);
+            }
             FeedItem {
                 title: format!("动态 · {}", published_at.format("%Y-%m-%d %H:%M")),
                 link,
                 guid: format!("urn:uuid:{}", dynamic.id),
-                description_html: markdown::render(&dynamic.content_markdown),
+                description_html,
                 published_at,
             }
         }));

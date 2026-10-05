@@ -14,7 +14,7 @@ use crate::{
     entities::{
         admin_accounts, admin_notifications, articles, dynamics, email_deliveries, subscribers,
     },
-    subscriptions::{SubscriptionState, TokenPurpose},
+    ops::subscriptions::{SubscriptionState, TokenPurpose},
 };
 
 const BATCH_SIZE: u32 = 1;
@@ -40,7 +40,7 @@ pub struct MailWorker {
 
 impl MailWorker {
     pub fn from_env(database: DatabaseConnection) -> Result<Self, WorkerError> {
-        if !crate::subscriptions::mail_enabled() {
+        if !crate::ops::subscriptions::mail_enabled() {
             return Err(
                 "mail delivery is disabled; set YUKILOG_MAIL_ENABLED=true explicitly".into(),
             );
@@ -151,8 +151,7 @@ UPDATE admin_notifications
         let subscriber = subscribers::Entity::find_by_id(delivery.subscriber_id)
             .lock_shared()
             .one(&transaction)
-            .await?
-            .ok_or("subscriber no longer exists")?;
+            .await?;
         let current = email_deliveries::Entity::find_by_id(delivery.id)
             .lock_exclusive()
             .one(&transaction)
@@ -165,13 +164,11 @@ UPDATE admin_notifications
             transaction.rollback().await?;
             return Ok(());
         }
+        let Some(subscriber) = subscriber else {
+            return finalize_delivery(transaction, current, "cancelled", None).await;
+        };
         if !delivery_is_allowed(&current, &subscriber) {
-            let mut active = current.into_active_model();
-            active.status = Set("cancelled".to_owned());
-            active.locked_at = Set(None);
-            active.update(&transaction).await?;
-            transaction.commit().await?;
-            return Ok(());
+            return finalize_delivery(transaction, current, "cancelled", None).await;
         }
 
         let (subject, body) = match current.kind.as_str() {
@@ -190,12 +187,15 @@ UPDATE admin_notifications
                 )
             }
             "article_published" if subscriber.status == "active" => {
-                let article = articles::Entity::find_by_id(
-                    current.article_id.ok_or("article delivery has no target")?,
-                )
-                .one(&transaction)
-                .await?
-                .ok_or("article no longer exists")?;
+                let Some(article_id) = current.article_id else {
+                    return finalize_delivery(transaction, current, "cancelled", None).await;
+                };
+                let article = articles::Entity::find_by_id(article_id)
+                    .one(&transaction)
+                    .await?;
+                let Some(article) = article else {
+                    return finalize_delivery(transaction, current, "cancelled", None).await;
+                };
                 (
                     format!("YukiLog 新文章：{}", article.title),
                     self.notification_body(
@@ -207,12 +207,15 @@ UPDATE admin_notifications
                 )
             }
             "dynamic_published" if subscriber.status == "active" => {
-                let dynamic = dynamics::Entity::find_by_id(
-                    current.dynamic_id.ok_or("dynamic delivery has no target")?,
-                )
-                .one(&transaction)
-                .await?
-                .ok_or("dynamic no longer exists")?;
+                let Some(dynamic_id) = current.dynamic_id else {
+                    return finalize_delivery(transaction, current, "cancelled", None).await;
+                };
+                let dynamic = dynamics::Entity::find_by_id(dynamic_id)
+                    .one(&transaction)
+                    .await?;
+                let Some(dynamic) = dynamic else {
+                    return finalize_delivery(transaction, current, "cancelled", None).await;
+                };
                 let link = format!("{}/dynamics#dynamic-{}", self.public_origin, dynamic.id);
                 (
                     "YukiLog 发布了新动态".to_owned(),
@@ -225,9 +228,17 @@ UPDATE admin_notifications
                 )
             }
             _ => {
+                return finalize_delivery(transaction, current, "cancelled", None).await;
+            }
+        };
+        let recipient = match subscriber.email.parse::<Mailbox>() {
+            Ok(recipient) => recipient,
+            Err(error) => {
                 let mut active = current.into_active_model();
-                active.status = Set("cancelled".to_owned());
+                active.status = Set("failed".to_owned());
+                active.attempt_count = Set(MAX_ATTEMPTS);
                 active.locked_at = Set(None);
+                active.last_error = Set(Some(excerpt(&error.to_string(), 2000)));
                 active.update(&transaction).await?;
                 transaction.commit().await?;
                 return Ok(());
@@ -235,7 +246,7 @@ UPDATE admin_notifications
         };
         let message = Message::builder()
             .from(self.from.clone())
-            .to(subscriber.email.parse::<Mailbox>()?)
+            .to(recipient)
             .subject(subject)
             .body(body)?;
         match self.transport.send(message).await {
@@ -463,6 +474,21 @@ RETURNING notification.*
             self.public_origin, token
         ))
     }
+}
+
+async fn finalize_delivery(
+    transaction: sea_orm::DatabaseTransaction,
+    current: email_deliveries::Model,
+    status: &'static str,
+    last_error: Option<String>,
+) -> Result<(), WorkerError> {
+    let mut active = current.into_active_model();
+    active.status = Set(status.to_owned());
+    active.locked_at = Set(None);
+    active.last_error = Set(last_error);
+    active.update(&transaction).await?;
+    transaction.commit().await?;
+    Ok(())
 }
 
 fn delivery_is_allowed(

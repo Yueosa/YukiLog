@@ -15,7 +15,7 @@ use tower_http::{
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
-    use crate::content::{admin, design, public, settings};
+    use crate::content::{admin, design, overview, public, settings};
 
     let media_files = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::overriding(
@@ -25,39 +25,40 @@ pub fn router(state: AppState) -> Router {
         .service(ServeDir::new(state.media.public_dir()));
 
     Router::new()
-        .route("/", get(crate::web::home))
-        .route("/articles", get(crate::web::article_list))
-        .route("/articles/{slug}", get(crate::web::article_detail))
-        .route("/dynamics", get(crate::web::dynamic_list))
-        .route("/friends", get(crate::web::friend_list))
-        .route("/search", get(crate::web::search))
-        .route("/feed.xml", get(crate::feed::all))
-        .route("/feeds/articles.xml", get(crate::feed::articles))
-        .route("/feeds/dynamics.xml", get(crate::feed::dynamics))
+        .route("/", get(crate::site::home::home))
+        .route("/articles", get(crate::site::lists::article_list))
+        .route("/articles/{slug}", get(crate::site::article::article_detail))
+        .route("/dynamics", get(crate::site::lists::dynamic_list))
+        .route("/friends", get(crate::site::lists::friend_list))
+        .route("/search", get(crate::site::lists::search))
+        .route("/feed.xml", get(crate::ops::feed::all))
+        .route("/feeds/articles.xml", get(crate::ops::feed::articles))
+        .route("/feeds/dynamics.xml", get(crate::ops::feed::dynamics))
         .route(
             "/api/friend-link-applications",
             post(public::apply_friend_link),
         )
-        .route("/api/subscriptions", post(crate::subscriptions::subscribe))
-        .route("/subscriptions", post(crate::subscriptions::subscribe_form))
+        .route("/api/subscriptions", post(crate::ops::subscriptions::subscribe))
+        .route("/subscriptions", post(crate::ops::subscriptions::subscribe_form))
         .route(
             "/subscriptions/confirm/{token}",
-            get(crate::subscriptions::confirm),
+            get(crate::ops::subscriptions::confirm),
         )
         .route(
             "/api/subscriptions/unsubscribe",
-            post(crate::subscriptions::unsubscribe),
+            post(crate::ops::subscriptions::unsubscribe),
         )
         .route(
             "/subscriptions/unsubscribe/{token}",
-            get(crate::subscriptions::unsubscribe_page)
-                .post(crate::subscriptions::unsubscribe_form),
+            get(crate::ops::subscriptions::unsubscribe_page)
+                .post(crate::ops::subscriptions::unsubscribe_form),
         )
         .route("/health/live", get(health::live))
         .route("/health/ready", get(health::ready))
         .route("/api/admin/auth/login", post(crate::auth::login))
         .route("/api/admin/auth/session", get(crate::auth::session))
         .route("/api/admin/auth/logout", post(crate::auth::logout))
+        .route("/api/admin/overview", get(overview::overview))
         .route(
             "/api/admin/auth/password",
             put(crate::auth::change_password),
@@ -97,6 +98,10 @@ pub fn router(state: AppState) -> Router {
             post(admin::withdraw_article),
         )
         .route(
+            "/api/admin/articles/{id}/featured",
+            put(admin::set_article_featured),
+        )
+        .route(
             "/api/admin/dynamics",
             get(admin::list_dynamics).post(admin::create_dynamic),
         )
@@ -130,10 +135,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/media",
             get(admin::list_media)
-                .post(crate::media::upload)
+                .post(crate::ops::media::upload)
                 .layer(DefaultBodyLimit::max(
-                    crate::media::MAX_UPLOAD_BYTES + 1024 * 1024,
+                    crate::ops::media::MAX_UPLOAD_BYTES + 1024 * 1024,
                 )),
+        )
+        .route(
+            "/api/admin/media/{id}",
+            axum::routing::delete(crate::ops::media::delete),
         )
         .route("/api/admin/layouts", get(design::list_layouts))
         .route(
@@ -146,40 +155,44 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/admin/subscribers",
-            get(crate::subscriptions::admin_list_subscribers),
+            get(crate::ops::subscriptions::admin_list_subscribers),
+        )
+        .route(
+            "/api/admin/subscribers/{id}",
+            axum::routing::delete(crate::ops::subscriptions::admin_delete_subscriber),
         )
         .route(
             "/api/admin/deliveries",
-            get(crate::subscriptions::admin_list_deliveries),
+            get(crate::ops::subscriptions::admin_list_deliveries),
         )
         .route(
             "/api/admin/deliveries/{id}/retry",
-            post(crate::subscriptions::admin_retry_delivery),
+            post(crate::ops::subscriptions::admin_retry_delivery),
         )
         .route(
             "/api/admin/deliveries/{id}/cancel",
-            post(crate::subscriptions::admin_cancel_delivery),
+            post(crate::ops::subscriptions::admin_cancel_delivery),
         )
-        .route("/api/admin/notifications", get(crate::notifications::list))
+        .route("/api/admin/notifications", get(crate::ops::notifications::list))
         .route(
             "/api/admin/notifications/read-all",
-            post(crate::notifications::mark_all_read),
+            post(crate::ops::notifications::mark_all_read),
         )
         .route(
             "/api/admin/notifications/{id}/read",
-            post(crate::notifications::mark_read),
+            post(crate::ops::notifications::mark_read),
         )
         .route(
             "/api/admin/notifications/{id}/email-retry",
-            post(crate::notifications::retry_email),
+            post(crate::ops::notifications::retry_email),
         )
         .route(
             "/api/admin/notifications/{id}/email-cancel",
-            post(crate::notifications::cancel_email),
+            post(crate::ops::notifications::cancel_email),
         )
         .route(
             "/api/admin/notification-settings",
-            get(crate::notifications::get_settings).put(crate::notifications::put_settings),
+            get(crate::ops::notifications::get_settings).put(crate::ops::notifications::put_settings),
         )
         .route(
             "/api/articles/{id}/comments",
@@ -194,6 +207,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/articles/{id}/like",
             put(public::like_article).delete(public::unlike_article),
+        )
+        .route(
+            "/api/dynamics/{id}/metrics",
+            get(public::get_dynamic_metrics),
+        )
+        .route(
+            "/api/dynamics/{id}/like",
+            post(public::like_dynamic).delete(public::unlike_dynamic),
         )
         .nest_service("/media", media_files)
         .layer(DefaultBodyLimit::max(256 * 1024))
@@ -213,6 +234,13 @@ pub fn router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::if_not_present(
             HeaderName::from_static("permissions-policy"),
             HeaderValue::from_static("camera=(), microphone=(), geolocation=()"),
+        ))
+        // Full CSP lives in ops/nginx/yukilog.conf; the SSR pages rely on inline
+        // <script>/<style>, so the app layer only pins framing (modern equivalent
+        // of X-Frame-Options) for deployments without the nginx front proxy.
+        .layer(SetResponseHeaderLayer::if_not_present(
+            HeaderName::from_static("content-security-policy"),
+            HeaderValue::from_static("frame-ancestors 'self'"),
         ))
         .layer(TraceLayer::new_for_http())
         .with_state(state)

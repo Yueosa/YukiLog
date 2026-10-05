@@ -1,5 +1,5 @@
 use tracing_subscriber::EnvFilter;
-use yukilog_server::{database, mail};
+use yukilog_server::{database, ops::mail};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

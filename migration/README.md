@@ -17,6 +17,11 @@ cargo run -p yukilog-migration -- up
 
 约束：
 
+- SQL 一律写在 `migration/db/<版本号>_<名称>.up.sql` / `.down.sql` 文件对中，不嵌在
+  Rust 字符串里；Rust 侧只是 `include_str!` 薄加载层；
+- 迁移名通过手动实现 `MigrationName::name()` 锁定为稳定字符串（见
+  `src/baseline.rs`），不依赖文件名约定；以后新增迁移：新建一对 .sql 文件、
+  新建一个薄 .rs 模块并在 `src/lib.rs` 的 `migrations()` 里按顺序追加一行注册；
 - 从空 PostgreSQL 数据库可完整执行；
 - 迁移历史记录在数据库中，而不是本地文本文件；
 - 不使用 `DROP ... CASCADE` 作为初始化或升级手段；

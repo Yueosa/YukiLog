@@ -4,15 +4,11 @@ pub mod content;
 pub mod database;
 pub mod entities;
 pub mod error;
-pub mod feed;
 mod http;
 pub mod layout;
-pub mod mail;
-pub mod markdown;
-pub mod media;
-pub mod notifications;
-pub mod subscriptions;
-pub mod web;
+mod markup;
+pub mod ops;
+pub mod site;
 
 use axum::Router;
 use sea_orm::DatabaseConnection;
@@ -22,8 +18,8 @@ pub struct AppState {
     pub(crate) database: DatabaseConnection,
     pub(crate) auth: auth::AuthState,
     pub(crate) content: content::ContentState,
-    pub(crate) media: media::MediaStorage,
-    pub(crate) subscriptions: subscriptions::SubscriptionState,
+    pub(crate) media: ops::media::MediaStorage,
+    pub(crate) subscriptions: ops::subscriptions::SubscriptionState,
 }
 
 impl AppState {
@@ -34,8 +30,8 @@ impl AppState {
         subscription_secret: String,
     ) -> Result<Self, error::AppError> {
         let auth = auth::AuthState::new(public_origin).await?;
-        let media = media::MediaStorage::new(media_dir).await?;
-        let subscriptions = subscriptions::SubscriptionState::new(subscription_secret)?;
+        let media = ops::media::MediaStorage::new(media_dir).await?;
+        let subscriptions = ops::subscriptions::SubscriptionState::new(subscription_secret)?;
         Ok(Self {
             database,
             auth,
@@ -51,8 +47,8 @@ impl AppState {
             database: DatabaseConnection::Disconnected,
             auth: auth::AuthState::for_test(),
             content: content::ContentState::default(),
-            media: media::MediaStorage::for_test(),
-            subscriptions: subscriptions::SubscriptionState::new(
+            media: ops::media::MediaStorage::for_test(),
+            subscriptions: ops::subscriptions::SubscriptionState::new(
                 "test subscription signing secret with more than 32 bytes".into(),
             )
             .unwrap(),

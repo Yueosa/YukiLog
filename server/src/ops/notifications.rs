@@ -110,9 +110,9 @@ pub async fn create<C: ConnectionTrait>(
             article_id: Set(input.article_id),
             comment_id: Set(input.comment_id),
             friend_link_id: Set(input.friend_link_id),
-            title: Set(input.title.clone()),
-            message: Set(input.message.clone()),
-            target_url: Set(input.target_url.clone()),
+            title: Set(bounded(&input.title, 200)),
+            message: Set(bounded(&input.message, 500)),
+            target_url: Set(bounded(&input.target_url, 500)),
             aggregation_key: Set(None),
             event_count: Set(1),
             read_at: Set(None),
@@ -162,7 +162,7 @@ DO UPDATE SET
     target_url = EXCLUDED.target_url,
     event_count = admin_notifications.event_count + 1,
     email_status = EXCLUDED.email_status,
-    email_due_at = EXCLUDED.email_due_at,
+    email_due_at = LEAST(admin_notifications.email_due_at, EXCLUDED.email_due_at),
     email_attempt_count = 0,
     email_locked_at = NULL,
     email_last_error = NULL,
@@ -171,7 +171,7 @@ DO UPDATE SET
                 [
                     account.id.into(),
                     article_id.into(),
-                    format!("文章收到新的点赞：{article_title}").into(),
+                    bounded(&format!("文章收到新的点赞：{article_title}"), 200).into(),
                     "有访客喜欢了这篇文章。".into(),
                     format!("/articles/{article_slug}").into(),
                     format!("article-like:{article_id}").into(),
@@ -324,21 +324,50 @@ pub async fn put_settings(
     Json(input): Json<NotificationSettingsWrite>,
 ) -> Result<Json<NotificationSettingsResponse>, AppError> {
     let account_id = auth::authorize_write(&state, &headers, &jar).await?;
+    if !matches!(
+        input.notification_frequency.as_str(),
+        "immediate" | "hourly" | "daily"
+    ) {
+        return Err(AppError::InvalidRequest("通知频率无效"));
+    }
+    let notification_email = input
+        .notification_email
+        .map(|email| email.trim().to_lowercase())
+        .filter(|email| !email.is_empty());
+    if let Some(email) = &notification_email {
+        if !(3..=254).contains(&email.chars().count())
+            || email.find('@').is_none_or(|position| position <= 1)
+        {
+            return Err(AppError::InvalidRequest("通知邮箱格式不正确"));
+        }
+    }
+    if input.email_notifications_enabled && notification_email.is_none() {
+        return Err(AppError::InvalidRequest("开启邮件通知前请先填写通知邮箱"));
+    }
     let account = admin_accounts::Entity::find_by_id(account_id)
         .one(&state.database)
         .await?
         .ok_or(AppError::Unauthorized)?;
     let mut active = account.into_active_model();
-    active.notification_email = Set(input
-        .notification_email
-        .map(|email| email.trim().to_lowercase())
-        .filter(|email| !email.is_empty()));
+    active.notification_email = Set(notification_email);
     active.email_notifications_enabled = Set(input.email_notifications_enabled);
     active.notify_on_comments = Set(input.notify_on_comments);
     active.notify_on_friend_links = Set(input.notify_on_friend_links);
     active.notify_on_likes = Set(input.notify_on_likes);
     active.notification_frequency = Set(input.notification_frequency);
     Ok(Json(active.update(&state.database).await?.into()))
+}
+
+fn bounded(value: &str, maximum: usize) -> String {
+    if value.chars().count() <= maximum {
+        return value.to_owned();
+    }
+    let mut output = value
+        .chars()
+        .take(maximum.saturating_sub(1))
+        .collect::<String>();
+    output.push('…');
+    output
 }
 
 fn email_plan(
@@ -352,7 +381,7 @@ fn email_plan(
         NotificationKind::ArticleLike => account.notify_on_likes,
     };
     email_plan_for(
-        crate::subscriptions::mail_enabled(),
+        crate::ops::subscriptions::mail_enabled(),
         account.email_notifications_enabled,
         account.notification_email.is_some(),
         kind_enabled,

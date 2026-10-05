@@ -10,6 +10,7 @@ use axum_extra::extract::cookie::CookieJar;
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
 use hmac::{Hmac, Mac};
+use lettre::message::Mailbox;
 use rand::{RngCore, rngs::OsRng};
 use sea_orm::{
     ActiveModelTrait, ActiveValue::NotSet, ColumnTrait, ConnectionTrait, DatabaseBackend,
@@ -33,6 +34,7 @@ const TOKEN_PAYLOAD_BYTES: usize = 33;
 const TOKEN_BYTES: usize = TOKEN_PAYLOAD_BYTES + 32;
 const NONCE_BYTES: usize = 16;
 const SUBSCRIBE_COOLDOWN: Duration = Duration::from_secs(60);
+const SUBSCRIBE_IP_COOLDOWN: Duration = Duration::from_secs(10);
 
 #[derive(Clone)]
 pub struct SubscriptionState {
@@ -199,7 +201,19 @@ async fn subscribe_inner(
         return Err(AppError::Unavailable("邮件订阅暂未开放，请使用 RSS"));
     }
     auth::verify_public_origin(&state.auth, headers)?;
+    let address = client_ip(headers, peer);
+    if !state
+        .content
+        .allow(address, Uuid::nil(), "subscribe-ip", SUBSCRIBE_IP_COOLDOWN)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
     let email = input.email.trim().to_lowercase();
+    validate_email(&email)?;
+    if !input.subscribe_articles && !input.subscribe_dynamics {
+        return Err(AppError::InvalidRequest("请至少选择订阅文章或动态"));
+    }
     let target = email_rate_key(&email);
     if !state
         .content
@@ -355,9 +369,26 @@ pub async fn admin_list_subscribers(
     auth::authorize_read(&state, &jar).await?;
     let models = subscribers::Entity::find()
         .order_by_desc(subscribers::Column::CreatedAt)
+        .limit(500)
         .all(&state.database)
         .await?;
     Ok(Json(models.into_iter().map(Into::into).collect()))
+}
+
+pub async fn admin_delete_subscriber(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(), AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let result = subscribers::Entity::delete_by_id(id)
+        .exec(&state.database)
+        .await?;
+    if result.rows_affected == 0 {
+        return Err(AppError::NotFound);
+    }
+    Ok(())
 }
 
 pub async fn admin_list_deliveries(
@@ -367,6 +398,7 @@ pub async fn admin_list_deliveries(
     auth::authorize_read(&state, &jar).await?;
     let models = email_deliveries::Entity::find()
         .order_by_desc(email_deliveries::Column::CreatedAt)
+        .limit(500)
         .all(&state.database)
         .await?;
     Ok(Json(models.into_iter().map(Into::into).collect()))
@@ -481,7 +513,7 @@ DO UPDATE SET status = 'pending',
               locked_at = NULL,
               last_error = NULL,
               sent_at = NULL
-WHERE email_deliveries.status IN ('sent', 'cancelled')
+WHERE email_deliveries.status IN ('sent', 'cancelled', 'failed')
 "#,
             [subscriber_id.into()],
         ))
@@ -502,6 +534,18 @@ fn validate_nonce(stored: &[u8], supplied: &[u8; NONCE_BYTES]) -> Result<(), App
     Ok(())
 }
 
+fn validate_email(email: &str) -> Result<(), AppError> {
+    if !(3..=254).contains(&email.chars().count())
+        || email.find('@').is_none_or(|position| position <= 1)
+    {
+        return Err(AppError::InvalidRequest("邮箱格式不正确"));
+    }
+    if email.parse::<Mailbox>().is_err() {
+        return Err(AppError::InvalidRequest("邮箱无法用于投递"));
+    }
+    Ok(())
+}
+
 fn email_rate_key(email: &str) -> Uuid {
     let digest = Sha256::digest(email.as_bytes());
     let mut bytes = [0_u8; 16];
@@ -516,7 +560,7 @@ fn confirmation_requeue_blocked(
 ) -> bool {
     matches!(
         delivery_status,
-        Some("pending" | "sending" | "failed" | "uncertain")
+        Some("pending" | "sending" | "uncertain")
     ) || last_sent_at.is_some_and(|sent_at| sent_at > now - chrono::Duration::minutes(10))
 }
 
@@ -597,7 +641,7 @@ mod tests {
     #[test]
     fn confirmation_requeue_blocks_inflight_uncertain_and_recent_mail() {
         let now = Utc::now().fixed_offset();
-        for status in ["pending", "sending", "failed", "uncertain"] {
+        for status in ["pending", "sending", "uncertain"] {
             assert!(confirmation_requeue_blocked(Some(status), None, now));
         }
         assert!(confirmation_requeue_blocked(
@@ -611,6 +655,16 @@ mod tests {
             now,
         ));
         assert!(!confirmation_requeue_blocked(Some("cancelled"), None, now));
+        assert!(!confirmation_requeue_blocked(Some("failed"), None, now));
+    }
+
+    #[test]
+    fn subscription_email_is_checked_before_insert() {
+        assert!(validate_email("reader@example.com").is_ok());
+        assert!(validate_email("a@b.co").is_err());
+        assert!(validate_email("no-at-sign").is_err());
+        assert!(validate_email("x y@z.example").is_err());
+        assert!(validate_email(&format!("{}@example.com", "长".repeat(260))).is_err());
     }
 
     #[test]

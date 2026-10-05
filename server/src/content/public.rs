@@ -3,7 +3,7 @@ use std::{net::SocketAddr, time::Duration};
 use axum::{
     Json,
     extract::{ConnectInfo, Path, State},
-    http::{HeaderMap, Uri},
+    http::{HeaderMap, Uri, header::USER_AGENT},
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -20,9 +20,12 @@ use sha2::{Digest, Sha256};
 use crate::{
     AppState, auth,
     content::client_ip,
-    entities::{article_likes, article_metrics, articles, comments, dynamics, friend_links},
+    entities::{
+        article_likes, article_metrics, articles, comments, dynamic_likes, dynamic_metrics,
+        dynamics, friend_links,
+    },
     error::AppError,
-    notifications::{self, NewNotification, NotificationKind},
+    ops::notifications::{self, NewNotification, NotificationKind},
 };
 
 const VIEW_COOLDOWN: Duration = Duration::from_secs(30);
@@ -35,7 +38,7 @@ const VISITOR_COOKIE_DAYS: i64 = 365;
 pub struct CommentWrite {
     parent_id: Option<sea_orm::prelude::Uuid>,
     display_name: String,
-    email: String,
+    email: Option<String>,
     website: Option<String>,
     content: String,
 }
@@ -45,7 +48,9 @@ pub struct PublicCommentResponse {
     id: sea_orm::prelude::Uuid,
     parent_id: Option<sea_orm::prelude::Uuid>,
     display_name: String,
-    email: String,
+    email: Option<String>,
+    avatar_url: String,
+    agent_label: String,
     website: Option<String>,
     content: String,
     created_at: chrono::DateTime<chrono::FixedOffset>,
@@ -63,6 +68,7 @@ pub struct FriendLinkApplication {
     url: String,
     description: Option<String>,
     email: String,
+    avatar_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -78,6 +84,13 @@ pub async fn apply_friend_link(
 ) -> Result<Json<FriendLinkApplicationResponse>, AppError> {
     auth::verify_public_origin(&state.auth, &headers)?;
     validate_friend_link_url(&input.url)?;
+    let avatar_url = input.avatar_url.and_then(|value| {
+        let trimmed = value.trim().to_owned();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    });
+    if let Some(value) = &avatar_url {
+        validate_friend_link_url(value)?;
+    }
     let target = stable_rate_key(&input.url);
     if !state
         .content
@@ -96,6 +109,7 @@ pub async fn apply_friend_link(
     let model = friend_links::ActiveModel {
         id: NotSet,
         avatar_media_id: Set(None),
+        avatar_url: Set(avatar_url),
         name: Set(input.name),
         url: Set(input.url),
         description: Set(input.description),
@@ -156,7 +170,9 @@ pub async fn create_article_comment(
     auth::verify_public_origin(&state.auth, &headers)?;
     ensure_article_published(&state, article_id, true).await?;
     enforce_comment_limit(&state, &headers, peer, article_id).await?;
+    validate_comment_email(input.email.as_deref())?;
     validate_website(input.website.as_deref())?;
+    let user_agent = capture_user_agent(&headers);
     let transaction = state.database.begin().await?;
     ensure_visible_parent(&transaction, input.parent_id, Some(article_id), None).await?;
     let model = comments::ActiveModel {
@@ -168,6 +184,7 @@ pub async fn create_article_comment(
         email: Set(input.email),
         website: Set(input.website),
         content: Set(input.content),
+        user_agent: Set(user_agent),
         status: Set("pending".to_owned()),
         created_at: NotSet,
     }
@@ -226,7 +243,9 @@ pub async fn create_dynamic_comment(
     auth::verify_public_origin(&state.auth, &headers)?;
     ensure_dynamic_published(&state, dynamic_id, true).await?;
     enforce_comment_limit(&state, &headers, peer, dynamic_id).await?;
+    validate_comment_email(input.email.as_deref())?;
     validate_website(input.website.as_deref())?;
+    let user_agent = capture_user_agent(&headers);
     let transaction = state.database.begin().await?;
     ensure_visible_parent(&transaction, input.parent_id, None, Some(dynamic_id)).await?;
     let model = comments::ActiveModel {
@@ -238,6 +257,7 @@ pub async fn create_dynamic_comment(
         email: Set(input.email),
         website: Set(input.website),
         content: Set(input.content),
+        user_agent: Set(user_agent),
         status: Set("pending".to_owned()),
         created_at: NotSet,
     }
@@ -266,6 +286,12 @@ pub async fn create_dynamic_comment(
 #[derive(Debug, Serialize)]
 pub struct MetricsResponse {
     view_count: i64,
+    like_count: i64,
+    liked: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DynamicMetricsResponse {
     like_count: i64,
     liked: bool,
 }
@@ -366,6 +392,71 @@ pub async fn unlike_article(
         .exec(&state.database)
         .await?;
     Ok((jar, Json(metrics(&state, article_id, false).await?)))
+}
+
+pub async fn get_dynamic_metrics(
+    State(state): State<AppState>,
+    Path(dynamic_id): Path<sea_orm::prelude::Uuid>,
+    jar: CookieJar,
+) -> Result<Json<DynamicMetricsResponse>, AppError> {
+    ensure_dynamic_published(&state, dynamic_id, false).await?;
+    let liked = visitor_liked_dynamic(&state, &jar, dynamic_id).await?;
+    Ok(Json(dynamic_metrics_of(&state, dynamic_id, liked).await?))
+}
+
+pub async fn like_dynamic(
+    State(state): State<AppState>,
+    Path(dynamic_id): Path<sea_orm::prelude::Uuid>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(CookieJar, Json<DynamicMetricsResponse>), AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_dynamic_published(&state, dynamic_id, false).await?;
+    if !state
+        .content
+        .allow(client_ip(&headers, peer), dynamic_id, "like", LIKE_COOLDOWN)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
+    let (jar, visitor_hash) = visitor_identity(&state, jar);
+    state
+        .database
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO dynamic_likes (dynamic_id, visitor_token_hash)
+VALUES ($1, $2)
+ON CONFLICT (dynamic_id, visitor_token_hash) DO NOTHING
+"#,
+            [dynamic_id.into(), visitor_hash.into()],
+        ))
+        .await?;
+    Ok((
+        jar,
+        Json(dynamic_metrics_of(&state, dynamic_id, true).await?),
+    ))
+}
+
+pub async fn unlike_dynamic(
+    State(state): State<AppState>,
+    Path(dynamic_id): Path<sea_orm::prelude::Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(CookieJar, Json<DynamicMetricsResponse>), AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_dynamic_published(&state, dynamic_id, false).await?;
+    let (jar, visitor_hash) = visitor_identity(&state, jar);
+    dynamic_likes::Entity::delete_many()
+        .filter(dynamic_likes::Column::DynamicId.eq(dynamic_id))
+        .filter(dynamic_likes::Column::VisitorTokenHash.eq(visitor_hash))
+        .exec(&state.database)
+        .await?;
+    Ok((
+        jar,
+        Json(dynamic_metrics_of(&state, dynamic_id, false).await?),
+    ))
 }
 
 async fn ensure_article_published(
@@ -491,6 +582,44 @@ async fn visitor_liked(
         .is_some())
 }
 
+async fn dynamic_metrics_of(
+    state: &AppState,
+    dynamic_id: sea_orm::prelude::Uuid,
+    liked: bool,
+) -> Result<DynamicMetricsResponse, AppError> {
+    let model = dynamic_metrics::Entity::find_by_id(dynamic_id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok(DynamicMetricsResponse {
+        like_count: model.like_count,
+        liked,
+    })
+}
+
+async fn visitor_liked_dynamic(
+    state: &AppState,
+    jar: &CookieJar,
+    dynamic_id: sea_orm::prelude::Uuid,
+) -> Result<bool, AppError> {
+    let secure = auth::secure_cookies(&state.auth);
+    let cookie_name = if secure {
+        "__Host-yukilog_visitor"
+    } else {
+        "yukilog_visitor"
+    };
+    let Some(cookie) = jar.get(cookie_name) else {
+        return Ok(false);
+    };
+    let hash = Sha256::digest(cookie.value().as_bytes()).to_vec();
+    Ok(dynamic_likes::Entity::find()
+        .filter(dynamic_likes::Column::DynamicId.eq(dynamic_id))
+        .filter(dynamic_likes::Column::VisitorTokenHash.eq(hash))
+        .one(&state.database)
+        .await?
+        .is_some())
+}
+
 fn visitor_identity(state: &AppState, jar: CookieJar) -> (CookieJar, Vec<u8>) {
     let secure = auth::secure_cookies(&state.auth);
     let cookie_name = if secure {
@@ -515,6 +644,35 @@ fn visitor_identity(state: &AppState, jar: CookieJar) -> (CookieJar, Vec<u8>) {
         .max_age(CookieDuration::days(VISITOR_COOKIE_DAYS))
         .build();
     (jar.add(cookie), hash)
+}
+
+fn validate_comment_email(value: Option<&str>) -> Result<(), AppError> {
+    let Some(value) = value else {
+        return Ok(());
+    };
+    let valid = (3..=254).contains(&value.len())
+        && value
+            .find('@')
+            .is_some_and(|at| at > 0 && at + 1 < value.len());
+    if valid {
+        Ok(())
+    } else {
+        Err(AppError::InvalidRequest("评论邮箱格式无效"))
+    }
+}
+
+pub(crate) fn comment_avatar_url(website: Option<&str>, email: Option<&str>) -> String {
+    if let Some(host) = website
+        .and_then(|value| value.parse::<Uri>().ok())
+        .and_then(|uri| uri.host().map(str::to_owned))
+    {
+        return format!("https://{host}/favicon.ico");
+    }
+    if let Some(email) = email {
+        let digest = Sha256::digest(email.trim().to_lowercase().as_bytes());
+        return format!("https://www.gravatar.com/avatar/{digest:x}?d=404");
+    }
+    String::new()
 }
 
 fn validate_website(value: Option<&str>) -> Result<(), AppError> {
@@ -561,13 +719,24 @@ fn excerpt(value: &str, maximum: usize) -> String {
     output
 }
 
+fn capture_user_agent(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(USER_AGENT)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.chars().take(512).collect())
+}
+
 impl From<comments::Model> for PublicCommentResponse {
     fn from(model: comments::Model) -> Self {
+        let avatar_url = comment_avatar_url(model.website.as_deref(), model.email.as_deref());
+        let agent_label = crate::markup::agent_label(model.user_agent.as_deref().unwrap_or(""));
         Self {
             id: model.id,
             parent_id: model.parent_id,
             display_name: model.display_name,
             email: model.email,
+            avatar_url,
+            agent_label,
             website: model.website,
             content: model.content,
             created_at: model.created_at,
@@ -584,6 +753,29 @@ mod tests {
         assert!(validate_website(None).is_ok());
         assert!(validate_website(Some("https://example.com")).is_ok());
         assert!(validate_website(Some("file:///etc/passwd")).is_err());
+    }
+
+    #[test]
+    fn validates_optional_comment_email() {
+        assert!(validate_comment_email(None).is_ok());
+        assert!(validate_comment_email(Some("a@b.co")).is_ok());
+        assert!(validate_comment_email(Some("ab")).is_err());
+        assert!(validate_comment_email(Some("@example.com")).is_err());
+        assert!(validate_comment_email(Some("missing-at")).is_err());
+        assert!(validate_comment_email(Some("trailing@")).is_err());
+    }
+
+    #[test]
+    fn avatar_url_prefers_website_favicon_then_gravatar() {
+        assert_eq!(
+            comment_avatar_url(Some("https://example.com/blog"), Some("a@b.co")),
+            "https://example.com/favicon.ico"
+        );
+        let gravatar = comment_avatar_url(None, Some(" A@B.co "));
+        assert!(gravatar.starts_with("https://www.gravatar.com/avatar/"));
+        assert!(gravatar.ends_with("?d=404"));
+        assert_eq!(comment_avatar_url(None, None), "");
+        assert_eq!(comment_avatar_url(Some("not a url"), None), "");
     }
 
     #[test]
