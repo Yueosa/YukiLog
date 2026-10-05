@@ -258,7 +258,7 @@ pub async fn login(
         csrf_token_hash: Set(token_hash(&csrf_token)),
         expires_at: Set(now + ChronoDuration::days(SESSION_DAYS)),
         last_seen_at: Set(now),
-        created_at: NotSet,
+        created_at: Set(now),
     }
     .insert(&transaction)
     .await?;

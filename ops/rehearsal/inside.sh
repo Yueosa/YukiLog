@@ -140,6 +140,13 @@ echo "== 创建演练管理员 =="
         "bash -c 'set -a; source /etc/yukilog/yukilog.env; set +a; exec /var/www/yukilog/current/bin/yukilog-admin create-admin rehearsal Rehearsal'" \
         /dev/null
 
+login_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+    -H 'Host: blog.yeastar.xin' \
+    -H 'Content-Type: application/json' \
+    -d '{"username":"rehearsal","password":"Rehearsal-Only-Password-2026!"}' \
+    http://127.0.0.1/api/admin/auth/login)"
+[[ "$login_code" == 200 ]] || fail "管理员登录应返回 200，实际为 $login_code"
+
 if [[ -f "$INPUT/content-migration.sql" ]]; then
     echo "== 验证内容迁移 SQL（灌库 + 幂等） =="
     set -a
