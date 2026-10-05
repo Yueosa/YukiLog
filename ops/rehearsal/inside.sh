@@ -101,7 +101,7 @@ make_release "$SOURCE_ARCHIVE" "$HEALTHY_VERSION" healthy "$HEALTHY"
 make_release "$SOURCE_ARCHIVE" "$ROLLBACK_FAIL_VERSION" fail "$ROLLBACK_FAIL"
 
 echo "== 初始化干净 Ubuntu 主机 =="
-YUKILOG_SKIP_PACKAGE_INSTALL=true "$INPUT/ops/bootstrap-host.sh"
+YUKILOG_SKIP_PACKAGE_INSTALL=true "$INPUT/ops/bootstrap-host.sh" </dev/null
 grep -qx 'YUKILOG_MAIL_ENABLED=false' /etc/yukilog/yukilog.env \
     || fail "bootstrap 未默认关闭邮件"
 systemctl is-active --quiet postgresql.service || fail "PostgreSQL 未启动"
@@ -139,6 +139,35 @@ echo "== 创建演练管理员 =="
     | script -qec \
         "bash -c 'set -a; source /etc/yukilog/yukilog.env; set +a; exec /var/www/yukilog/current/bin/yukilog-admin create-admin rehearsal Rehearsal'" \
         /dev/null
+
+if [[ -f "$INPUT/content-migration.sql" ]]; then
+    echo "== 验证内容迁移 SQL（灌库 + 幂等） =="
+    set -a
+    # shellcheck disable=SC1091
+    source /etc/yukilog/yukilog.env
+    set +a
+    psql "$DATABASE_URL" --set=ON_ERROR_STOP=1 \
+        -f "$INPUT/content-migration.sql" >/dev/null
+    psql "$DATABASE_URL" --set=ON_ERROR_STOP=1 \
+        -f "$INPUT/content-migration.sql" >/dev/null
+    [[ "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM articles')" == 7 ]] \
+        || fail "迁移后文章数应为 7（6 迁移 + 1 种子）"
+    [[ "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM articles WHERE featured_at IS NOT NULL")" == 7 ]] \
+        || fail "迁移后精选文章数应为 7（6 迁移 + 1 种子）"
+    [[ "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM categories')" == 4 ]] \
+        || fail "迁移后分类数应为 4"
+    [[ "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM tags')" == 20 ]] \
+        || fail "迁移后标签数应为 20"
+    [[ "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM comments WHERE status = 'visible'")" == 1 ]] \
+        || fail "迁移后可见评论数应为 1"
+    [[ "$(psql "$DATABASE_URL" -Atc 'SELECT count(*) FROM friend_links')" == 6 ]] \
+        || fail "迁移后友链数应为 6"
+    [[ "$(psql "$DATABASE_URL" -Atc 'SELECT coalesce(sum(view_count), 0) FROM article_metrics')" == 3539 ]] \
+        || fail "迁移后浏览量合计应为 3539"
+    curl -fsS -H 'Host: blog.yeastar.xin' \
+        http://127.0.0.1/articles/ssh-01 >/dev/null \
+        || fail "迁移文章页面无法访问"
+fi
 
 echo "== 验证健康原子升级 =="
 install_release "$HEALTHY"

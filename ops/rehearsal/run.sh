@@ -71,6 +71,11 @@ ln -sfn /dev/null \
 cp -a "$ROOT/ops" "$ROOTFS/root/rehearsal-input/"
 install -m 644 "$ARCHIVE" "$ARCHIVE.sha256" "$ROOTFS/root/rehearsal-input/"
 install -m 755 "$SCRIPT_DIR/inside.sh" "$ROOTFS/root/rehearsal-input/inside.sh"
+# 可选：存在内容迁移包时带入容器，inside.sh 会验证灌库与幂等性
+if [[ -f "$ROOT/.build-tmp/migration-pack/yukilog-content-migration.sql" ]]; then
+    install -m 644 "$ROOT/.build-tmp/migration-pack/yukilog-content-migration.sql" \
+        "$ROOTFS/root/rehearsal-input/content-migration.sql"
+fi
 
 container_pid=""
 cleanup_machine() {

@@ -30,14 +30,19 @@ nginx、Certbot 和 PostgreSQL。依赖安装阶段只运行单个容器命令�
 
 演练依次验证：
 
-1. 干净 Ubuntu 主机初始化；
+1. 干净 Ubuntu 主机初始化（bootstrap 以非交互模式运行）；
 2. 首次故障发布不会留下无效 `current`；
 3. 首次正常部署、迁移、nginx 和健康检查；
 4. 管理员 CLI 初始化；
-5. 第二个健康 release 原子升级；
-6. 故障 release 自动回滚；
-7. PostgreSQL 与媒体备份、修改和恢复；
-8. 邮件总开关保持关闭，mailer 从未运行。
+5. 内容迁移 SQL（可选，见下）；
+6. 第二个健康 release 原子升级；
+7. 故障 release 自动回滚；
+8. PostgreSQL 与媒体备份、修改和恢复；
+9. 邮件总开关保持关闭，mailer 从未运行。
+
+若 `.build-tmp/migration-pack/yukilog-content-migration.sql` 存在，`run.sh`
+会把它带入容器，在首次部署后验证：连续灌库两次（幂等）、文章/分类/标签/
+评论/友链/浏览量计数符合预期、迁移后的文章页可通过 nginx 访问。
 
 结果保存在：
 

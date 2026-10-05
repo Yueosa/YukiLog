@@ -3,6 +3,7 @@
 /.build-tmp/
 /.release-build/
 /.rehearsal/
+/design-reference/
 node_modules/
 /.pnpm-store/
 /web/dist/
