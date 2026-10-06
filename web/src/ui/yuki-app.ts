@@ -2,28 +2,7 @@ import { LitElement, css, html, nothing, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { styleMap } from 'lit/directives/style-map.js';
 import { unsafeHTML } from 'lit/directives/unsafe-html.js';
-import {
-  componentRegistry,
-  flattenLayout,
-  toPageLayout,
-  validateLayout,
-} from '../layout/registry.js';
-import {
-  LayoutCommandError,
-  indexLayout,
-  validDropPositions,
-  type DropPosition,
-} from '../layout/commands.js';
-import { layoutPresets } from '../layout/presets.js';
-import { LayoutStudioStore, type StudioMutation } from '../layout/studio-store.js';
-import type {
-  ArticleField,
-  ComponentType,
-  LayoutDocument,
-  LayoutNode,
-  PageLayoutDocument,
-  PropertySchema,
-} from '../layout/types.js';
+import { homeLayout, partNameOf, type ArticleField, type HomeNode } from './home-layout.js';
 import * as api from './api.js';
 import { paletteFor } from './cover.js';
 import './cover.js';
@@ -39,7 +18,6 @@ import {
   textFromHtml,
   yearOf,
 } from './format.js';
-import { previewArticles, previewDynamics, previewStats } from './preview-placeholders.js';
 import { PublicStore } from './store.js';
 
 type IconName =
@@ -101,62 +79,14 @@ function icon(name: IconName) {
   }
 }
 
-const propertyLabels: Record<string, string> = {
-  variant: '外观',
-  title: '标题',
-  accent: '强调字',
-  kicker: '眉题',
-  lead: '说明',
-  text: '文字',
-  attribution: '署名',
-  source: '内容来源',
-  alignment: '对齐',
-  align: '子项对齐',
-  gap: '间距',
-  maxWidth: '最大宽度',
-  columns: '列',
-  sidebarWidth: '侧栏宽度',
-  side: '侧栏方向',
-  sticky: '滚动吸附',
-  rowHeight: '行高',
-  padding: '内边距',
-  radius: '圆角',
-  shadow: '阴影',
-  showSocials: '显示社交链接',
-  showEnter: '显示进入按钮',
-  backgroundMediaId: '首屏背景',
-  backgroundPosition: '背景焦点',
-  overlay: '背景遮罩',
-  showStatus: '显示状态',
-  flip: '允许翻转',
-  size: '尺寸',
-  shape: '形状',
-  label: '替代文字',
-  tone: '语气',
-  fields: '显示字段',
-  limit: '数量',
-  sort: '排序',
-  compact: '紧凑显示',
-};
-
-export interface StudioMedia {
-  id: string;
-  url: string;
-  mediaType: string;
-  name: string;
-}
-
-export interface PublicSiteData {
+/** 组件内部使用的站点视图：/api/public/site 的归一化形态。 */
+interface SiteView {
   siteTitle: string;
   siteDescription: string;
   ownerName: string;
   ownerBio: string;
   avatarUrl: string;
   socialLinks: Array<{ label: string; url: string }>;
-}
-
-/** 组件内部使用的站点视图：API 数据 + 工作室注入数据的并集。 */
-interface SiteView extends PublicSiteData {
   mastheadUrl: string;
   /** null = 站点信息还没加载完成 */
   mailEnabled: boolean | null;
@@ -229,25 +159,10 @@ function socialGlyph(label: string, index: number) {
 }
 
 export class YukiApp extends LitElement {
-  private readonly studioStore = new LayoutStudioStore<LayoutDocument>(layoutPresets[0]);
-  private readonly previewOnly = new URLSearchParams(window.location.search).get('preview') === '1';
-  private studio = false;
-  private previewSelectedNodeId: string | null = null;
   private flippedProfiles = new Set<string>();
-  private draggingNodeId: string | null = null;
-  private draggingComponentType: ComponentType | null = null;
-  private dropTarget: { nodeId: string; position: DropPosition } | null = null;
-  private studioAnnouncement = '';
-  private moveTargetId: string | null = null;
-  private studioViewport: 'desktop' | 'tablet' | 'mobile' = 'desktop';
-  // 生产环境由工作室从媒体库注入真实媒体；仓库不提供默认图片（版权考虑）
-  private mediaLibrary: StudioMedia[] = [];
-  /** 工作室/预览注入的站点数据；为空时展示 API 站点数据。 */
-  private siteOverride: SiteView | null = null;
   private readonly store = new PublicStore();
   private unsubscribeStore: (() => void) | null = null;
   private mobileMenuOpen = false;
-  private nodeSequence = 0;
   private navPastHero = false;
   private spaNavigated = false;
   private revealInstant = false;
@@ -291,7 +206,6 @@ export class YukiApp extends LitElement {
   private splashDone = false;
   private splashStarted = false;
   private splashTimers: number[] = [];
-  private labVisible = false;
   private lightboxImages: string[] = [];
   private lightboxIndex = 0;
   private commentReplyTo: { id: string; name: string } | null = null;
@@ -299,28 +213,24 @@ export class YukiApp extends LitElement {
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   private revealObserver: IntersectionObserver | null = null;
 
-  private get layout(): LayoutDocument {
-    return this.studioStore.document;
-  }
-
-  private get selectedNodeId(): string {
-    return this.studioStore.selectedNodeId;
-  }
-
-  /** 当前生效的站点数据：工作室注入 > API > 空壳。 */
+  /** 当前生效的站点数据：API 数据，未加载完为空壳。 */
   private get siteData(): SiteView {
-    if (this.siteOverride) return this.siteOverride;
     const data = this.store.site.data;
     return data ? toSiteView(data) : emptySiteView;
   }
 
-  /** 外壳设置：公开运行时被站点设置覆盖，工作室里跟随布局文档。 */
+  /** 外壳设置：站点设置下发，未加载时用夜航默认外壳。 */
   private get shell() {
-    if (!this.studio && !this.previewOnly) {
-      const fromSite = this.store.site.data?.shellLayout;
-      if (fromSite) return fromSite;
-    }
-    return this.layout.shell;
+    return (
+      this.store.site.data?.shellLayout ?? {
+        schemaVersion: 1,
+        navigation: 'topbar',
+        brandPosition: 'start',
+        showSearch: true,
+        translucent: true,
+        maxWidth: 'wide',
+      }
+    );
   }
 
   private routeKey(): string {
@@ -342,14 +252,6 @@ export class YukiApp extends LitElement {
     this.syncRouteData();
     this.requestUpdate();
   };
-
-  /** 布局工作室浮窗只给 ?preview=1 与管理后台内嵌实例；公开访客（含已登录管理员）一律不见。 */
-  private checkLabAccess() {
-    this.labVisible =
-      window.location.pathname.startsWith('/admin') ||
-      new URLSearchParams(window.location.search).get('preview') === '1';
-    this.requestUpdate();
-  }
 
   /* ---------- 开屏动画（yukikoi 语义：每次冷进入播放，CSS 定时，JS 兜底） ---------- */
 
@@ -412,7 +314,7 @@ export class YukiApp extends LitElement {
     if (this.splashDone) return;
     // 开屏动画兼作加载屏：站点数据未就绪、或已配置首屏背景但当前图未加载完时，
     // 暂停退场动画继续等待（点击/按键/6s 兜底可强制跳过）。
-    if (!force && !this.studio && !this.previewOnly) {
+    if (!force) {
       const siteStatus = this.store.site.status;
       const sitePending = siteStatus === 'idle' || siteStatus === 'loading';
       const heroPending = this.siteData.heroBackgrounds.length > 0 && !this.heroReady;
@@ -572,11 +474,9 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  /** 按当前地址同步数据：仅在公开运行时（非工作室、非预览）拉取。 */
+  /** 按当前地址同步数据。 */
   private syncRouteData() {
-    if (this.previewOnly || this.studio) return;
     const path = window.location.pathname;
-    // 管理后台里嵌入的实例（布局工作室画布）不拉取公开数据
     if (path.startsWith('/admin')) return;
     const params = new URLSearchParams(window.location.search);
     const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
@@ -638,7 +538,6 @@ export class YukiApp extends LitElement {
   }
 
   private syncDocumentTitle() {
-    if (this.previewOnly || this.studio) return;
     const siteTitle = this.store.site.data?.siteTitle || 'YukiLog';
     const path = window.location.pathname;
     let section = this.titleSection;
@@ -652,7 +551,7 @@ export class YukiApp extends LitElement {
 
   private readonly handleViewportScroll = () => {
     this.updateScrollRing();
-    const home = window.location.pathname === '/' || this.previewOnly;
+    const home = window.location.pathname === '/';
     if (!home) {
       if (!this.navPastHero) {
         this.navPastHero = true;
@@ -691,67 +590,23 @@ export class YukiApp extends LitElement {
     }
   }
 
-  private readonly handleStudioKeydown = (event: KeyboardEvent) => {
-    if (!this.studio || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') {
-      return;
-    }
-    const target = event.target as HTMLElement | null;
-    if (target?.matches('input, textarea, select, [contenteditable="true"]')) return;
-    event.preventDefault();
-    if (event.shiftKey) this.redoStudio();
-    else this.undoStudio();
-  };
-
-  private readonly handlePreviewMessage = (event: MessageEvent) => {
-    if (event.origin !== window.location.origin || event.data?.source !== 'yukilog-studio') return;
-    if (this.previewOnly && event.data.type === 'render-layout') {
-      this.studioStore.reset(
-        event.data.layout as LayoutDocument,
-        typeof event.data.selectedNodeId === 'string'
-          ? event.data.selectedNodeId
-          : event.data.layout.root.id,
-      );
-      this.previewSelectedNodeId =
-        typeof event.data.selectedNodeId === 'string' ? event.data.selectedNodeId : null;
-      this.mediaLibrary = Array.isArray(event.data.mediaLibrary)
-        ? (event.data.mediaLibrary as StudioMedia[])
-        : [];
-      this.siteOverride = event.data.siteData
-        ? { ...emptySiteView, ...(event.data.siteData as PublicSiteData) }
-        : null;
-      this.requestUpdate();
-      return;
-    }
-    if (!this.previewOnly && this.studio && event.data.type === 'select-node') {
-      if (this.studioStore.select(String(event.data.nodeId))) {
-        this.studioAnnouncement = `已选择 ${String(event.data.nodeId)}`;
-        this.requestUpdate();
-      }
-    }
-  };
-
   connectedCallback() {
     super.connectedCallback();
     window.addEventListener('popstate', this.handlePopState);
     window.addEventListener('scroll', this.handleViewportScroll, { passive: true });
     this.addEventListener('click', this.handleSiteClick);
     this.addEventListener('submit', this.handleSiteSubmit);
-    window.addEventListener('keydown', this.handleStudioKeydown);
     window.addEventListener('keydown', this.handleLightboxKeydown);
-    window.addEventListener('message', this.handlePreviewMessage);
-    if (!this.previewOnly) {
-      // 滚动恢复由 SPA 自己管理，浏览器原生恢复会让列表页跳动。
-      if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
-      // 冷进入一律从顶部开始：浏览器原生恢复会在 JS 执行前把页面拉回旧位置，
-      // 开屏 → 首屏的编排建立在顶部状态上（刷新后回到首屏）。
-      window.scrollTo(0, 0);
-      this.unsubscribeStore = this.store.subscribe(() => {
-        this.syncDocumentTitle();
-        this.requestUpdate();
-      });
-      void this.checkLabAccess();
-      this.startSplash();
-    }
+    // 滚动恢复由 SPA 自己管理，浏览器原生恢复会让列表页跳动。
+    if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
+    // 冷进入一律从顶部开始：浏览器原生恢复会在 JS 执行前把页面拉回旧位置，
+    // 开屏 → 首屏的编排建立在顶部状态上（刷新后回到首屏）。
+    window.scrollTo(0, 0);
+    this.unsubscribeStore = this.store.subscribe(() => {
+      this.syncDocumentTitle();
+      this.requestUpdate();
+    });
+    this.startSplash();
     this.handleViewportScroll();
     this.syncRouteData();
   }
@@ -761,9 +616,7 @@ export class YukiApp extends LitElement {
     window.removeEventListener('scroll', this.handleViewportScroll);
     this.removeEventListener('click', this.handleSiteClick);
     this.removeEventListener('submit', this.handleSiteSubmit);
-    window.removeEventListener('keydown', this.handleStudioKeydown);
     window.removeEventListener('keydown', this.handleLightboxKeydown);
-    window.removeEventListener('message', this.handlePreviewMessage);
     this.revealObserver?.disconnect();
     this.revealObserver = null;
     this.momentObserver?.disconnect();
@@ -785,7 +638,6 @@ export class YukiApp extends LitElement {
   // 注意：shadow DOM 事件重定向会让 event.target 指向宿主，必须从 composedPath 里找锚点。
   private readonly handleSiteClick = (event: MouseEvent) => {
     if (
-      this.previewOnly ||
       event.defaultPrevented ||
       event.button !== 0 ||
       event.metaKey ||
@@ -812,7 +664,7 @@ export class YukiApp extends LitElement {
   };
 
   private readonly handleSiteSubmit = (event: SubmitEvent) => {
-    if (this.previewOnly || event.defaultPrevented) return;
+    if (event.defaultPrevented) return;
     const form = event
       .composedPath()
       .find((node): node is HTMLFormElement => node instanceof HTMLFormElement);
@@ -991,7 +843,6 @@ export class YukiApp extends LitElement {
   }
 
   protected updated() {
-    if (this.studio && !this.previewOnly) this.syncStudioPreview();
     this.observeReveals();
     this.scanToc();
     this.observeMomentExtras();
@@ -1055,7 +906,7 @@ export class YukiApp extends LitElement {
 
   // 动态卡片滚入视口后再拉取点赞状态与评论，避免整页并发请求。
   private observeMomentExtras() {
-    if (this.previewOnly || this.studio || window.location.pathname !== '/dynamics') return;
+    if (window.location.pathname !== '/dynamics') return;
     const moments = this.renderRoot.querySelectorAll<HTMLElement>('.moment[data-dyn]');
     if (moments.length === 0) return;
     if (!this.momentObserver) {
@@ -1399,65 +1250,6 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  loadPageLayout(page: PageLayoutDocument) {
-    this.studioStore.reset({ ...this.layout, ...structuredClone(page) });
-    this.studio = true;
-    this.requestUpdate();
-  }
-
-  setMediaLibrary(media: StudioMedia[]) {
-    this.mediaLibrary = media.filter((item) => item.mediaType.startsWith('image/'));
-    this.requestUpdate();
-  }
-
-  /** 管理端上传完成后回写：收入媒体库并设为当前选中节点的背景图。 */
-  applyUploadedMedia(media: StudioMedia) {
-    if (!media.mediaType.startsWith('image/')) return;
-    this.mediaLibrary = [...this.mediaLibrary.filter((item) => item.id !== media.id), media];
-    const selected = indexLayout(this.layout.root).get(this.selectedNodeId)?.node;
-    if (
-      selected &&
-      componentRegistry[selected.type]?.properties.backgroundMediaId?.kind === 'media-image'
-    ) {
-      this.setSelectedProperty('backgroundMediaId', media.id);
-    } else {
-      this.requestUpdate();
-    }
-  }
-
-  private requestMediaUpload(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file) return;
-    this.dispatchEvent(
-      new CustomEvent('yuki-media-upload', { detail: { file }, bubbles: true, composed: true }),
-    );
-  }
-
-  setSiteData(siteData: PublicSiteData) {
-    this.siteOverride = { ...emptySiteView, ...structuredClone(siteData) };
-    this.requestUpdate();
-  }
-
-  exportPageLayout(): PageLayoutDocument {
-    return structuredClone(toPageLayout(this.layout));
-  }
-
-  private syncStudioPreview() {
-    const frame = this.renderRoot.querySelector<HTMLIFrameElement>('.studio-preview');
-    frame?.contentWindow?.postMessage(
-      {
-        source: 'yukilog-studio',
-        type: 'render-layout',
-        layout: this.layout,
-        selectedNodeId: this.selectedNodeId,
-        mediaLibrary: this.mediaLibrary,
-        siteData: this.siteData,
-      },
-      window.location.origin,
-    );
-  }
 
   static styles = css`
     * {
@@ -1520,57 +1312,6 @@ export class YukiApp extends LitElement {
       font-weight: 600;
       letter-spacing: 0.26em;
       text-transform: uppercase;
-    }
-
-    .lab-bar {
-      position: fixed;
-      z-index: 200;
-      bottom: 14px;
-      left: 14px;
-      display: var(--studio-lab-display, flex);
-      width: auto;
-      max-width: calc(100% - 28px);
-      align-items: center;
-      gap: 6px;
-      padding: 7px;
-      transform: none;
-      border: 1px solid rgb(255 255 255 / 15%);
-      border-radius: 20px;
-      background: rgb(12 17 25 / 82%);
-      box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
-      color: #e9edf5;
-      backdrop-filter: blur(18px);
-    }
-
-    .lab-title {
-      padding: 0 10px;
-      color: #909bad;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-
-    .lab-bar button {
-      min-height: 34px;
-      padding: 6px 11px;
-      border: 0;
-      border-radius: 11px;
-      background: transparent;
-      color: #c5ccda;
-      font-size: 13px;
-    }
-
-    .lab-bar button[aria-pressed='true'] {
-      background: #f5f7fb;
-      color: #171c25;
-      box-shadow: 0 5px 18px rgb(0 0 0 / 18%);
-    }
-
-    .lab-spacer {
-      flex: 1;
-    }
-
-    .mode-button {
-      border: 1px solid rgb(255 255 255 / 14%) !important;
     }
 
     .site {
@@ -4573,498 +4314,6 @@ export class YukiApp extends LitElement {
       font-size: 10.5px;
     }
     /* Layout studio */
-    .studio-shell {
-      display: grid;
-      height: var(--studio-height, 100dvh);
-      min-height: var(--studio-min-height, 720px);
-      grid-template-columns: 250px minmax(0, 1fr) 320px;
-      background: #0e131b;
-      color: #e8edf5;
-    }
-
-    .studio-panel {
-      position: sticky;
-      top: 0;
-      height: 100%;
-      overflow: auto;
-      padding: 20px 16px;
-      border-right: 1px solid #27303d;
-      background: #151b24;
-    }
-
-    .studio-panel.right {
-      border-right: 0;
-      border-left: 1px solid #27303d;
-    }
-
-    .studio-panel h2 {
-      margin: 0 0 16px;
-      font-size: 14px;
-    }
-
-    .palette-group {
-      margin-bottom: 20px;
-    }
-
-    .palette-group h3 {
-      margin: 0 0 8px;
-      color: #828da0;
-      font-size: 11px;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    .palette-item,
-    .tree-item,
-    .inspector-button {
-      width: 100%;
-      margin: 3px 0;
-      padding: 9px 10px;
-      border: 1px solid #2b3543;
-      border-radius: 9px;
-      background: #1b2330;
-      color: #dbe2ed;
-      font-size: 12px;
-      text-align: left;
-    }
-
-    .palette-item {
-      cursor: grab;
-    }
-
-    .palette-item.dragging {
-      opacity: 0.38;
-      cursor: grabbing;
-    }
-
-    .tree-item.selected {
-      border-color: #79c7d3;
-      background: #21323e;
-    }
-
-    .tree-help {
-      margin: 0 0 10px;
-      color: #788497;
-      font-size: 10px;
-      line-height: 1.6;
-    }
-
-    .tree-row {
-      position: relative;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      border-radius: 9px;
-    }
-
-    .tree-node > .tree-node {
-      margin-left: 14px;
-    }
-
-    .tree-row.drop-inside {
-      outline: 2px solid #79c7d3;
-      outline-offset: 1px;
-      background: rgb(121 199 211 / 10%);
-    }
-
-    .tree-row.dragging {
-      opacity: 0.38;
-    }
-
-    .drag-handle {
-      display: grid;
-      width: 24px;
-      height: 28px;
-      flex: 0 0 24px;
-      place-items: center;
-      border-radius: 7px;
-      color: #8491a4;
-      cursor: grab;
-      user-select: none;
-    }
-
-    .drag-handle:active {
-      cursor: grabbing;
-    }
-
-    .drag-handle:focus-visible {
-      outline: 2px solid #79c7d3;
-    }
-
-    .tree-row .tree-item {
-      min-width: 0;
-      flex: 1;
-    }
-
-    .tree-drop-line {
-      position: relative;
-      height: 10px;
-      margin-left: 28px;
-    }
-
-    .tree-drop-line::before {
-      position: absolute;
-      top: 4px;
-      right: 2px;
-      left: 2px;
-      height: 2px;
-      content: '';
-      border-radius: 999px;
-      background: transparent;
-    }
-
-    .tree-drop-line span,
-    .inside-label {
-      position: absolute;
-      z-index: 2;
-      right: 8px;
-      padding: 2px 6px;
-      border-radius: 5px;
-      background: #79c7d3;
-      color: #102027;
-      font-size: 9px;
-      font-weight: 700;
-      pointer-events: none;
-      opacity: 0;
-    }
-
-    .tree-drop-line span {
-      top: -4px;
-    }
-
-    .inside-label {
-      top: 50%;
-      transform: translateY(-50%);
-    }
-
-    .tree-drop-line.active::before {
-      background: #79c7d3;
-    }
-
-    .tree-drop-line.active span,
-    .tree-row.drop-inside .inside-label {
-      opacity: 1;
-    }
-
-    .tree-actions {
-      display: flex;
-      gap: 2px;
-      opacity: 0;
-      transition: opacity 120ms ease;
-    }
-
-    .tree-row:hover .tree-actions,
-    .tree-row:focus-within .tree-actions {
-      opacity: 1;
-    }
-
-    .tree-actions button {
-      width: 24px;
-      height: 28px;
-      padding: 0;
-      border: 1px solid #303b49;
-      border-radius: 7px;
-      background: #1b2330;
-      color: #aeb8c7;
-    }
-
-    .studio-canvas {
-      display: grid;
-      height: 100%;
-      min-width: 0;
-      grid-template-rows: auto minmax(0, 1fr);
-      overflow: hidden;
-      background: #0b1017;
-    }
-
-    .studio-canvas-toolbar {
-      position: relative;
-      z-index: 2;
-      display: flex;
-      min-height: 54px;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 10px 18px;
-      border-bottom: 1px solid #27303d;
-      background: #151b24;
-      color: #dbe2ed;
-      font-size: 12px;
-    }
-
-    .viewport-switcher {
-      display: flex;
-      gap: 3px;
-      padding: 3px;
-      border: 1px solid #303b49;
-      border-radius: 9px;
-      background: #101721;
-    }
-
-    .viewport-switcher button {
-      padding: 5px 9px;
-      border: 0;
-      border-radius: 6px;
-      background: transparent;
-      color: #8f9aac;
-      font-size: 11px;
-    }
-
-    .viewport-switcher button[aria-pressed='true'] {
-      background: #2a3544;
-      color: #fff;
-    }
-
-    .studio-canvas-stage {
-      min-width: 0;
-      overflow: auto;
-      padding: 24px;
-    }
-
-    .studio-preview {
-      position: relative;
-      width: 1500px;
-      min-height: max(480px, calc(var(--studio-height, 100dvh) - 102px));
-      margin: 0 auto;
-      overflow: hidden;
-      border: 1px solid #303a48;
-      border-radius: 10px;
-      background: white;
-      box-shadow: 0 24px 80px rgb(0 0 0 / 34%);
-      transition: width 180ms ease;
-    }
-
-    .studio-preview.viewport-tablet {
-      width: 768px;
-    }
-
-    .studio-preview.viewport-mobile {
-      width: 390px;
-    }
-
-    .studio-preview .site-nav {
-      position: absolute;
-    }
-
-    .studio-preview .nav-sidebar {
-      height: 100%;
-    }
-
-    .studio-preview .hero {
-      min-height: 680px;
-    }
-
-    .studio-preview .layout-bento {
-      min-height: 760px;
-    }
-
-    .is-studio-preview .node.selected::after {
-      position: absolute;
-      z-index: 120;
-      content: attr(data-label);
-      inset: 0;
-      padding: 4px 6px;
-      border: 2px solid #79c7d3;
-      background: rgb(121 199 211 / 5%);
-      color: #fff;
-      font: 11px system-ui;
-      pointer-events: none;
-    }
-
-    .inspector-section {
-      margin-bottom: 22px;
-    }
-
-    .inspector-section label {
-      display: block;
-      margin-bottom: 7px;
-      color: #8d98aa;
-      font-size: 11px;
-    }
-
-    .segmented {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 5px;
-    }
-
-    .segmented button {
-      padding: 7px 8px;
-      border: 1px solid #303b49;
-      border-radius: 8px;
-      background: #1b2330;
-      color: #c8d0dd;
-      font-size: 11px;
-    }
-
-    .segmented button[aria-pressed='true'] {
-      border-color: #79c7d3;
-      color: #9de5ec;
-    }
-
-    .studio-history,
-    .move-actions {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 18px;
-    }
-
-    .studio-history button,
-    .move-actions button {
-      flex: 1;
-      padding: 7px 9px;
-      border: 1px solid #303b49;
-      border-radius: 8px;
-      background: #1b2330;
-      color: #c8d0dd;
-    }
-
-    .studio-history button:disabled,
-    .inspector-button:disabled {
-      cursor: not-allowed;
-      opacity: 0.38;
-    }
-
-    .property-list {
-      display: grid;
-      gap: 13px;
-    }
-
-    .property-field {
-      display: grid !important;
-      gap: 6px;
-      margin: 0 !important;
-    }
-
-    .property-field input,
-    .property-field select,
-    .property-field textarea {
-      width: 100%;
-      min-height: 34px;
-      padding: 7px 9px;
-      border: 1px solid #303b49;
-      border-radius: 8px;
-      outline: 0;
-      background: #101721;
-      color: #e3e9f2;
-      font: inherit;
-      font-size: 12px;
-      line-height: 1.45;
-    }
-
-    .property-field textarea {
-      min-height: 82px;
-      resize: vertical;
-    }
-
-    .property-field input:focus,
-    .property-field select:focus,
-    .property-field textarea:focus {
-      border-color: #79c7d3;
-    }
-
-    .property-help {
-      color: #69778b;
-      font-size: 10px;
-      line-height: 1.5;
-    }
-
-    .media-picker-preview {
-      display: grid;
-      place-items: center;
-      aspect-ratio: 16 / 9;
-      overflow: hidden;
-      border: 1px solid #303b49;
-      border-radius: 8px;
-      background: #101721;
-    }
-
-    .media-picker-preview img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .media-picker-empty {
-      color: #69778b;
-      font-size: 11px;
-    }
-
-    .media-picker-actions {
-      display: flex;
-      gap: 6px;
-    }
-
-    .media-picker-actions button {
-      flex: 1;
-      padding: 7px 9px;
-      border: 1px solid #303b49;
-      border-radius: 8px;
-      background: #1b2330;
-      color: #c8d0dd;
-      font-size: 11px;
-    }
-
-    .property-toggle {
-      display: flex !important;
-      align-items: center;
-      gap: 8px;
-      margin: 0 !important;
-    }
-
-    .property-toggle input {
-      width: 16px;
-      height: 16px;
-      margin: 0;
-    }
-
-    .property-options {
-      min-width: 0;
-      margin: 0;
-      padding: 0;
-      border: 0;
-    }
-
-    .property-options legend {
-      margin-bottom: 7px;
-      color: #8d98aa;
-      font-size: 11px;
-    }
-
-    .inspector-button.danger {
-      border-color: #62313c;
-      background: #2c1a20;
-      color: #f0a5b5;
-    }
-
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
-
-    .layout-json {
-      max-height: 180px;
-      overflow: auto;
-      padding: 10px;
-      border-radius: 8px;
-      background: #0d1118;
-      color: #9eacbd;
-      font: 10px/1.5 ui-monospace, monospace;
-      white-space: pre-wrap;
-    }
-
-    .validation-ok {
-      color: #83d6a1;
-      font-size: 12px;
-    }
-
     @keyframes hero-reveal {
       from {
         filter: blur(9px) brightness(0.55);
@@ -6274,17 +5523,6 @@ export class YukiApp extends LitElement {
     }
 
     @media (max-width: 900px) {
-      .lab-title,
-      .lab-spacer {
-        display: none;
-      }
-
-      .lab-bar button {
-        flex: 1;
-        padding-inline: 5px;
-        font-size: 11px;
-      }
-
       .nav-sidebar {
         position: sticky;
         top: 0;
@@ -6320,22 +5558,6 @@ export class YukiApp extends LitElement {
         top: auto;
       }
 
-      .studio-shell {
-        display: block;
-      }
-
-      .studio-panel {
-        position: static;
-        height: auto;
-      }
-
-      .studio-panel.left {
-        display: none;
-      }
-
-      .studio-canvas {
-        padding: 12px;
-      }
     }
 
     @media (max-width: 760px) {
@@ -6390,19 +5612,6 @@ export class YukiApp extends LitElement {
 
       .comment-form-grid {
         grid-template-columns: 1fr;
-      }
-
-      .lab-bar {
-        top: auto;
-        right: 8px;
-        bottom: 8px;
-        left: 8px;
-        overflow-x: auto;
-        justify-content: flex-start;
-      }
-
-      .lab-bar button {
-        min-width: max-content;
       }
 
       .hero h1 {
@@ -6463,176 +5672,6 @@ export class YukiApp extends LitElement {
     }
   `;
 
-  private selectNode(id: string, event?: Event) {
-    // 仅在工作室/预览模式拦截点击；公开浏览时必须放行，让站内路由接管锚点。
-    if (this.previewOnly) {
-      event?.stopPropagation();
-      window.parent.postMessage(
-        { source: 'yukilog-studio', type: 'select-node', nodeId: id },
-        window.location.origin,
-      );
-      return;
-    }
-    if (!this.studio) return;
-    event?.stopPropagation();
-    if (this.studioStore.select(id)) this.requestUpdate();
-  }
-
-  private applyStudioMutation(mutation: StudioMutation) {
-    if (!mutation.changed) return;
-    this.studioAnnouncement = mutation.announcement;
-    this.requestUpdate();
-  }
-
-  private runStudioCommand(action: () => StudioMutation) {
-    try {
-      this.applyStudioMutation(action());
-    } catch (error) {
-      this.studioAnnouncement =
-        error instanceof LayoutCommandError ? error.message : '布局修改失败';
-      this.requestUpdate();
-    }
-  }
-
-  private beginNodeDrag(nodeId: string, event: DragEvent) {
-    this.draggingNodeId = nodeId;
-    this.draggingComponentType = null;
-    this.dropTarget = null;
-    event.dataTransfer?.setData('text/yukilog-node', nodeId);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-    this.requestUpdate();
-  }
-
-  private beginComponentDrag(type: ComponentType, event: DragEvent) {
-    this.draggingNodeId = null;
-    this.draggingComponentType = type;
-    this.dropTarget = null;
-    event.dataTransfer?.setData('text/yukilog-component', type);
-    if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
-    this.requestUpdate();
-  }
-
-  private allowedDropPositions(targetId: string): DropPosition[] {
-    if (this.draggingNodeId) {
-      return validDropPositions(this.layout.root, this.draggingNodeId, targetId);
-    }
-    if (!this.draggingComponentType) return [];
-    const target = indexLayout(this.layout.root).get(targetId);
-    if (!target) return [];
-    const positions: DropPosition[] = [];
-    if (target.parentId !== null) positions.push('before', 'after');
-    if (componentRegistry[target.node.type].acceptsChildren) positions.splice(1, 0, 'inside');
-    return positions;
-  }
-
-  private activateDropTarget(
-    targetId: string,
-    position: DropPosition,
-    event: DragEvent,
-  ) {
-    if (!this.allowedDropPositions(targetId).includes(position)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (event.dataTransfer) {
-      event.dataTransfer.dropEffect = this.draggingComponentType ? 'copy' : 'move';
-    }
-    if (this.dropTarget?.nodeId === targetId && this.dropTarget.position === position) return;
-    this.dropTarget = { nodeId: targetId, position };
-    this.requestUpdate();
-  }
-
-  private dropNode(targetId: string, position: DropPosition, event: DragEvent) {
-    this.activateDropTarget(targetId, position, event);
-    const draggedId = event.dataTransfer?.getData('text/yukilog-node') || this.draggingNodeId;
-    const componentType =
-      (event.dataTransfer?.getData('text/yukilog-component') as ComponentType) ||
-      this.draggingComponentType;
-    if (draggedId) {
-      this.runStudioCommand(() => this.studioStore.moveTo(draggedId, targetId, position));
-    } else if (componentType && componentRegistry[componentType]) {
-      this.insertComponentAt(componentType, targetId, position);
-    }
-    this.endNodeDrag();
-  }
-
-  private endNodeDrag() {
-    this.draggingNodeId = null;
-    this.draggingComponentType = null;
-    this.dropTarget = null;
-    this.requestUpdate();
-  }
-
-  private moveSibling(id: string, direction: -1 | 1) {
-    this.runStudioCommand(() => this.studioStore.moveSibling(id, direction));
-  }
-
-  private setSelectedProperty(name: string, value: unknown) {
-    this.runStudioCommand(() =>
-      this.studioStore.execute({
-        type: 'set-prop',
-        nodeId: this.selectedNodeId,
-        name,
-        value,
-      }),
-    );
-  }
-
-  private toggleArrayProperty(name: string, value: string) {
-    const selected = indexLayout(this.layout.root).get(this.selectedNodeId)?.node;
-    if (!selected) return;
-    const values = new Set(Array.isArray(selected.props[name]) ? (selected.props[name] as string[]) : []);
-    if (values.has(value)) values.delete(value);
-    else values.add(value);
-    this.setSelectedProperty(name, [...values]);
-  }
-
-  private addComponent(type: ComponentType) {
-    const selected = indexLayout(this.layout.root).get(this.selectedNodeId)?.node;
-    const targetId =
-      selected && componentRegistry[selected.type].acceptsChildren
-        ? selected.id
-        : this.layout.root.id;
-    const node = this.createComponentNode(type);
-    this.runStudioCommand(() =>
-      this.studioStore.execute({ type: 'insert-node', parentId: targetId, node }),
-    );
-  }
-
-  private createComponentNode(type: ComponentType): LayoutNode {
-    const definition = componentRegistry[type];
-    return {
-      id: `${type}-${Date.now().toString(36)}-${(this.nodeSequence += 1).toString(36)}`,
-      type,
-      props: structuredClone(definition.defaultProps),
-    };
-  }
-
-  private insertComponentAt(type: ComponentType, targetId: string, position: DropPosition) {
-    const target = indexLayout(this.layout.root).get(targetId);
-    if (!target) return;
-    const node = this.createComponentNode(type);
-    const parentId = position === 'inside' ? targetId : target.parentId;
-    if (!parentId) return;
-    const index =
-      position === 'inside' ? target.node.children?.length : target.index + (position === 'after' ? 1 : 0);
-    this.runStudioCommand(() =>
-      this.studioStore.execute({ type: 'insert-node', parentId, index, node }),
-    );
-  }
-
-  private removeSelected() {
-    this.runStudioCommand(() =>
-      this.studioStore.execute({ type: 'remove-node', nodeId: this.selectedNodeId }),
-    );
-  }
-
-  private undoStudio() {
-    this.applyStudioMutation(this.studioStore.undo());
-  }
-
-  private redoStudio() {
-    this.applyStudioMutation(this.studioStore.redo());
-  }
 
   private setMobileMenu(open: boolean) {
     this.mobileMenuOpen = open;
@@ -6645,9 +5684,8 @@ export class YukiApp extends LitElement {
     return href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`);
   }
 
-  /** 站点设置下发的主题 token → CSS 变量（工作室里不应用，跟随画布自身主题）。 */
+  /** 站点设置下发的主题 token → CSS 变量。 */
   private siteThemeStyle(): Record<string, string> {
-    if (this.studio || this.previewOnly) return {};
     const theme = this.store.site.data?.theme;
     const colors = theme?.colors;
     if (!colors) return {};
@@ -6789,15 +5827,12 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private renderNode(node: LayoutNode): unknown {
-    const definition = componentRegistry[node.type];
-    const selected =
-      (this.studio && node.id === this.selectedNodeId) ||
-      (this.previewOnly && node.id === this.previewSelectedNodeId);
-    const base = `node node-${node.type}${selected ? ' selected' : ''}`;
-    const click = (event: Event) => this.selectNode(node.id, event);
+  /** 固定布局 walker：按 homeLayout 常量树渲染，根区域挂 data-part 供部件 token 使用。 */
+  private renderNode(node: HomeNode): unknown {
+    const base = `node node-${node.type}`;
+    const part = partNameOf(node.id) ?? nothing;
 
-    if (definition.acceptsChildren) {
+    if (node.children) {
       const gap = typeof node.props.gap === 'string' ? ` gap-${node.props.gap}` : '';
       const align = typeof node.props.align === 'string' ? ` align-${node.props.align}` : '';
       const sticky = node.props.sticky ? ' is-sticky' : '';
@@ -6817,38 +5852,21 @@ export class YukiApp extends LitElement {
           : node.props.maxWidth === '1240px'
             ? ' max-1240'
             : '';
-      const card =
-        node.type === 'card'
-          ? [
-              ` card-${String(node.props.variant ?? 'plain')}`,
-              ` padding-${String(node.props.padding ?? 'md')}`,
-              ` radius-${String(node.props.radius ?? 'md')}`,
-              ` shadow-${String(node.props.shadow ?? 'none')}`,
-              ` align-${String(node.props.align ?? 'stretch')}`,
-            ].join('')
-          : '';
       return html`
         <section
-          class="${base} layout-${node.type}${gap}${align}${sticky}${columns}${maxWidth}${card}"
-          data-label="${definition.label}"
-          data-node-id="${node.id}"
-          .draggable=${this.studio && node.id !== this.layout.root.id}
-          @dragstart=${(event: DragEvent) => this.beginNodeDrag(node.id, event)}
-          @dragend=${this.endNodeDrag}
-          @dragover=${(event: DragEvent) => this.activateDropTarget(node.id, 'inside', event)}
-          @drop=${(event: DragEvent) => this.dropNode(node.id, 'inside', event)}
-          @click=${click}
+          class="${base} layout-${node.type}${gap}${align}${sticky}${columns}${maxWidth}"
+          data-part=${part}
         >
-          ${node.children?.map((child) => this.renderNode(child))}
+          ${node.children.map((child) => this.renderNode(child))}
         </section>
       `;
     }
 
     switch (node.type) {
       case 'hero':
-        return this.renderHero(node, base, click);
+        return this.renderHero(node);
       case 'masthead':
-        return this.renderMasthead(node, base, click);
+        return this.renderMasthead(node);
       case 'avatar':
         {
           const avatarClass = `${base} primitive-avatar avatar-${String(
@@ -6856,31 +5874,17 @@ export class YukiApp extends LitElement {
           )} avatar-${String(node.props.shape ?? 'circle')}`;
           const label = String(node.props.label ?? this.siteData.ownerName);
           return this.siteData.avatarUrl && node.props.source === 'site-owner'
-            ? html`
-                <img
-                  class=${avatarClass}
-                  src=${this.siteData.avatarUrl}
-                  alt=${label}
-                  data-label="头像"
-                  @click=${click}
-                />
-              `
-            : html`
-                <div class=${avatarClass} data-label="头像" @click=${click}>
-                  ${this.siteData.ownerName.slice(0, 1) || '雪'}
-                </div>
-              `;
+            ? html`<img class=${avatarClass} src=${this.siteData.avatarUrl} alt=${label} />`
+            : html`<div class=${avatarClass}>${this.siteData.ownerName.slice(0, 1) || '雪'}</div>`;
         }
       case 'text-block':
-        return this.renderTextBlock(node, base, click);
+        return this.renderTextBlock(node);
       case 'social-links':
         return html`
           <nav
             class="${base} primitive-socials socials-${String(
               node.props.variant ?? 'labels',
             )} text-${String(node.props.alignment ?? 'left')}"
-            data-label="社交链接"
-            @click=${click}
           >
             ${[...this.siteData.socialLinks, { label: 'RSS', url: '/feed.xml' }].map(
               (link) => html`<a href=${link.url}>${link.label}</a>`,
@@ -6895,19 +5899,17 @@ export class YukiApp extends LitElement {
               class="${base} ${statusText.includes('system.log') ? 'profile-log' : 'primitive-status'} status-${String(
                 node.props.tone ?? 'neutral',
               )}"
-              data-label="状态行"
-              @click=${click}
             >${statusText}</pre>
           `;
         }
       case 'profile-card':
-        return this.renderProfile(node, base, click);
+        return this.renderProfile(node);
       case 'article-feed':
-        return this.renderArticleFeed(node, base, click);
+        return this.renderArticleFeed(node);
       case 'quote':
         {
-          // 公开运行时语录卡显示一言（失败回退本地句库）；工作室里保持布局字面量。
-          const hitokoto = this.studio || this.previewOnly ? null : this.store.hitokotoQuote();
+          // 一言（代理失败回退本地句库）；一言不可用时回退布局字面量。
+          const hitokoto = this.store.hitokotoQuote();
           const quoteText = hitokoto ? hitokoto.text : String(node.props.text ?? '');
           const quoteFrom = hitokoto
             ? hitokoto.from
@@ -6915,7 +5917,7 @@ export class YukiApp extends LitElement {
               : ''
             : String(node.props.attribution ?? '');
         return html`
-          <aside class="${base} quote-card" data-label="引语" data-reveal @click=${click}>
+          <aside class="${base} quote-card" data-part=${part} data-reveal>
             ${quoteText}
             ${quoteFrom ? html`<cite>${quoteFrom}</cite>` : nothing}
             ${hitokoto
@@ -6939,9 +5941,7 @@ export class YukiApp extends LitElement {
       case 'stats':
         {
           const fields = new Set((node.props.fields as string[]) ?? []);
-          const stats = this.previewOnly
-            ? previewStats
-            : this.store.stats;
+          const stats = this.store.stats;
           const available = [
             ['articles', stats.articles, '文章'],
             ['dynamics', stats.dynamics, '动态'],
@@ -6949,7 +5949,7 @@ export class YukiApp extends LitElement {
             ['views', stats.views, '总阅读'],
           ] as const;
         return html`
-          <section class="${base} stats-card" data-label="站点数据" data-reveal @click=${click}>
+          <section class="${base} stats-card" data-part=${part} data-reveal>
             <p class="component-kicker">站点信息</p>
             <div class="stats-grid">
                 ${available
@@ -6968,17 +5968,10 @@ export class YukiApp extends LitElement {
         {
           const limit = Number(node.props.limit ?? 3);
           const variant = String(node.props.variant ?? 'compact');
-          const dynSlice = this.previewOnly ? null : this.store.dynamics;
-          const stripItems = (
-            this.previewOnly ? previewDynamics : (dynSlice?.data?.items ?? [])
-          ).slice(0, Math.max(1, limit));
+          const dynSlice = this.store.dynamics;
+          const stripItems = (dynSlice.data?.items ?? []).slice(0, Math.max(1, limit));
         return html`
-            <section
-              class="${base} dynamic-strip dynamics-${variant}"
-              data-label="最近动态"
-              data-reveal
-              @click=${click}
-            >
+            <section class="${base} dynamic-strip dynamics-${variant}" data-part=${part} data-reveal>
             <a
               class="component-kicker strip-kicker"
               href="/dynamics"
@@ -6988,13 +5981,12 @@ export class YukiApp extends LitElement {
                 最近动态
                 <span class="strip-more" aria-hidden="true">更多 ›</span>
               </a>
-              ${!this.previewOnly &&
-              (dynSlice?.status === 'idle' || dynSlice?.status === 'loading') &&
+              ${(dynSlice.status === 'idle' || dynSlice.status === 'loading') &&
               stripItems.length === 0
                 ? html`<div class="skel skel-line" style="width: 78%"></div>
                     <div class="skel skel-line" style="width: 55%"></div>`
                 : nothing}
-              ${!this.previewOnly && dynSlice?.status === 'error'
+              ${dynSlice.status === 'error'
                 ? html`<p class="strip-note">
                     动态暂时加载不出来，
                     <a
@@ -7008,7 +6000,7 @@ export class YukiApp extends LitElement {
                     >
                   </p>`
                 : nothing}
-              ${!this.previewOnly && dynSlice?.status === 'ready' && stripItems.length === 0
+              ${dynSlice.status === 'ready' && stripItems.length === 0
                 ? html`<p class="strip-note">还没有动态。</p>`
                 : nothing}
               ${stripItems.map(
@@ -7026,19 +6018,14 @@ export class YukiApp extends LitElement {
     }
   }
 
-  private renderHero(node: LayoutNode, base: string, click: (event: Event) => void) {
+  private renderHero(node: HomeNode) {
     const variant = String(node.props.variant ?? 'cinematic');
     const title = String(node.props.title ?? '');
     const accentChars = new Set(String(node.props.accent ?? ''));
-    const isStudioSurface = this.studio || this.previewOnly;
-    const studioBackground = this.mediaLibrary.find(
-      (media) => media.id === String(node.props.backgroundMediaId ?? ''),
-    );
-    // 公开运行时首屏背景来自站点设置的 heroBackgrounds 池（冷进入随机抽一张，
-    // 多张时每 8 秒淡切；reduced-motion 只随机不轮播）。工作室仍用媒体库注入图。
-    const heroBackgrounds = isStudioSurface ? [] : this.siteData.heroBackgrounds;
-    const activeBackground = isStudioSurface ? studioBackground : undefined;
-    const hasMedia = isStudioSurface ? Boolean(studioBackground) : heroBackgrounds.length > 0;
+    // 首屏背景来自站点设置的 heroBackgrounds 池（冷进入随机抽一张，
+    // 多张时每 8 秒淡切；reduced-motion 只随机不轮播）。
+    const heroBackgrounds = this.siteData.heroBackgrounds;
+    const hasMedia = heroBackgrounds.length > 0;
     const backgroundPosition = String(node.props.backgroundPosition ?? 'center');
     const overlay = String(node.props.overlay ?? 'medium');
     const socialLinks = [
@@ -7046,13 +6033,11 @@ export class YukiApp extends LitElement {
       { label: 'RSS', url: '/feed.xml' },
     ];
     const socialColors = ['#6e7f8d', '#e3a0ae', '#7eb6d9', '#8fafc4', '#e8a4b4', '#d6a1ae', '#f0a65a'];
-    // 首屏语录卡：heroQuote → siteDescription → 布局字面量；工作室保持字面量。
+    // 首屏语录卡：heroQuote → siteDescription → 布局字面量。
     const literalLead = String(node.props.lead ?? '');
-    const quoteText = isStudioSurface
-      ? literalLead
-      : (this.siteData.heroQuote ?? this.siteData.siteDescription ?? '') || literalLead;
+    const quoteText = (this.siteData.heroQuote ?? this.siteData.siteDescription ?? '') || literalLead;
     const details = html`
-      <div class="welcome-quote">
+      <div class="welcome-quote" data-part="hero-quote-card">
         <span class="quote-text">${quoteText}</span>
         ${node.props.showSocials
           ? html`
@@ -7079,27 +6064,11 @@ export class YukiApp extends LitElement {
     `;
     return html`
       <section
-        class="${base} hero hero-${variant} overlay-${overlay}${hasMedia ? ' has-media' : ''}"
-        data-label="沉浸式首屏"
-        data-node-id="${node.id}"
-        @click=${click}
+        class="node node-hero hero hero-${variant} overlay-${overlay}${hasMedia ? ' has-media' : ''}"
+        data-part="hero"
       >
-        ${isStudioSurface
-          ? activeBackground
-            ? html`
-                <div
-                  class="hero-background"
-                  role="img"
-                  aria-label=${activeBackground.name}
-                  style=${styleMap({
-                    backgroundImage: `url(${JSON.stringify(activeBackground.url)})`,
-                    backgroundPosition,
-                  })}
-                ></div>
-              `
-            : nothing
-          : hasMedia
-            ? html`
+        ${hasMedia
+          ? html`
                 <div class="hero-background hero-bg-stack" role="img" aria-label="首屏背景">
                   ${heroBackgrounds.map((item, index) => {
                     if (item.position) return nothing; // 焦点图在静态视口层渲染
@@ -7146,7 +6115,7 @@ export class YukiApp extends LitElement {
               `
             : nothing}
         <div class="hero-inner">
-          <h1>
+          <h1 data-part="hero-title">
             ${variant === 'cinematic'
               ? [...title].map(
                   (character, index) =>
@@ -7163,9 +6132,9 @@ export class YukiApp extends LitElement {
         ${node.props.showEnter
           ? html`<button
               class="enter-button"
+              data-part="hero-enter"
               aria-label="进入文章区域"
-              @click=${(event: Event) => {
-                event.stopPropagation();
+              @click=${() => {
                 // 直接按首屏高度滚动：hero 完整滚出视口，内容从视口顶开始。
                 const hero = this.renderRoot.querySelector<HTMLElement>('.hero');
                 window.scrollTo({
@@ -7174,7 +6143,7 @@ export class YukiApp extends LitElement {
                 });
               }}
             >
-              <span>ENTER</span>${icon('arrow-down')}
+              <span class="enter-guide"><span>ENTER</span>${icon('arrow-down')}</span>
             </button>`
           : nothing}
       </section>
@@ -7198,7 +6167,7 @@ export class YukiApp extends LitElement {
   // 首屏背景池：站点数据到达后随机抽一张并启动 8 秒淡切（仅公开运行时一次）。
   // 抽中的当前图优先加载并作为开屏（兼加载屏）收场的就绪信号；其余图随后驻留预载。
   private maybeSeedHeroBackgrounds() {
-    if (this.studio || this.previewOnly || this.heroBgSeeded) return;
+    if (this.heroBgSeeded) return;
     const backgrounds = this.siteData.heroBackgrounds;
     if (backgrounds.length === 0) {
       // 未配置首屏背景：若开屏还在等待数据且数据已有定论，直接收场
@@ -7232,7 +6201,7 @@ export class YukiApp extends LitElement {
     this.requestUpdate();
   }
 
-  private renderMasthead(node: LayoutNode, base: string, click: (event: Event) => void) {
+  private renderMasthead(node: HomeNode) {
     const variant = String(node.props.variant ?? 'editorial');
     const rawTitle = String(node.props.title ?? '');
     // 首页文章流刊头：标题随排序 tab 联动（用户在工作室改过标题则尊重自定义）
@@ -7244,19 +6213,8 @@ export class YukiApp extends LitElement {
     const sortLinked =
       variant === 'minimal' && (rawTitle === '' || Object.values(sortTitles).includes(rawTitle));
     const title = sortLinked ? sortTitles[this.feedSort] : rawTitle;
-    const background = this.mediaLibrary.find(
-      (media) => media.id === String(node.props.backgroundMediaId ?? ''),
-    );
     return html`
-      <header
-        class="${base} masthead masthead-${variant}${background ? ' has-bg' : ''}"
-        style=${background
-          ? styleMap({ backgroundImage: `url("${background.url}")` })
-          : nothing}
-        data-label="文字刊头"
-        data-node-id="${node.id}"
-        @click=${click}
-      >
+      <header class="node node-masthead masthead masthead-${variant}" data-part="masthead">
         <p class="kicker">${String(node.props.kicker ?? 'YukiLog · Vol. 01')}</p>
         <h1>${keyed(title, html`<span class="sort-title-anim">${title}</span>`)}</h1>
         ${sortLinked
@@ -7275,15 +6233,13 @@ export class YukiApp extends LitElement {
                     @click=${(event: Event) => {
                       event.stopPropagation();
                       this.feedSort = value;
-                      if (!this.studio && !this.previewOnly) {
-                        this.store.loadHomeFeed(value);
-                        if (window.location.pathname === '/') {
-                          window.history.replaceState(
-                            null,
-                            '',
-                            value === 'featured' ? '/' : `/?sort=${value}`,
-                          );
-                        }
+                      this.store.loadHomeFeed(value);
+                      if (window.location.pathname === '/') {
+                        window.history.replaceState(
+                          null,
+                          '',
+                          value === 'featured' ? '/' : `/?sort=${value}`,
+                        );
                       }
                       this.requestUpdate();
                     }}
@@ -7298,7 +6254,7 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private renderTextBlock(node: LayoutNode, base: string, click: (event: Event) => void) {
+  private renderTextBlock(node: HomeNode) {
     const source = String(node.props.source ?? 'literal');
     const text =
       {
@@ -7310,28 +6266,21 @@ export class YukiApp extends LitElement {
     const variant = String(node.props.variant ?? 'body');
     return html`
       <div
-        class="${base} primitive-text text-${variant} text-${String(
+        class="node node-text-block primitive-text text-${variant} text-${String(
           node.props.alignment ?? 'left',
         )}"
-        data-label="文字块"
-        @click=${click}
       >
         ${text}
       </div>
     `;
   }
 
-  private renderProfile(node: LayoutNode, base: string, click: (event: Event) => void) {
+  private renderProfile(node: HomeNode) {
     const flipped = this.flippedProfiles.has(node.id);
     const variant = String(node.props.variant ?? 'portrait');
     const canFlip = node.props.flip !== false;
     return html`
-      <section
-        class="${base} profile-card profile-${variant}"
-        data-label="双面个人卡"
-        data-node-id="${node.id}"
-        @click=${click}
-      >
+      <section class="node node-profile-card profile-card profile-${variant}">
         <button
           class="profile-button"
           aria-label="翻转个人卡片"
@@ -7368,27 +6317,20 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private renderArticleFeed(node: LayoutNode, base: string, click: (event: Event) => void) {
+  private renderArticleFeed(node: HomeNode) {
     const variant = String(node.props.variant ?? 'compact');
     const fields = new Set((node.props.fields as ArticleField[]) ?? []);
     const limit = Math.max(1, Number(node.props.limit ?? 5));
     const sort = this.feedSort;
-    const feedSlice = this.previewOnly ? null : this.store.homeFeed(sort);
-    const items = this.previewOnly
-      ? previewArticles
-      : (feedSlice?.data?.items ?? []);
-    const total = this.previewOnly ? previewArticles.length : (feedSlice?.data?.total ?? 0);
+    const feedSlice = this.store.homeFeed(sort);
+    const items = feedSlice?.data?.items ?? [];
+    const total = feedSlice?.data?.total ?? 0;
     return html`
-      <section
-        class="${base} article-feed feed-${variant}"
-        data-label="文章列表 · ${variant}"
-        data-node-id="${node.id}"
-        @click=${click}
-      >
-        ${!this.previewOnly && (feedSlice?.status === 'idle' || feedSlice?.status === 'loading')
+      <section class="node node-article-feed article-feed feed-${variant}" data-part="article-feed">
+        ${feedSlice?.status === 'idle' || feedSlice?.status === 'loading'
           ? this.skeletonFeed(Math.min(3, limit))
           : nothing}
-        ${!this.previewOnly && feedSlice?.status === 'error'
+        ${feedSlice?.status === 'error'
           ? this.renderLoadError(feedSlice.error, () => this.store.loadHomeFeed(sort, true))
           : nothing}
         ${items.slice(0, limit).map(
@@ -7507,7 +6449,7 @@ export class YukiApp extends LitElement {
     const done = this.subscribeDone.has(kind);
     const failed = this.subscribeFailed.has(kind);
     const mailEnabled = this.siteData.mailEnabled;
-    const siteLoading = !this.siteOverride && this.store.site.status === 'loading';
+    const siteLoading = this.store.site.status === 'loading';
     const copy =
       kind === 'articles'
         ? {
@@ -8371,17 +7313,15 @@ export class YukiApp extends LitElement {
   }
 
   private renderSite() {
-    const home = window.location.pathname === '/' || this.previewOnly;
+    const home = window.location.pathname === '/';
     return html`
       <div
-        class="site theme-${this.layout.theme} shell-${this.shell.navigation}${
-          this.previewOnly ? ' is-studio-preview' : ''
-        }"
+        class="site theme-nightflight shell-${this.shell.navigation}"
         style=${styleMap(this.siteThemeStyle())}
       >
-        ${this.studio || this.previewOnly ? nothing : this.renderNavigation()}
+        ${this.renderNavigation()}
         ${home
-          ? html`<div class="page-root">${this.renderNode(this.layout.root)}</div>`
+          ? html`<div class="page-root">${this.renderNode(homeLayout)}</div>`
           : keyed(window.location.pathname, this.renderInnerPage())}
         <footer class="site-footer">
           <span>YUKILOG</span>
@@ -8407,442 +7347,9 @@ export class YukiApp extends LitElement {
     `;
   }
 
-  private renderPalette() {
-    const groups = ['layout', 'content', 'decoration'] as const;
-    return html`
-      <aside class="studio-panel left">
-        <h2>组件库</h2>
-        ${groups.map(
-          (group) => html`
-            <section class="palette-group">
-              <h3>${group}</h3>
-              ${Object.values(componentRegistry)
-                .filter((definition) => definition.group === group)
-                .map(
-                  (definition) => html`
-                    <button
-                      class="palette-item${this.draggingComponentType === definition.type
-                        ? ' dragging'
-                        : ''}"
-                      draggable="true"
-                      @dragstart=${(event: DragEvent) =>
-                        this.beginComponentDrag(definition.type, event)}
-                      @dragend=${this.endNodeDrag}
-                      @click=${() => this.addComponent(definition.type)}
-                      title="拖入组件树，或点击加入当前容器"
-                    >
-                      <span aria-hidden="true">⠿</span> ${definition.label}
-                    </button>
-                  `,
-                )}
-            </section>
-          `,
-        )}
-      </aside>
-    `;
-  }
-
-  private renderTreeNode(node: LayoutNode, depth = 0): unknown {
-    const selected = node.id === this.selectedNodeId;
-    const movable = node.id !== this.layout.root.id;
-    const positions =
-      this.draggingNodeId || this.draggingComponentType
-        ? this.allowedDropPositions(node.id)
-        : [];
-    const isDropTarget = (position: DropPosition) =>
-      this.dropTarget?.nodeId === node.id && this.dropTarget.position === position;
-    const dropLine = (position: 'before' | 'after') =>
-      positions.includes(position)
-        ? html`
-            <div
-              class="tree-drop-line${isDropTarget(position) ? ' active' : ''}"
-              data-position=${position}
-              @dragover=${(event: DragEvent) =>
-                this.activateDropTarget(node.id, position, event)}
-              @drop=${(event: DragEvent) => this.dropNode(node.id, position, event)}
-            >
-              <span>${position === 'before' ? '插入之前' : '插入之后'}</span>
-            </div>
-          `
-        : nothing;
-    return html`
-      <div class="tree-node" role="treeitem" aria-level=${depth + 1} aria-selected=${selected}>
-        ${dropLine('before')}
-        <div
-          class="tree-row${this.draggingNodeId === node.id ? ' dragging' : ''}${
-            isDropTarget('inside') ? ' drop-inside' : ''
-          }"
-          @dragover=${(event: DragEvent) => {
-            if (positions.includes('inside')) this.activateDropTarget(node.id, 'inside', event);
-          }}
-          @drop=${(event: DragEvent) => {
-            if (positions.includes('inside')) this.dropNode(node.id, 'inside', event);
-          }}
-        >
-          ${movable
-            ? html`
-                <span
-                  class="drag-handle"
-                  draggable="true"
-                  role="button"
-                  tabindex="0"
-                  aria-label="拖动 ${componentRegistry[node.type].label}"
-                  @dragstart=${(event: DragEvent) => this.beginNodeDrag(node.id, event)}
-                  @dragend=${this.endNodeDrag}
-                >
-                  ⠿
-                </span>
-              `
-            : nothing}
-          <button
-            class="tree-item${selected ? ' selected' : ''}"
-            @click=${() => this.selectNode(node.id)}
-          >
-            ${componentRegistry[node.type].label}
-          </button>
-          ${movable
-            ? html`<span class="tree-actions">
-                <button aria-label="上移组件" @click=${() => this.moveSibling(node.id, -1)}>↑</button>
-                <button aria-label="下移组件" @click=${() => this.moveSibling(node.id, 1)}>↓</button>
-              </span>`
-            : nothing}
-          ${isDropTarget('inside') ? html`<span class="inside-label">放入容器</span>` : nothing}
-        </div>
-        ${node.children?.map((child) => this.renderTreeNode(child, depth + 1))}
-        ${dropLine('after')}
-      </div>
-    `;
-  }
-
-  private renderPropertyEditor(node: LayoutNode, name: string, schema: PropertySchema) {
-    const value = node.props[name];
-    const label =
-      name === 'backgroundMediaId' && node.type === 'masthead'
-        ? '刊头背景'
-        : (propertyLabels[name] ?? name);
-
-    if (schema.kind === 'media-image') {
-      const current = this.mediaLibrary.find((media) => media.id === String(value ?? ''));
-      return html`
-        <div class="property-field media-picker">
-          <span>${label}</span>
-          <div class="media-picker-preview">
-            ${current
-              ? html`<img src=${current.url} alt=${current.name} />`
-              : html`<span class="media-picker-empty">未选择背景图</span>`}
-          </div>
-          <select
-            .value=${String(value ?? '')}
-            @change=${(event: Event) => {
-              const mediaId = (event.currentTarget as HTMLSelectElement).value;
-              this.setSelectedProperty(name, mediaId || undefined);
-            }}
-          >
-            <option value="">使用主题默认背景</option>
-            ${this.mediaLibrary.map(
-              (media) => html`<option value=${media.id}>${media.name}</option>`,
-            )}
-          </select>
-          <div class="media-picker-actions">
-            <button
-              type="button"
-              @click=${(event: Event) =>
-                (event.currentTarget as HTMLElement)
-                  .closest('.media-picker')
-                  ?.querySelector<HTMLInputElement>('.media-picker-file')
-                  ?.click()}
-            >
-              上传新图
-            </button>
-            ${value
-              ? html`<button type="button" @click=${() => this.setSelectedProperty(name, undefined)}>
-                  清除背景
-                </button>`
-              : nothing}
-          </div>
-          <input
-            class="media-picker-file"
-            type="file"
-            accept="image/*"
-            style="display: none"
-            @change=${this.requestMediaUpload}
-          />
-          ${this.mediaLibrary.length === 0
-            ? html`<small class="property-help">媒体库还没有图片，可以直接「上传新图」。</small>`
-            : nothing}
-        </div>
-      `;
-    }
-
-    if (schema.kind === 'boolean') {
-      return html`
-        <label class="property-toggle">
-          <input
-            type="checkbox"
-            .checked=${value === true}
-            @change=${(event: Event) =>
-              this.setSelectedProperty(name, (event.currentTarget as HTMLInputElement).checked)}
-          />
-          <span>${label}</span>
-        </label>
-      `;
-    }
-
-    if (schema.kind === 'integer') {
-      return html`
-        <label class="property-field">
-          <span>${label}</span>
-          <input
-            type="number"
-            min=${schema.minimum}
-            max=${schema.maximum}
-            .value=${String(value ?? schema.minimum)}
-            @change=${(event: Event) =>
-              this.setSelectedProperty(
-                name,
-                Number((event.currentTarget as HTMLInputElement).value),
-              )}
-          />
-        </label>
-      `;
-    }
-
-    if (schema.kind === 'string-array') {
-      const selected = new Set(Array.isArray(value) ? (value as string[]) : []);
-      return html`
-        <fieldset class="property-options">
-          <legend>${label}</legend>
-          <div class="segmented">
-            ${schema.values.map(
-              (option) => html`
-                <button
-                  type="button"
-                  aria-pressed=${selected.has(option)}
-                  @click=${() => this.toggleArrayProperty(name, option)}
-                >
-                  ${option}
-                </button>
-              `,
-            )}
-          </div>
-        </fieldset>
-      `;
-    }
-
-    if (schema.values) {
-      return html`
-        <label class="property-field">
-          <span>${label}</span>
-          <select
-            .value=${String(value ?? schema.values[0] ?? '')}
-            @change=${(event: Event) =>
-              this.setSelectedProperty(name, (event.currentTarget as HTMLSelectElement).value)}
-          >
-            ${schema.values.map((option) => html`<option value=${option}>${option}</option>`)}
-          </select>
-        </label>
-      `;
-    }
-
-    const control =
-      (schema.maxLength ?? 0) > 160
-        ? html`
-            <textarea
-              maxlength=${schema.maxLength ?? 500}
-              .value=${String(value ?? '')}
-              @change=${(event: Event) =>
-                this.setSelectedProperty(name, (event.currentTarget as HTMLTextAreaElement).value)}
-            ></textarea>
-          `
-        : html`
-            <input
-              type="text"
-              maxlength=${schema.maxLength ?? 500}
-              .value=${String(value ?? '')}
-              @change=${(event: Event) =>
-                this.setSelectedProperty(name, (event.currentTarget as HTMLInputElement).value)}
-            />
-          `;
-    return html`<label class="property-field"><span>${label}</span>${control}</label>`;
-  }
-
-  private renderMoveControls(selected: LayoutNode) {
-    if (selected.id === this.layout.root.id) return nothing;
-    const targets = flattenLayout(this.layout.root).filter(
-      (node) => validDropPositions(this.layout.root, selected.id, node.id).length > 0,
-    );
-    if (targets.length === 0) return nothing;
-    const targetId = targets.some((node) => node.id === this.moveTargetId)
-      ? this.moveTargetId!
-      : targets[0].id;
-    const positions = validDropPositions(this.layout.root, selected.id, targetId);
-
-    return html`
-      <section class="inspector-section">
-        <label class="property-field">
-          <span>移动到</span>
-          <select
-            .value=${targetId}
-            @change=${(event: Event) => {
-              this.moveTargetId = (event.currentTarget as HTMLSelectElement).value;
-              this.requestUpdate();
-            }}
-          >
-            ${targets.map(
-              (target) =>
-                html`<option value=${target.id}>${componentRegistry[target.type].label} · ${target.id}</option>`,
-            )}
-          </select>
-        </label>
-        <div class="move-actions">
-          ${positions.map(
-            (position) => html`
-              <button
-                type="button"
-                @click=${() =>
-                  this.runStudioCommand(() =>
-                    this.studioStore.moveTo(selected.id, targetId, position),
-                  )}
-              >
-                ${position === 'before' ? '放在之前' : position === 'after' ? '放在之后' : '放入内部'}
-              </button>
-            `,
-          )}
-        </div>
-      </section>
-    `;
-  }
-
-  private renderInspector() {
-    const selected =
-      indexLayout(this.layout.root).get(this.selectedNodeId)?.node ?? this.layout.root;
-    const definition = componentRegistry[selected.type];
-    const errors = validateLayout(this.layout);
-    const fields = definition.configurableFields ?? [];
-
-    return html`
-      <aside class="studio-panel right">
-        <div class="studio-history">
-          <button
-            type="button"
-            ?disabled=${!this.studioStore.canUndo}
-            @click=${this.undoStudio}
-            title="撤销（Ctrl/⌘ Z）"
-          >
-            撤销
-          </button>
-          <button
-            type="button"
-            ?disabled=${!this.studioStore.canRedo}
-            @click=${this.redoStudio}
-            title="重做（Ctrl/⌘ Shift Z）"
-          >
-            重做
-          </button>
-        </div>
-        <p class="sr-only" aria-live="polite">${this.studioAnnouncement}</p>
-
-        <h2>属性 · ${definition.label}</h2>
-        <section class="inspector-section property-list">
-          ${fields.length > 0
-            ? fields.map((name) =>
-                this.renderPropertyEditor(selected, name, definition.properties[name]),
-              )
-            : html`<p class="tree-help">该组件没有可编辑属性。</p>`}
-        </section>
-
-        ${this.renderMoveControls(selected)}
-        <section class="inspector-section">
-          <button
-            class="inspector-button danger"
-            ?disabled=${selected.id === this.layout.root.id}
-            @click=${this.removeSelected}
-          >
-            删除所选组件
-          </button>
-        </section>
-
-        <h2>页面结构</h2>
-        <div class="inspector-section">
-          <p class="tree-help">
-            从 ⠿ 拖动组件；蓝色横线是插入位置，蓝色边框表示放入容器。也可在上方使用移动按钮。
-          </p>
-          <div role="tree" aria-label="页面组件树">${this.renderTreeNode(this.layout.root)}</div>
-        </div>
-
-        <section class="inspector-section">
-          <div class="validation-ok">
-            ${errors.length === 0 ? '布局 schema 校验通过' : errors.join('；')}
-          </div>
-        </section>
-        <details>
-          <summary>查看布局 JSON</summary>
-          <pre class="layout-json">${JSON.stringify(this.layout, null, 2)}</pre>
-        </details>
-      </aside>
-    `;
-  }
-
-  private renderStudio() {
-    return html`
-      <div class="studio-shell">
-        ${this.renderPalette()}
-        <main class="studio-canvas">
-          <header class="studio-canvas-toolbar">
-            <strong>实时画布</strong>
-            <div class="viewport-switcher" aria-label="预览宽度">
-              ${(['desktop', 'tablet', 'mobile'] as const).map(
-                (viewport) => html`
-                  <button
-                    type="button"
-                    aria-pressed=${this.studioViewport === viewport}
-                    @click=${() => {
-                      this.studioViewport = viewport;
-                      this.requestUpdate();
-                    }}
-                  >
-                    ${viewport === 'desktop' ? '桌面' : viewport === 'tablet' ? '平板' : '手机'}
-                  </button>
-                `,
-              )}
-            </div>
-          </header>
-          <div class="studio-canvas-stage">
-            <iframe
-              class="studio-preview viewport-${this.studioViewport}"
-              title="公开页面实时预览"
-              src="/?preview=1"
-              @load=${this.syncStudioPreview}
-            ></iframe>
-          </div>
-        </main>
-        ${this.renderInspector()}
-      </div>
-    `;
-  }
-
   protected render() {
-    if (this.previewOnly) return this.renderSite();
     return html`
-      ${this.studio || this.labVisible
-        ? html`
-            <nav class="lab-bar" aria-label="布局实验室">
-              <span class="lab-title">夜航主题预览</span>
-              <span class="lab-spacer"></span>
-              <button
-                class="mode-button"
-                aria-pressed=${this.studio}
-                @click=${() => {
-                  this.studio = !this.studio;
-                  this.requestUpdate();
-                }}
-              >
-                ${this.studio ? '返回页面' : '布局工作室'}
-              </button>
-            </nav>
-          `
-        : nothing}
-      ${this.studio ? this.renderStudio() : this.renderSite()}
+      ${this.renderSite()}
       ${this.renderSplash()}
       ${this.renderLightbox()}
     `;

@@ -15,7 +15,7 @@ use tower_http::{
 use crate::AppState;
 
 pub fn router(state: AppState) -> Router {
-    use crate::content::{admin, design, overview, public, public_api, settings};
+    use crate::content::{admin, overview, public, public_api, settings};
 
     let media_files = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::overriding(
@@ -166,11 +166,6 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/media/{id}",
             axum::routing::delete(crate::ops::media::delete),
-        )
-        .route("/api/admin/layouts", get(design::list_layouts))
-        .route(
-            "/api/admin/layouts/{page_key}",
-            get(design::get_layout).put(design::put_layout),
         )
         .route(
             "/api/admin/settings",

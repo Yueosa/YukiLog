@@ -1,4 +1,4 @@
-import type { PageLayoutDocument, ShellLayout } from '../layout/types.js';
+import type { ShellLayout } from '../shared/shell.js';
 
 export type Admin = {
   id: string;
@@ -94,12 +94,6 @@ export type MediaAsset = {
   height: number | null;
 };
 
-export type LayoutRecord = {
-  pageKey: string;
-  layout: PageLayoutDocument;
-  updatedAt: string;
-};
-
 export type ThemeTokens = {
   schemaVersion: 1;
   colors: {
@@ -135,6 +129,11 @@ export type ThemeTokens = {
 export type HeroBackgroundSetting =
   | string
   | { mediaId: string; position: string; size?: string | null };
+
+/** 取首屏背景项的媒体 id（兼容纯 id 与焦点对象）。 */
+export function heroMediaIdOf(item: HeroBackgroundSetting): string {
+  return typeof item === 'string' ? item : item.mediaId;
+}
 
 export type SiteSettings = {
   siteTitle: string;

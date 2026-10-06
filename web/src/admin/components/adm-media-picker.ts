@@ -2,8 +2,8 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { property, state } from 'lit/decorators.js';
 import { store } from '../store.js';
 import { mediaPickerLabel, mediaPickerModalLabel } from '../labels.js';
-import type { LayoutNode } from '../../layout/types.js';
 import type { MediaAsset } from '../types.js';
+import { heroMediaIdOf } from '../types.js';
 import './adm-upload.js';
 import './adm-empty.js';
 
@@ -245,21 +245,14 @@ export class AdmMediaPicker extends LitElement {
     }
   }
 
-  private nodeUsesMedia(node: LayoutNode, item: MediaAsset): boolean {
-    const props = JSON.stringify(node.props);
-    if (props.includes(item.url) || props.includes(item.id)) return true;
-    return (node.children ?? []).some((child) => this.nodeUsesMedia(child, item));
-  }
-
   private groupOf(item: MediaAsset): GroupKey {
     if (
       store.settings.avatarMediaId === item.id ||
       store.settings.mastheadMediaId === item.id ||
-      (store.settings.heroBackgroundMediaIds ?? []).includes(item.id)
+      (store.settings.heroBackgroundMediaIds ?? []).some((hero) => heroMediaIdOf(hero) === item.id)
     ) {
       return 'site';
     }
-    if (store.layouts.some((record) => this.nodeUsesMedia(record.layout.root, item))) return 'site';
     if (store.articles.some((article) => article.cover_media_id === item.id)) return 'article-cover';
     if (store.dynamics.some((dynamic) => dynamic.media.some((media) => media.id === item.id))) return 'dynamic';
     return 'unused';

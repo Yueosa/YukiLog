@@ -3,8 +3,8 @@ import { property, state } from 'lit/decorators.js';
 import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
 import { formatBytes } from '../labels.js';
-import type { LayoutNode } from '../../layout/types.js';
 import type { MediaAsset } from '../types.js';
+import { heroMediaIdOf } from '../types.js';
 
 type MediaGroup = { key: string; title: string; items: MediaAsset[] };
 
@@ -175,24 +175,8 @@ export class AdmMedia extends AdmView {
 
   private siteUsageOf(item: MediaAsset): string | null {
     if (this.store.settings.avatarMediaId === item.id) return '站点头像';
-    if ((this.store.settings.heroBackgroundMediaIds ?? []).includes(item.id)) return '首屏背景';
+    if ((this.store.settings.heroBackgroundMediaIds ?? []).some((hero) => heroMediaIdOf(hero) === item.id)) return '首屏背景';
     if (this.store.settings.mastheadMediaId === item.id) return '刊头背景';
-    for (const record of this.store.layouts) {
-      const usage = this.nodeUsage(record.layout.root, item);
-      if (usage === 'hero') return '首屏背景';
-      if (usage === 'masthead') return '刊头背景';
-      if (usage) return '站点资源';
-    }
-    return null;
-  }
-
-  private nodeUsage(node: LayoutNode, item: MediaAsset): string | null {
-    const props = JSON.stringify(node.props);
-    if (props.includes(item.url) || props.includes(item.id)) return node.type;
-    for (const child of node.children ?? []) {
-      const usage = this.nodeUsage(child, item);
-      if (usage) return usage;
-    }
     return null;
   }
 

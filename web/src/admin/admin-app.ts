@@ -13,7 +13,6 @@ import './views/comments.js';
 import './views/media.js';
 import './views/friends.js';
 import './views/settings.js';
-import './views/studio.js';
 import './views/notifications.js';
 import './views/subscriptions.js';
 
@@ -28,7 +27,6 @@ type Route =
   | { name: 'media' }
   | { name: 'friends' }
   | { name: 'settings' }
-  | { name: 'studio' }
   | { name: 'notifications' }
   | { name: 'subscriptions' };
 
@@ -41,7 +39,6 @@ const NAV: Array<{ key: string; label: string; href: string; icon: string }> = [
   { key: 'media', label: '媒体', href: '#/media', icon: 'M4 5h16v14H4V5Zm4 5a2 2 0 1 0 0-.01M4 17l5-4 4 3 3-2 4 3' },
   { key: 'friends', label: '友链', href: '#/friends', icon: 'M10 14a5 5 0 0 0 7.1 0l2.1-2.1a5 5 0 0 0-7-7.1l-1.5 1.5M14 10a5 5 0 0 0-7.1 0l-2.1 2.1a5 5 0 0 0 7 7.1l1.5-1.5' },
   { key: 'settings', label: '站点设置', href: '#/settings', icon: 'M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm8-3.5a8 8 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a8 8 0 0 0-2-1.2L15 3h-4l-.5 2.6a8 8 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a8 8 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a8 8 0 0 0 2 1.2L11 21h4l.5-2.6a8 8 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6a8 8 0 0 0 .1-1.2Z' },
-  { key: 'studio', label: '布局工作室', href: '#/studio', icon: 'M4 4h7v7H4V4Zm9 0h7v4h-7V4Zm0 6h7v10h-7V10ZM4 13h7v7H4v-7Z' },
   { key: 'notifications', label: '消息', href: '#/notifications', icon: 'M18 9a6 6 0 1 0-12 0c0 6-2.5 7-2.5 7h17S18 15 18 9Zm-8.3 10a2.5 2.5 0 0 0 4.6 0' },
   { key: 'subscriptions', label: '订阅与投递', href: '#/subscriptions', icon: 'M4 5h16v14H4V5Zm0 1 8 6 8-6' },
 ];
@@ -67,7 +64,6 @@ function parseHash(): Route {
     case 'media': return { name: 'media' };
     case 'friends': return { name: 'friends' };
     case 'settings': return { name: 'settings' };
-    case 'studio': case 'layouts': return { name: 'studio' };
     case 'notifications': return { name: 'notifications' };
     case 'subscriptions': return { name: 'subscriptions' };
     default: return { name: 'dashboard' };
@@ -406,7 +402,6 @@ export class YukiAdmin extends LitElement {
       case 'media': return html`<adm-media .store=${store}></adm-media>`;
       case 'friends': return html`<adm-friends .store=${store}></adm-friends>`;
       case 'settings': return html`<adm-settings .store=${store}></adm-settings>`;
-      case 'studio': return html`<adm-studio .store=${store}></adm-studio>`;
       case 'notifications': return html`<adm-notifications .store=${store}></adm-notifications>`;
       case 'subscriptions': return html`<adm-subscriptions .store=${store}></adm-subscriptions>`;
     }

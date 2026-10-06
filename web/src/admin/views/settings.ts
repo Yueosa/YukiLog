@@ -4,7 +4,7 @@ import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
 import { fontLabel, heroBackgroundLabel, maxWidthLabel, mediaPickerLabel, motionLabel } from '../labels.js';
 import type { HeroBackgroundSetting, SiteSettings, ThemeTokens } from '../types.js';
-import type { LayoutNode, NavigationVariant, ShellLayout } from '../../layout/types.js';
+import type { NavigationVariant, ShellLayout } from '../../shared/shell.js';
 
 const colorFields: Array<{ key: keyof ThemeTokens['colors']; label: string }> = [
   { key: 'background', label: '页面背景' },
@@ -537,23 +537,6 @@ export class AdmSettings extends AdmView {
     `;
   }
 
-  private findNode(node: LayoutNode, match: (node: LayoutNode) => boolean): LayoutNode | null {
-    if (match(node)) return node;
-    for (const child of node.children ?? []) {
-      const found = this.findNode(child, match);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  /** 旧版单图背景（布局 hero 节点 backgroundMediaId），仅用于迁移提示。 */
-  private legacyHeroBackground(): string | null {
-    const record = this.store.layouts.find((item) => item.pageKey === 'home');
-    const hero = record ? this.findNode(record.layout.root, (node) => node.type === 'hero') : null;
-    const value = hero?.props.backgroundMediaId;
-    return typeof value === 'string' ? value : null;
-  }
-
   @state() private focalTarget: {
     index: number;
     url: string;
@@ -649,7 +632,6 @@ export class AdmSettings extends AdmView {
 
   private renderHeroBackground(draft: SiteSettings) {
     const ids = draft.heroBackgroundMediaIds ?? [];
-    const legacy = this.legacyHeroBackground();
     return html`
       <section class="panel">
         <h2 class="panel-title">
@@ -709,7 +691,6 @@ export class AdmSettings extends AdmView {
               </button>`
             : nothing}
         </div>
-        ${!ids.length && legacy ? html`<p class="note">${heroBackgroundLabel.migration}</p>` : nothing}
         <p class="note">${heroBackgroundLabel.note}</p>
         <div class="grid">
           <label class="field">

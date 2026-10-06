@@ -10,13 +10,12 @@ use crate::{
     AppState,
     entities::{article_metrics, articles, dynamics, friend_links},
     error::AppError,
-    layout::ComponentType,
 };
 
 use super::{
-    ArticleFilter, ArticleSort, HOME_ARTICLE_LIMIT, HOME_DYNAMIC_LIMIT, HomeStats,
-    components::{RenderContext, load_layout_media, render_node},
-    PageMeta, load_articles, load_dynamics, load_layout, load_site, page,
+    ArticleFilter, ArticleSort, HOME_ARTICLE_LIMIT, HOME_DYNAMIC_LIMIT, HomeStats, PageMeta,
+    components::{RenderContext, render_home},
+    load_articles, load_dynamics, load_site, page,
 };
 
 #[derive(Debug, Deserialize)]
@@ -35,7 +34,6 @@ pub async fn home(
         Some(_) => return Err(AppError::InvalidRequest("无效的排序方式")),
     };
     let site = load_site(&state).await?;
-    let layout = load_layout(&state, "home").await?;
     let articles = load_articles(
         &state,
         HOME_ARTICLE_LIMIT,
@@ -47,26 +45,13 @@ pub async fn home(
     .await?;
     let dynamics = load_dynamics(&state, HOME_DYNAMIC_LIMIT).await?;
     let stats = load_home_stats(&state).await?;
-    let media_urls = load_layout_media(&state, &layout.root).await?;
-    let home_content_id = layout
-        .root
-        .children
-        .iter()
-        .find(|node| !matches!(node.component_type, ComponentType::Hero))
-        .map(|node| node.id.as_str())
-        .unwrap_or(layout.root.id.as_str());
-    let content = render_node(
-        &layout.root,
-        &RenderContext {
-            site: &site,
-            articles: &articles,
-            dynamics: &dynamics,
-            stats: &stats,
-            media_urls: &media_urls,
-            home_content_id,
-            sort,
-        },
-    )?;
+    let content = render_home(&RenderContext {
+        site: &site,
+        articles: &articles,
+        dynamics: &dynamics,
+        stats: &stats,
+        sort,
+    })?;
     page(&site, &PageMeta::new(&site, "首页", "/"), &content)
 }
 

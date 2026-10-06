@@ -23,10 +23,9 @@ use crate::{
     },
     entities::{
         article_metrics, article_tags, articles, categories, comments, dynamic_media,
-        dynamic_metrics, dynamics, media_assets, page_layouts, site_settings, tags,
+        dynamic_metrics, dynamics, media_assets, site_settings, tags,
     },
     error::AppError,
-    layout::PageLayoutDocument,
     markup,
 };
 
@@ -1329,18 +1328,6 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
     })
 }
 
-async fn load_layout(state: &AppState, key: &str) -> Result<PageLayoutDocument, AppError> {
-    let model = page_layouts::Entity::find_by_id(key)
-        .one(&state.database)
-        .await?
-        .ok_or(AppError::NotConfigured)?;
-    let layout: PageLayoutDocument = serde_json::from_value(model.layout)
-        .map_err(|_| AppError::Internal("decode page layout"))?;
-    layout
-        .validate()
-        .map_err(|_| AppError::Internal("stored page layout failed validation"))?;
-    Ok(layout)
-}
 
 fn apply_article_sort(
     query: Select<articles::Entity>,

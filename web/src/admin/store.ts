@@ -7,7 +7,6 @@ import {
   previewDeliveries,
   previewDynamics,
   previewFriends,
-  previewLayouts,
   previewMedia,
   previewNotificationSettings,
   previewNotifications,
@@ -26,7 +25,6 @@ import type {
   Delivery,
   Dynamic,
   FriendLink,
-  LayoutRecord,
   MediaAsset,
   NotificationSettings,
   SiteSettings,
@@ -100,7 +98,6 @@ export class AdminStore extends EventTarget {
   comments: Comment[] = [];
   media: MediaAsset[] = [];
   friends: FriendLink[] = [];
-  layouts: LayoutRecord[] = [];
   subscribers: Subscriber[] = [];
   deliveries: Delivery[] = [];
   notifications: AdminNotification[] = [];
@@ -211,7 +208,6 @@ export class AdminStore extends EventTarget {
       notificationSettings: previewNotificationSettings,
       settings: structuredClone(previewSettings),
       overview: structuredClone(previewOverview),
-      layouts: previewLayouts,
     });
     this.emit();
   }
@@ -242,7 +238,6 @@ export class AdminStore extends EventTarget {
       comments,
       media,
       friends,
-      layouts,
       subscribers,
       deliveries,
       notifications,
@@ -257,7 +252,6 @@ export class AdminStore extends EventTarget {
       api<Comment[]>('/api/admin/comments'),
       api<MediaAsset[]>('/api/admin/media'),
       api<FriendLink[]>('/api/admin/friend-links'),
-      api<LayoutRecord[]>('/api/admin/layouts'),
       api<Subscriber[]>('/api/admin/subscribers'),
       api<Delivery[]>('/api/admin/deliveries'),
       api<AdminNotification[]>('/api/admin/notifications'),
@@ -269,7 +263,7 @@ export class AdminStore extends EventTarget {
       api<AdminOverview>('/api/admin/overview').catch(() => null),
     ]);
     Object.assign(this, {
-      categories, tags, articles, dynamics, comments, media, friends, layouts,
+      categories, tags, articles, dynamics, comments, media, friends,
       subscribers, deliveries, notifications, notificationSettings, settings, overview,
     });
     this.emit();
@@ -476,13 +470,6 @@ export class AdminStore extends EventTarget {
     await this.run(async () => {
       this.settings = await api('/api/admin/settings', { method: 'PUT', body });
     }, '站点设置已保存');
-  }
-
-  async saveHomeLayout(layout: unknown) {
-    await this.run(async () => {
-      await api('/api/admin/layouts/home', { method: 'PUT', body: layout });
-      this.layouts = await api('/api/admin/layouts');
-    }, '首页布局已保存');
   }
 
   // ---------- 通知 ----------

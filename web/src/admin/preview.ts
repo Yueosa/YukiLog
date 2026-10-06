@@ -8,7 +8,6 @@ import type {
   Delivery,
   Dynamic,
   FriendLink,
-  LayoutRecord,
   MediaAsset,
   NotificationSettings,
   SiteSettings,
@@ -178,35 +177,6 @@ export const previewMedia: MediaAsset[] = [
   },
 ];
 
-export const previewLayouts: LayoutRecord[] = [
-  {
-    pageKey: 'home',
-    updatedAt: now,
-    layout: {
-      schemaVersion: 1,
-      id: 'home',
-      label: '首页',
-      description: '预览用首页布局',
-      root: {
-        id: 'root',
-        type: 'stack',
-        props: {},
-        children: [
-          {
-            id: 'home-hero',
-            type: 'hero',
-            props: { variant: 'cinematic', backgroundMediaId: 'med-3' },
-          },
-          {
-            id: 'home-masthead',
-            type: 'masthead',
-            props: { variant: 'editorial', backgroundMediaId: 'med-4' },
-          },
-        ],
-      },
-    },
-  },
-];
 
 export const previewFriends: FriendLink[] = [
   {

@@ -1,4 +1,4 @@
-import type { ShellLayout } from '../layout/types.js';
+import type { ShellLayout } from '../shared/shell.js';
 
 // 公开站 API 客户端。GET 全部走 /api/public/*（camelCase 契约）；
 // 写操作沿用既有端点（snake_case，与 SSR 公开页脚本同一批接口）。

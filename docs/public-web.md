@@ -29,7 +29,8 @@ JavaScript 也能通过 SSR 版本阅读首页、文章、动态、评论、友�
 以下路由的 SSR 版本（爬虫与 `?ssr=1` 所见）行为如下；人类访客看到的 Lit SPA
 通过 `/api/public/*` 获取同一口径的数据（见 docs/content-api.md）。
 
-- `/`：读取 `page_layouts.home` 并递归渲染注册组件；支持 `?sort=featured|popular|recent`
+- `/`：首页布局为代码固定结构（原布局工作室「夜航」已硬编码，见
+  docs/layout-system.md 的部件清单）；支持 `?sort=featured|popular|recent`
   切换首页文章排序，默认 `featured`，非法值返回 `422`。首屏 hero：背景取站点设置
   的 `hero_background_media_ids` 轮换列表第一张，多于一张时内联脚本每 8 秒淡切
   （`prefers-reduced-motion` 时不启动轮换）；布局节点里的 `backgroundMediaId`
