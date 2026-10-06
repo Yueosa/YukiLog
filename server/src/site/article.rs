@@ -132,6 +132,8 @@ pub async fn article_detail(
     }
     .render()
     .map_err(|_| AppError::Internal("render article"))?;
+    let mut content = content;
+    super::gateway::inject_enhance(&mut content);
     let mut meta = PageMeta::new(&site, &article.title, &format!("/articles/{}", article.slug));
     meta.og_type = "article".to_owned();
     if let Some(summary) = article.summary.as_deref() {

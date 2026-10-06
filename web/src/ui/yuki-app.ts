@@ -898,6 +898,15 @@ export class YukiApp extends LitElement {
     this.scanToc();
     this.observeMomentExtras();
     this.maybeSeedHeroBackgrounds();
+    // 正文增强（KaTeX/mermaid）：仅文章详情与动态页可能有正文标记；
+    // enhanceProse 幂等（处理过的元素带 data-lm-done），重复调用零成本
+    const path = window.location.pathname;
+    if (
+      (path.startsWith('/articles/') || path === '/dynamics') &&
+      this.renderRoot.querySelector('.lm-math:not([data-lm-done]), pre.lm-mermaid:not([data-lm-done])')
+    ) {
+      void import('./enhance.js').then((module) => module.enhanceProse(this.renderRoot));
+    }
     this.classList.toggle('is-intro', this.splashActive && !this.splashDone);
     if (this.pendingScrollRestore !== null) {
       const y = this.pendingScrollRestore;

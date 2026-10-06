@@ -776,7 +776,7 @@ export class AdmSettings extends AdmView {
     const theme = draft.theme;
     return html`
       <details class="panel advanced">
-        <summary class="panel-title">外观主题<span class="adv-hint">（将迁入外观页，点击展开）</span></summary>
+        <summary class="panel-title">外观主题<span class="adv-hint">（高级选项，默认收起）</span></summary>
         <div class="colors">
           ${colorFields.map(
             ({ key, label }) => html`
@@ -885,7 +885,7 @@ export class AdmSettings extends AdmView {
     const shell = draft.shellLayout;
     return html`
       <details class="panel advanced">
-        <summary class="panel-title">导航布局<span class="adv-hint">（将迁入外观页，点击展开）</span></summary>
+        <summary class="panel-title">导航布局<span class="adv-hint">（高级选项，默认收起）</span></summary>
         <div class="grid">
           <label class="field">
             <span>导航形式</span>

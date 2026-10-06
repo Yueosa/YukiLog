@@ -156,7 +156,7 @@ pub async fn dynamic_list(State(state): State<AppState>) -> Result<Html<String>,
     }
     .render()
     .map_err(|_| AppError::Internal("render dynamics"))?;
-    let content = format!(
+    let mut content = format!(
         "{}{timeline}",
         page_head(
             &site,
@@ -166,6 +166,7 @@ pub async fn dynamic_list(State(state): State<AppState>) -> Result<Html<String>,
             false,
         )
     );
+    super::gateway::inject_enhance(&mut content);
     page(&site, &PageMeta::new(&site, "动态", "/dynamics"), &content)
 }
 

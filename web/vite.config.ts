@@ -25,6 +25,8 @@ export default defineConfig(({ command }) => ({
         // 生产环境公开站 SPA 壳（server/src/site/gateway.rs）按这个名字从
         // .vite/manifest.json 里解析入口脚本，直接挂在 <yuki-app> 上。
         'yuki-app': 'src/ui/yuki-app.ts',
+        // 正文增强（KaTeX/mermaid），SSR 文章页按标记注入，Lit 动态 import。
+        enhance: 'src/ui/enhance.ts',
       },
     },
   },

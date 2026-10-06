@@ -222,6 +222,39 @@ fn load_assets(dir: &Path) -> Option<ShellAssets> {
     resolve_assets(&manifest)
 }
 
+static ENHANCE_URL: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// 正文增强包（KaTeX/mermaid）的构建产物 URL；进程生命周期内缓存。
+fn enhance_url() -> Option<&'static str> {
+    ENHANCE_URL
+        .get_or_init(|| {
+            let dir = std::env::var("YUKILOG_WEB_DIR").unwrap_or_else(|_| "admin".to_owned());
+            let manifest =
+                std::fs::read_to_string(Path::new(&dir).join(".vite/manifest.json")).ok()?;
+            let manifest: serde_json::Value = serde_json::from_str(&manifest).ok()?;
+            let entry = manifest.as_object()?.values().find(|entry| {
+                entry.get("name").and_then(serde_json::Value::as_str) == Some("enhance")
+                    || entry.get("src").and_then(serde_json::Value::as_str)
+                        == Some("src/ui/enhance.ts")
+            })?;
+            let file = entry.get("file").and_then(serde_json::Value::as_str)?;
+            Some(format!("/admin/{file}"))
+        })
+        .as_deref()
+}
+
+/// 正文含 KaTeX/mermaid 标记时在页面尾部注入增强加载器（SSR 文章/动态页用）。
+pub(crate) fn inject_enhance(content: &mut String) {
+    if !content.contains("lm-math") && !content.contains("lm-mermaid") {
+        return;
+    }
+    if let Some(url) = enhance_url() {
+        content.push_str(&format!(
+            r#"<script type="module">import("{url}").then((m)=>m.enhanceProse(document))</script>"#
+        ));
+    }
+}
+
 fn resolve_assets(manifest: &str) -> Option<ShellAssets> {
     let manifest: serde_json::Value = serde_json::from_str(manifest).ok()?;
     let entry = manifest.as_object()?.values().find(|entry| {
