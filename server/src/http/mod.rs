@@ -32,7 +32,28 @@ pub fn router(state: AppState) -> Router {
             get(crate::site::gateway::article_detail_page),
         )
         .route("/dynamics", get(crate::site::gateway::dynamic_list_page))
+        // 无 JS 表单回退（SSR 阅读版：纯表单评论与点赞，303 回跳）
+        .route(
+            "/articles/{slug}/comments",
+            post(crate::content::public::article_comment_form),
+        )
+        .route(
+            "/articles/{slug}/like",
+            post(crate::content::public::article_like_form),
+        )
+        .route(
+            "/dynamics/{id}/comments",
+            post(crate::content::public::dynamic_comment_form),
+        )
+        .route(
+            "/dynamics/{id}/like",
+            post(crate::content::public::dynamic_like_form),
+        )
         .route("/friends", get(crate::site::gateway::friend_list_page))
+        .route(
+            "/friends/apply",
+            post(crate::content::public::friend_apply_form),
+        )
         .route("/search", get(crate::site::gateway::search_page))
         .route("/feed.xml", get(crate::ops::feed::all))
         .route("/feeds/articles.xml", get(crate::ops::feed::articles))

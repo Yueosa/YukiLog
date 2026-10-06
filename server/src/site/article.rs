@@ -29,7 +29,7 @@ struct CommentCard {
 
 #[derive(Template)]
 #[template(
-    source = r##"<article class="article-page"><a class="post-back" href="/articles">← 返回</a><header class="post-head" data-reveal><p class="component-kicker">{{ category }}</p><h1>{{ title }}</h1><p class="post-meta"><time>{{ published }}</time></p>{% if summary != "" %}<p class="post-summary">{{ summary }}</p>{% endif %}</header>{% if toc.len() > 1 %}<nav class="post-toc" aria-label="目录"><div class="post-toc-sticky"><p class="post-toc-kicker">目录</p>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</div></nav>{% endif %}{% if cover_url != "" %}<div class="post-cover{{ cover_class }}" style="background-image:url({{ cover_url }});{{ cover_style }}" role="img" aria-label="{{ title }}"></div>{% endif %}{% if toc.len() > 1 %}<details class="post-toc-mobile" data-reveal><summary>目录 · {{ toc.len() }} 节</summary>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</details>{% endif %}<div class="prose">{{ body_html|safe }}</div>{% if !notes.is_empty() %}<aside class="post-notes" aria-label="旁注"><div class="post-notes-sticky"><p class="post-notes-kicker">旁注</p>{% for note in notes %}<div class="post-note" id="{{ note.anchor }}"><span class="post-note-index">{{ note.index }}</span><span class="post-note-body">{{ note.html|safe }}</span></div>{% endfor %}</div></aside>{% endif %}</article><section class="comments" data-reveal><header class="comments-head"><h2>评论</h2><span class="comments-count">{{ comments.len() }} 条</span></header><button class="comment-compose" type="button" aria-expanded="false"><span class="comment-avatar">{{ compose_avatar|safe }}</span><span class="comment-compose-hint">写下你的想法，点这里开始评论…</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><form class="comment-form" data-article-id="{{ article_id }}" hidden><div class="comment-form-grid"><label>昵称<input name="display_name" required maxlength="80" placeholder="怎么称呼你"></label><label>邮箱（选填，会公开展示）<input name="email" type="email" maxlength="254" placeholder="用于头像和公开展示"></label><label>网站（选填）<input name="website" type="url" maxlength="2048" placeholder="https://"></label></div><label class="comment-content">内容<textarea name="content" required rows="4" maxlength="5000" placeholder="想说什么都可以，慢一点也没关系。"></textarea></label><div class="comment-form-foot"><p class="comment-note">评论会在审核后显示；昵称和邮箱会公开展示。</p><div class="comment-form-actions"><button class="comment-cancel" type="button">先不写了</button><button type="submit">寄出评论</button></div></div></form><p class="comment-submitted" hidden>评论已寄出，审核通过后会显示。</p>{% if comments.is_empty() %}<p class="empty">暂时还没有评论。</p>{% else %}<ol class="comment-list">{% for comment in comments %}<li class="comment"><header>{% if comment.avatar_url == "" %}<span class="comment-avatar">{{ comment.fallback_svg|safe }}</span>{% else %}<span class="comment-avatar has-img"><img src="{{ comment.avatar_url }}" alt="" loading="lazy" onerror="this.classList.add('is-broken')">{{ comment.fallback_svg|safe }}</span>{% endif %}<div class="comment-who"><div class="comment-line">{% if comment.website != "" %}<a class="comment-name" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.display_name }}</a>{% else %}<span class="comment-name">{{ comment.display_name }}</span>{% endif %}<time>{{ comment.created }}</time></div><div class="comment-meta">{% if comment.website != "" %}<a class="comment-site" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.host }}</a>{% endif %}{% if comment.email != "" %}<span>{{ comment.email }}</span>{% endif %}{% if comment.agent_label != "" %}<span>{{ comment.agent_label }}</span>{% endif %}</div></div></header><p>{{ comment.content }}</p></li>{% endfor %}</ol>{% endif %}</section>"##,
+    source = r##"<article class="article-page"><a class="post-back" href="/articles">← 返回</a><header class="post-head" data-reveal><p class="component-kicker">{{ category }}</p><h1>{{ title }}</h1><p class="post-meta"><time>{{ published }}</time></p>{% if summary != "" %}<p class="post-summary">{{ summary }}</p>{% endif %}</header>{% if toc.len() > 1 %}<nav class="post-toc" aria-label="目录"><div class="post-toc-sticky"><p class="post-toc-kicker">目录</p>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</div></nav>{% endif %}{% if cover_url != "" %}<div class="post-cover{{ cover_class }}" style="background-image:url({{ cover_url }});{{ cover_style }}" role="img" aria-label="{{ title }}"></div>{% endif %}{% if toc.len() > 1 %}<details class="post-toc-mobile" data-reveal><summary>目录 · {{ toc.len() }} 节</summary>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</details>{% endif %}<div class="prose">{{ body_html|safe }}</div>{% if !notes.is_empty() %}<aside class="post-notes" aria-label="旁注"><div class="post-notes-sticky"><p class="post-notes-kicker">旁注</p>{% for note in notes %}<div class="post-note" id="{{ note.anchor }}"><span class="post-note-index">{{ note.index }}</span><span class="post-note-body">{{ note.html|safe }}</span></div>{% endfor %}</div></aside>{% endif %}</article><section class="comments" data-reveal><header class="comments-head"><h2>评论</h2><span class="comments-count">{{ comments.len() }} 条</span></header>{% if comment_sent %}<p class="comment-submitted">评论已寄出，审核通过后会显示。</p>{% endif %}<form class="comment-form" method="post" action="/articles/{{ slug }}/comments"><div class="comment-form-grid"><label>昵称<input name="display_name" required maxlength="80" placeholder="怎么称呼你"></label><label>邮箱（选填，会公开展示）<input name="email" type="email" maxlength="254" placeholder="用于头像和公开展示"></label><label>网站（选填）<input name="website" type="url" maxlength="2048" placeholder="https://"></label></div><label class="comment-content">内容<textarea name="content" required rows="4" maxlength="5000" placeholder="想说什么都可以，慢一点也没关系。"></textarea></label><div class="comment-form-foot"><p class="comment-note">评论会在审核后显示；昵称和邮箱会公开展示。</p><div class="comment-form-actions"><button type="submit">寄出评论</button></div></div></form>{% if comments.is_empty() %}<p class="empty">暂时还没有评论。</p>{% else %}<ol class="comment-list">{% for comment in comments %}<li class="comment"><header>{% if comment.avatar_url == "" %}<span class="comment-avatar">{{ comment.fallback_svg|safe }}</span>{% else %}<span class="comment-avatar has-img"><img src="{{ comment.avatar_url }}" alt="" loading="lazy" onerror="this.classList.add('is-broken')">{{ comment.fallback_svg|safe }}</span>{% endif %}<div class="comment-who"><div class="comment-line">{% if comment.website != "" %}<a class="comment-name" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.display_name }}</a>{% else %}<span class="comment-name">{{ comment.display_name }}</span>{% endif %}<time>{{ comment.created }}</time></div><div class="comment-meta">{% if comment.website != "" %}<a class="comment-site" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.host }}</a>{% endif %}{% if comment.email != "" %}<span>{{ comment.email }}</span>{% endif %}{% if comment.agent_label != "" %}<span>{{ comment.agent_label }}</span>{% endif %}</div></div></header><p>{{ comment.content }}</p></li>{% endfor %}</ol>{% endif %}</section>"##,
     ext = "html"
 )]
 struct ArticleDetailTemplate<'a> {
@@ -44,13 +44,15 @@ struct ArticleDetailTemplate<'a> {
     notes: &'a [lianmarkup::Note],
     toc: &'a [markup::Heading],
     comments: &'a [CommentCard],
-    article_id: &'a str,
+    slug: &'a str,
+    comment_sent: bool,
     compose_avatar: &'a str,
 }
 
 pub async fn article_detail(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Result<Html<String>, AppError> {
     let site = load_site(&state).await?;
     let article = articles::Entity::find()
@@ -114,7 +116,6 @@ pub async fn article_detail(
             .published_at
             .expect("published article has timestamp"),
     );
-    let article_id = article.id.to_string();
     let content = ArticleDetailTemplate {
         title: &article.title,
         category: &category.name,
@@ -127,7 +128,10 @@ pub async fn article_detail(
         notes: &rendered.notes,
         toc: &rendered.headings,
         comments: &comment_cards,
-        article_id: &article_id,
+        slug: &article.slug,
+        comment_sent: query
+            .as_deref()
+            .is_some_and(|q| q.split('&').any(|pair| pair == "comment=sent")),
         compose_avatar: avatar_fallback("来访者"),
     }
     .render()

@@ -96,9 +96,13 @@ pub async fn article_detail_page(
         .strip_prefix("/articles/")
         .unwrap_or_default()
         .to_owned();
-    Ok(article::article_detail(State(state), AxumPath(slug))
-        .await?
-        .into_response())
+    Ok(article::article_detail(
+        State(state),
+        AxumPath(slug),
+        axum::extract::RawQuery(uri.query().map(str::to_owned)),
+    )
+    .await?
+    .into_response())
 }
 
 pub async fn dynamic_list_page(
@@ -124,7 +128,11 @@ pub async fn friend_list_page(
             return Ok(shell.into_response());
         }
     }
-    Ok(lists::friend_list(State(state)).await?.into_response())
+    Ok(
+        lists::friend_list(State(state), axum::extract::RawQuery(uri.query().map(str::to_owned)))
+            .await?
+            .into_response(),
+    )
 }
 
 pub async fn search_page(

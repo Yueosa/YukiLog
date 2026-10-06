@@ -1,9 +1,10 @@
 use std::{net::SocketAddr, time::Duration};
 
 use axum::{
-    Json,
+    Form, Json,
     extract::{ConnectInfo, Path, State},
     http::{HeaderMap, Uri, header::USER_AGENT},
+    response::Redirect,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -802,4 +803,275 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.len(), 32);
     }
+}
+
+/* ---------- 无 JS 表单回退（SSR 阅读版：评论与点赞不依赖前端脚本） ---------- */
+
+#[derive(Debug, Deserialize)]
+pub struct CommentFormWrite {
+    display_name: String,
+    email: Option<String>,
+    website: Option<String>,
+    content: String,
+    parent_id: Option<sea_orm::prelude::Uuid>,
+}
+
+fn normalize_optional(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let trimmed = value.trim().to_owned();
+        if trimmed.is_empty() { None } else { Some(trimmed) }
+    })
+}
+
+async fn article_by_slug(state: &AppState, slug: &str) -> Result<articles::Model, AppError> {
+    articles::Entity::find()
+        .filter(articles::Column::Slug.eq(slug))
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)
+}
+
+pub async fn article_comment_form(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Form(input): Form<CommentFormWrite>,
+) -> Result<Redirect, AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    let article = article_by_slug(&state, &slug).await?;
+    ensure_article_published(&state, article.id, true).await?;
+    enforce_comment_limit(&state, &headers, peer, article.id).await?;
+    let email = normalize_optional(input.email);
+    let website = normalize_optional(input.website);
+    validate_comment_email(email.as_deref())?;
+    validate_website(website.as_deref())?;
+    let user_agent = capture_user_agent(&headers);
+    let transaction = state.database.begin().await?;
+    ensure_visible_parent(&transaction, input.parent_id, Some(article.id), None).await?;
+    let model = comments::ActiveModel {
+        id: NotSet,
+        article_id: Set(Some(article.id)),
+        dynamic_id: Set(None),
+        parent_id: Set(input.parent_id),
+        display_name: Set(input.display_name),
+        email: Set(email),
+        website: Set(website),
+        content: Set(input.content),
+        user_agent: Set(user_agent),
+        status: Set("pending".to_owned()),
+        created_at: NotSet,
+    }
+    .insert(&transaction)
+    .await?;
+    notifications::create(
+        &transaction,
+        NewNotification {
+            kind: NotificationKind::Comment,
+            article_id: Some(article.id),
+            comment_id: Some(model.id),
+            friend_link_id: None,
+            title: format!("文章收到新评论：{}", article.title),
+            message: excerpt(&model.content, 500),
+            target_url: format!("/articles/{}#comments", article.slug),
+        },
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(Redirect::to(&format!(
+        "/articles/{slug}?comment=sent#comments"
+    )))
+}
+
+pub async fn dynamic_comment_form(
+    State(state): State<AppState>,
+    Path(dynamic_id): Path<sea_orm::prelude::Uuid>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Form(input): Form<CommentFormWrite>,
+) -> Result<Redirect, AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_dynamic_published(&state, dynamic_id, true).await?;
+    enforce_comment_limit(&state, &headers, peer, dynamic_id).await?;
+    let email = normalize_optional(input.email);
+    let website = normalize_optional(input.website);
+    validate_comment_email(email.as_deref())?;
+    validate_website(website.as_deref())?;
+    let user_agent = capture_user_agent(&headers);
+    let transaction = state.database.begin().await?;
+    ensure_visible_parent(&transaction, input.parent_id, None, Some(dynamic_id)).await?;
+    let model = comments::ActiveModel {
+        id: NotSet,
+        article_id: Set(None),
+        dynamic_id: Set(Some(dynamic_id)),
+        parent_id: Set(input.parent_id),
+        display_name: Set(input.display_name),
+        email: Set(email),
+        website: Set(website),
+        content: Set(input.content),
+        user_agent: Set(user_agent),
+        status: Set("pending".to_owned()),
+        created_at: NotSet,
+    }
+    .insert(&transaction)
+    .await?;
+    notifications::create(
+        &transaction,
+        NewNotification {
+            kind: NotificationKind::Comment,
+            article_id: None,
+            comment_id: Some(model.id),
+            friend_link_id: None,
+            title: "动态收到新评论".to_owned(),
+            message: excerpt(&model.content, 500),
+            target_url: format!("/dynamics#dynamic-{dynamic_id}"),
+        },
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(Redirect::to(&format!(
+        "/dynamics?comment=sent#dynamic-{dynamic_id}"
+    )))
+}
+
+pub async fn article_like_form(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(CookieJar, Redirect), AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    let article = article_by_slug(&state, &slug).await?;
+    ensure_article_published(&state, article.id, false).await?;
+    if !state
+        .content
+        .allow(client_ip(&headers, peer), article.id, "like", LIKE_COOLDOWN)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
+    let (jar, visitor_hash) = visitor_identity(&state, jar);
+    let transaction = state.database.begin().await?;
+    let inserted = transaction
+        .query_one(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO article_likes (article_id, visitor_token_hash)
+VALUES ($1, $2)
+ON CONFLICT (article_id, visitor_token_hash) DO NOTHING
+RETURNING article_id
+"#,
+            [article.id.into(), visitor_hash.into()],
+        ))
+        .await?
+        .is_some();
+    if inserted {
+        notifications::create_article_like(&transaction, article.id, &article.slug, &article.title)
+            .await?;
+    }
+    transaction.commit().await?;
+    Ok((jar, Redirect::to(&format!("/articles/{slug}#comments"))))
+}
+
+pub async fn dynamic_like_form(
+    State(state): State<AppState>,
+    Path(dynamic_id): Path<sea_orm::prelude::Uuid>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(CookieJar, Redirect), AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    ensure_dynamic_published(&state, dynamic_id, false).await?;
+    if !state
+        .content
+        .allow(client_ip(&headers, peer), dynamic_id, "like", LIKE_COOLDOWN)
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
+    let (jar, visitor_hash) = visitor_identity(&state, jar);
+    state
+        .database
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO dynamic_likes (dynamic_id, visitor_token_hash)
+VALUES ($1, $2)
+ON CONFLICT (dynamic_id, visitor_token_hash) DO NOTHING
+"#,
+            [dynamic_id.into(), visitor_hash.into()],
+        ))
+        .await?;
+    Ok((jar, Redirect::to(&format!("/dynamics#dynamic-{dynamic_id}"))))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FriendApplyFormWrite {
+    name: String,
+    url: String,
+    email: String,
+    description: Option<String>,
+    avatar_url: Option<String>,
+}
+
+pub async fn friend_apply_form(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    Form(input): Form<FriendApplyFormWrite>,
+) -> Result<Redirect, AppError> {
+    auth::verify_public_origin(&state.auth, &headers)?;
+    validate_friend_link_url(&input.url)?;
+    let avatar_url = normalize_optional(input.avatar_url);
+    if let Some(value) = &avatar_url {
+        validate_friend_link_url(value)?;
+    }
+    let target = stable_rate_key(&input.url);
+    if !state
+        .content
+        .allow(
+            client_ip(&headers, peer),
+            target,
+            "friend-link-application",
+            FRIEND_LINK_COOLDOWN,
+        )
+        .await
+    {
+        return Err(AppError::RateLimited);
+    }
+    let transaction = state.database.begin().await?;
+    let model = friend_links::ActiveModel {
+        id: NotSet,
+        avatar_media_id: Set(None),
+        avatar_url: Set(avatar_url),
+        name: Set(input.name),
+        url: Set(input.url),
+        description: Set(normalize_optional(input.description)),
+        application_email: Set(Some(input.email.trim().to_lowercase())),
+        is_visible: Set(false),
+        sort_order: Set(0),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&transaction)
+    .await?;
+    notifications::create(
+        &transaction,
+        NewNotification {
+            kind: NotificationKind::FriendLinkApplication,
+            article_id: None,
+            comment_id: None,
+            friend_link_id: Some(model.id),
+            title: format!("新的友链申请：{}", model.name),
+            message: model
+                .description
+                .clone()
+                .unwrap_or_else(|| model.url.clone()),
+            target_url: "/admin#friends".to_owned(),
+        },
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(Redirect::to("/friends?applied=1#apply"))
 }

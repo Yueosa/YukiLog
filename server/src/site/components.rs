@@ -257,23 +257,7 @@ fn render_hero(context: &RenderContext<'_>) -> String {
             escape_html(&first_size)
         )
     };
-    if background_urls.len() > 1 {
-        let images: Vec<&str> = background_urls.iter().map(|(url, ..)| url.as_str()).collect();
-        let positions: Vec<Option<&str>> = background_urls
-            .iter()
-            .map(|(_, position, _)| position.as_deref())
-            .collect();
-        let sizes: Vec<Option<&str>> = background_urls
-            .iter()
-            .map(|(_, _, size)| size.as_deref())
-            .collect();
-        let images = serde_json::to_string(&images).unwrap_or_default();
-        let positions = serde_json::to_string(&positions).unwrap_or_default();
-        let sizes = serde_json::to_string(&sizes).unwrap_or_default();
-        background.push_str(&format!(
-            r#"<script>(()=>{{const images={images},positions={positions},sizes={sizes};if(images.length<2)return;try{{if(window.matchMedia('(prefers-reduced-motion: reduce)').matches)return}}catch(_){{}}const base=document.currentScript.previousElementSibling;if(!base||!base.classList.contains('hero-background'))return;base.style.transition='opacity 1.2s ease';let index=0;images.slice(1).forEach((src)=>{{const preload=new Image();preload.src=src}});window.setInterval(()=>{{index=(index+1)%images.length;base.style.opacity='0';window.setTimeout(()=>{{base.style.backgroundImage='url("'+images[index]+'")';base.style.backgroundPosition=positions[index]||'';base.style.backgroundSize=sizes[index]||(positions[index]?'cover':'');base.style.opacity='1'}},1200)}},8000)}})();</script>"#
-        ));
-    }
+    // 书简阅读版：首屏背景只静态展示第一张，不再输出轮换脚本
     let mut socials = String::new();
     let colors = [
         "#6e7f8d", "#e3a0ae", "#7eb6d9", "#8fafc4", "#e8a4b4", "#d6a1ae",
@@ -456,9 +440,9 @@ mod tests {
         site.hero_quote = "语录文本".to_owned();
         let html = render_hero(&context(&site, &[], &[], &stats()));
         assert!(html.contains("background-image:url(&quot;/media/aa/one.png&quot;)"));
-        assert!(html.contains(r#"const images=["/media/aa/one.png","/media/bb/two.png"]"#));
-        assert!(html.contains("},8000)"));
-        assert!(html.contains("prefers-reduced-motion"));
+        // 书简阅读版：静态展示第一张，不输出轮换脚本
+        assert!(!html.contains("},8000)"));
+        assert!(!html.contains("<script>"));
         assert!(html.contains("has-media"));
         assert!(html.contains("<span class=\"quote-text\">语录文本</span>"));
     }
