@@ -4907,6 +4907,7 @@ export class YukiApp extends LitElement {
 
     .apply-form input,
     .apply-form textarea {
+      min-width: 0;
       padding: 11px 14px;
       border: 1px solid var(--line);
       border-radius: 10px;
@@ -5936,6 +5937,10 @@ export class YukiApp extends LitElement {
       }
 
       .comment-form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .apply-form {
         grid-template-columns: 1fr;
       }
 
