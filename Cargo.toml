@@ -1,5 +1,5 @@
 [workspace]
-members = ["migration", "server"]
+members = ["lianmarkup", "migration", "server"]
 resolver = "3"
 
 [workspace.package]

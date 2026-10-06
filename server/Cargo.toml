@@ -18,7 +18,7 @@ imagesize.workspace = true
 infer.workspace = true
 hmac.workspace = true
 lettre.workspace = true
-lianmarkup = { path = "../../LianMarkup" }
+lianmarkup = { path = "../lianmarkup" }
 rand.workspace = true
 reqwest.workspace = true
 rpassword.workspace = true
