@@ -69,10 +69,26 @@ async function renderMermaid(elements: HTMLElement[]): Promise<void> {
       // 做后处理，够不到 shadow root）；render() 内部在 document 里建沙箱，
       // 返回自包含 SVG 字符串，直接塞回 shadow 里
       const { svg } = await mermaid.render(`lm-mermaid-${Date.now()}-${index}`, source);
-      element.innerHTML = svg;
+      element.innerHTML = normalizeMermaidSvg(svg);
       element.dataset.processed = 'true';
     } catch {
       // 渲染失败保留图源码，不打扰阅读
     }
   }
+}
+
+/** 部分图型（时序图等）只给固定像素宽、不给 viewBox：内容不随容器缩放，
+ * 页内和灯箱都会被裁。补 viewBox 并放开宽度，让 SVG 始终可缩放。 */
+function normalizeMermaidSvg(markup: string): string {
+  const doc = new DOMParser().parseFromString(markup, 'image/svg+xml');
+  const svg = doc.documentElement;
+  if (svg.tagName.toLowerCase() !== 'svg') return markup;
+  if (!svg.getAttribute('viewBox')) {
+    const width = parseFloat(svg.getAttribute('width') ?? '') || 800;
+    const height = parseFloat(svg.getAttribute('height') ?? '') || 400;
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('width', '100%');
+    svg.removeAttribute('height');
+  }
+  return new XMLSerializer().serializeToString(svg);
 }

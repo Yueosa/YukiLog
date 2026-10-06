@@ -430,19 +430,21 @@ export class YukiApp extends LitElement {
         return;
       }
     }
-    // mermaid 图表点击进灯箱：序列化内联 SVG 为 data URL 交给现有灯箱。
-    // 复制节点并钉死像素尺寸——渲染态 width=100% 无内在尺寸，
-    // <img> 会按 300×150 默认值缩成小点
+    // mermaid 图表点击进灯箱：复制节点并按 viewBox 钉死尺寸再序列化
+    // （渲染态 width=100% 无内在尺寸，img 会按 300×150 默认值缩成小点）
     const svgNode = path.find(
       (node): node is SVGSVGElement =>
         node instanceof SVGSVGElement && node.closest('pre.lm-mermaid') !== null,
     );
     if (svgNode) {
       const clone = svgNode.cloneNode(true) as SVGSVGElement;
-      const rect = svgNode.getBoundingClientRect();
-      const width = Math.max(Math.round(rect.width * 2), 1200);
+      const viewBox = svgNode.getAttribute('viewBox')?.split(/\s+/).map(Number);
+      const naturalW = viewBox?.length === 4 ? viewBox[2] : svgNode.getBoundingClientRect().width;
+      const naturalH = viewBox?.length === 4 ? viewBox[3] : svgNode.getBoundingClientRect().height;
+      const width = Math.max(Math.round(naturalW * 1.5), 900);
+      clone.setAttribute('viewBox', `0 0 ${naturalW} ${naturalH}`);
       clone.setAttribute('width', String(width));
-      clone.setAttribute('height', 'auto');
+      clone.setAttribute('height', String(Math.round((width * naturalH) / naturalW)));
       clone.setAttribute('style', 'background:#fff');
       const markup = new XMLSerializer().serializeToString(clone);
       this.openLightbox(
@@ -5259,8 +5261,8 @@ export class YukiApp extends LitElement {
 
     .archive-cover {
       display: block;
-      width: 120px;
-      flex: 0 0 120px;
+      width: 148px;
+      flex: 0 0 148px;
       border-radius: 10px;
     }
 
@@ -7209,8 +7211,7 @@ export class YukiApp extends LitElement {
                       src=${article.coverUrl}
                       alt=${`${article.title}的封面`}
                       seed=${article.slug}
-                      ratio="16 / 10"
-                      fit="cover"
+                      adaptive-ratio
                     ></yuki-cover>
                     <p class="archive-summary">${article.summary}</p>
                   </div>
