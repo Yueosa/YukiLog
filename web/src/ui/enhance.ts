@@ -49,9 +49,17 @@ async function renderMermaid(elements: HTMLElement[]): Promise<void> {
     theme: 'neutral',
     fontFamily: 'inherit',
   });
-  try {
-    await mermaid.run({ nodes: elements });
-  } catch {
-    // 渲染失败保留图源码，不打扰阅读
+  for (const [index, element] of elements.entries()) {
+    const source = element.textContent ?? '';
+    try {
+      // mermaid.run 在 shadow DOM 里产出空图（它用 document.getElementById
+      // 做后处理，够不到 shadow root）；render() 内部在 document 里建沙箱，
+      // 返回自包含 SVG 字符串，直接塞回 shadow 里
+      const { svg } = await mermaid.render(`lm-mermaid-${Date.now()}-${index}`, source);
+      element.innerHTML = svg;
+      element.dataset.processed = 'true';
+    } catch {
+      // 渲染失败保留图源码，不打扰阅读
+    }
   }
 }

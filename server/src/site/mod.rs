@@ -546,11 +546,11 @@ struct HomeStats {
     .post-note:target{background:color-mix(in srgb,var(--primary) 8%,transparent);border-radius:8px}
     .post-note-index{flex:none;color:var(--secondary-d);font-family:var(--mono);font-size:11px}
     @media(min-width:1280px){
-      .post-notes{position:absolute;top:0;left:calc(100% + 56px);width:240px;height:100%;margin:0;padding:0 0 0 18px;border-top:0;border-left:1px solid var(--line)}
+      .post-notes{position:absolute;top:0;left:calc(100% + 56px);width:280px;height:100%;margin:0;padding:0 0 0 18px;border-top:0;border-left:1px solid var(--line)}
       .post-notes-sticky{position:sticky;top:110px;max-height:calc(100dvh - 140px);overflow-y:auto}
     }
     @media(min-width:1280px){
-      .post-toc{position:absolute;top:0;right:calc(100% + 56px);display:block;width:220px;height:100%}
+      .post-toc{position:absolute;top:0;right:calc(100% + 56px);display:block;width:260px;height:100%}
       .post-toc-sticky{position:sticky;top:110px;max-height:calc(100dvh - 140px);overflow-y:auto;padding-right:8px;padding-left:16px;border-left:1px solid var(--line);scrollbar-width:thin;scrollbar-color:transparent transparent}
       .post-toc-sticky:hover{scrollbar-color:rgb(28 39 51/22%) transparent}
       .post-toc-sticky::-webkit-scrollbar{width:5px}

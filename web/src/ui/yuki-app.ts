@@ -430,13 +430,21 @@ export class YukiApp extends LitElement {
         return;
       }
     }
-    // mermaid 图表点击进灯箱：序列化内联 SVG 为 data URL 交给现有灯箱
+    // mermaid 图表点击进灯箱：序列化内联 SVG 为 data URL 交给现有灯箱。
+    // 复制节点并钉死像素尺寸——渲染态 width=100% 无内在尺寸，
+    // <img> 会按 300×150 默认值缩成小点
     const svgNode = path.find(
       (node): node is SVGSVGElement =>
         node instanceof SVGSVGElement && node.closest('pre.lm-mermaid') !== null,
     );
     if (svgNode) {
-      const markup = new XMLSerializer().serializeToString(svgNode);
+      const clone = svgNode.cloneNode(true) as SVGSVGElement;
+      const rect = svgNode.getBoundingClientRect();
+      const width = Math.max(Math.round(rect.width * 2), 1200);
+      clone.setAttribute('width', String(width));
+      clone.setAttribute('height', 'auto');
+      clone.setAttribute('style', 'background:#fff');
+      const markup = new XMLSerializer().serializeToString(clone);
       this.openLightbox(
         [`data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`],
         0,
@@ -2931,7 +2939,7 @@ export class YukiApp extends LitElement {
         position: absolute;
         top: 0;
         left: calc(100% + 56px);
-        width: 240px;
+        width: 280px;
         height: 100%;
         margin: 0;
         padding: 0 0 0 18px;
@@ -3303,7 +3311,7 @@ export class YukiApp extends LitElement {
       position: absolute;
       top: 0;
       right: calc(100% + 44px);
-      width: 188px;
+      width: 240px;
       height: 100%;
     }
 
