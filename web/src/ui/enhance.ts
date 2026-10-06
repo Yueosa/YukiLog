@@ -1,6 +1,9 @@
 /** LianMarkup 正文增强：KaTeX 公式与 mermaid 图的客户端渲染。
  * Lit 与 SSR 文章页共用（SSR 在有标记时注入本模块）。katex/mermaid
  * 按需动态加载，不进首包。 */
+import katexCss from 'katex/dist/katex.min.css?inline';
+
+const KATEX_STYLE_ATTR = 'data-katex-css';
 
 /** 渲染 root 内所有未处理的 .lm-math 与 pre.lm-mermaid（幂等，可重复调用）。 */
 export async function enhanceProse(root: ParentNode): Promise<void> {
@@ -13,14 +16,24 @@ export async function enhanceProse(root: ParentNode): Promise<void> {
     element.dataset.lmDone = '1';
   }
   const tasks: Promise<unknown>[] = [];
-  if (maths.length > 0) tasks.push(renderMath(maths));
+  if (maths.length > 0) {
+    // 文档级样式进不了 shadow tree（shadow DOM 封装，只有继承属性和
+    // CSS 变量能穿透），katex 样式必须以 inline 形式注进 shadow root；
+    // SSR（document 树）由 vite preload 注入的 <link> 覆盖，不重复注入
+    if (root instanceof ShadowRoot && !root.querySelector(`style[${KATEX_STYLE_ATTR}]`)) {
+      const style = document.createElement('style');
+      style.setAttribute(KATEX_STYLE_ATTR, '');
+      style.textContent = katexCss;
+      root.prepend(style);
+    }
+    tasks.push(renderMath(maths));
+  }
   if (mermaids.length > 0) tasks.push(renderMermaid(mermaids));
   await Promise.allSettled(tasks);
 }
 
 async function renderMath(elements: HTMLElement[]): Promise<void> {
   const katex = (await import('katex')).default;
-  await import('katex/dist/katex.min.css');
   for (const element of elements) {
     const raw = element.textContent ?? '';
     const displayMode = element.tagName === 'DIV';
