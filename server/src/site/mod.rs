@@ -450,7 +450,7 @@ struct HomeStats {
     .result h3{margin:0;font-family:var(--serif);font-size:20px;font-weight:700}
     .result p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.85}
     .result mark{padding:0 2px;border-radius:2px;background:rgb(232 164 180/40%);color:inherit}
-    .article-page{position:relative;width:min(760px,100%);margin:0 auto}
+    .article-page{position:relative;width:min(840px,100%);margin:0 auto}
     .post-back{display:inline-block;margin-bottom:28px;color:var(--muted);font-size:13px;transition:color 250ms ease}
     .post-back:hover{color:var(--primary-d)}
     .post-head{margin-bottom:36px}
@@ -575,7 +575,7 @@ struct HomeStats {
     .welcome-quote{display:flex;width:100%;align-items:center;flex-direction:column;gap:18px;padding:24px 36px 20px;border:1px solid rgb(255 255 255/8%);border-radius:24px;background:rgb(6 12 22/55%)}
     .quote-mark{display:none}
     .quote-text{font-family:var(--serif);font-size:17px;line-height:1.9;color:rgb(255 255 255/88%);text-align:center}
-    .social-row{display:flex;align-items:center;justify-content:center;gap:18px}
+    .social-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:12px 18px}
     .social-icon{display:grid;width:34px;height:34px;place-items:center;border-radius:50%;transition:filter 300ms cubic-bezier(.22,.61,.36,1),transform 300ms cubic-bezier(.22,.61,.36,1)}
     .social-icon:hover{filter:brightness(1.35);transform:translateY(-2px)}
     .social-icon:hover svg{transform:scale(1.12)}

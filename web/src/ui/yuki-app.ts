@@ -2466,7 +2466,7 @@ export class YukiApp extends LitElement {
     /* 文章详情页 */
     .article-page {
       position: relative;
-      width: min(720px, 100%);
+      width: min(840px, 100%);
       margin: 0 auto;
     }
 
@@ -3789,9 +3789,10 @@ export class YukiApp extends LitElement {
 
     .social-row {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       justify-content: center;
-      gap: 18px;
+      gap: 12px 18px;
     }
 
     .social-icon {
@@ -6831,7 +6832,10 @@ export class YukiApp extends LitElement {
                         type="button"
                         aria-label="取消回复"
                         @click=${() => {
+                          // 回复打开的表单，取消回复时一并收起（多层楼里留着空表单很碍事）
                           this.commentReplyTo = null;
+                          this.commentFormOpen = false;
+                          this.commentError = '';
                           this.requestUpdate();
                         }}
                       >

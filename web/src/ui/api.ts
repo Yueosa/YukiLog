@@ -50,7 +50,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function get<T>(path: string): Promise<T> {
-  return request<T>(path);
+  // 列表/搜索按 IP 有短冷却（300ms/800ms）：交互式切换偶尔踩到限时，
+  // GET 幂等，自动延时重试一次而不是把"尝试次数过多"甩给用户。
+  // 900ms 同时盖过列表与搜索两个冷却窗口。
+  return request<T>(path).catch((error: unknown) => {
+    if (error instanceof ApiError && error.code === 'rate_limited') {
+      return new Promise<T>((resolve, reject) => {
+        window.setTimeout(() => request<T>(path).then(resolve, reject), 900);
+      });
+    }
+    throw error;
+  });
 }
 
 /** 列表字段兜底：响应形状漂移时降级为空列表而不是 undefined（避免骨架屏卡死）。 */
