@@ -49,6 +49,8 @@ struct SiteView {
     brand_text: String,
     /// hero-title 旋钮覆盖后的首屏大文字（默认 = parts::DEFAULT_HERO_TITLE）
     hero_title: String,
+    /// hero-title accent 旋钮覆盖后的高亮字符（默认 = parts::DEFAULT_HERO_ACCENT）
+    hero_accent: String,
     /// 部件旋钮落成的 `--part-*` 声明串（已按白名单+CSS 消毒）
     part_vars: String,
     description: String,
@@ -63,6 +65,7 @@ struct SiteView {
     social_links: Vec<SocialLink>,
     navigation_class: &'static str,
     navigation_options: String,
+    nav_corners_class: &'static str,
     page_width_class: &'static str,
     show_search: bool,
     mail_enabled: bool,
@@ -299,7 +302,10 @@ struct HomeStats {
     .brand{flex-shrink:0;color:inherit;font-size:calc(20px * var(--part-brand-scale,1));font-weight:600;letter-spacing:.14em;white-space:nowrap}
     .nav-corners .brand{justify-self:start;text-transform:uppercase}
     .nav-links{display:flex;min-width:0;align-items:center;flex-wrap:nowrap;gap:4px}
-    .nav-corners .nav-links{justify-self:var(--part-topnav-align,center);gap:26px}
+    .nav-corners .nav-links{justify-self:center;gap:26px}
+    .nav-corners.topnav-align-start,.nav-corners.topnav-align-end{grid-template-columns:auto 1fr auto}
+    .nav-corners.topnav-align-start .nav-links{justify-self:start}
+    .nav-corners.topnav-align-end .nav-links{justify-self:end}
     .nav-corners .nav-actions{justify-self:end}
     .nav-corners .nav-item{padding:4px 0;color:rgb(238 243 248/80%);font-size:12px;font-weight:500;letter-spacing:.18em;transition:color 250ms ease}
     .nav-corners .nav-item:hover,.nav-corners .nav-item.active{color:#fff}
@@ -812,7 +818,7 @@ struct HomeStats {
     </div>
     <span class="prelude-hint">点击或按任意键跳过</span>
   </div>
-  {% if immersive_home %}<div class="nav-corners" id="nav-corners"><a class="brand" href="/">{{ site.brand_text }}</a><div class="nav-links"><a class="nav-item{% if current_section == "home" %} active{% endif %}" href="/"><span class="nav-label">首页</span></a><a class="nav-item{% if current_section == "articles" %} active{% endif %}" href="/articles"><span class="nav-label">文章</span></a><a class="nav-item{% if current_section == "dynamics" %} active{% endif %}" href="/dynamics"><span class="nav-label">动态</span></a><a class="nav-item{% if current_section == "friends" %} active{% endif %}" href="/friends"><span class="nav-label">友链</span></a></div><div class="nav-actions">{% if site.show_search %}<a class="nav-action" href="/search" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></a>{% endif %}<button class="nav-action nav-hamburger menu-toggle" type="button" aria-label="打开菜单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div></div>{% endif %}
+  {% if immersive_home %}<div class="nav-corners{{ site.nav_corners_class }}" id="nav-corners"><a class="brand" href="/">{{ site.brand_text }}</a><div class="nav-links"><a class="nav-item{% if current_section == "home" %} active{% endif %}" href="/"><span class="nav-label">首页</span></a><a class="nav-item{% if current_section == "articles" %} active{% endif %}" href="/articles"><span class="nav-label">文章</span></a><a class="nav-item{% if current_section == "dynamics" %} active{% endif %}" href="/dynamics"><span class="nav-label">动态</span></a><a class="nav-item{% if current_section == "friends" %} active{% endif %}" href="/friends"><span class="nav-label">友链</span></a></div><div class="nav-actions">{% if site.show_search %}<a class="nav-action" href="/search" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></a>{% endif %}<button class="nav-action nav-hamburger menu-toggle" type="button" aria-label="打开菜单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div></div>{% endif %}
   <nav id="site-nav" class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}{% if immersive_home %}{% else %} nav-sticky{% endif %}" aria-label="主导航">
     <a class="brand" href="/">{{ site.brand_text }}</a>
     <div class="nav-links">
@@ -1285,6 +1291,12 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         }
         options
     };
+    // topnav align 旋钮：角导航对齐（居中 = 现状空串）
+    let nav_corners_class = match crate::content::parts::part_text(&settings.theme.parts, "topnav", "align") {
+        Some("start") => " topnav-align-start",
+        Some("end") => " topnav-align-end",
+        _ => "",
+    };
     let page_width_class = match settings.shell_layout.max_width {
         ShellWidth::Content => "width-content",
         ShellWidth::Wide => "width-wide",
@@ -1303,6 +1315,9 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         hero_title: crate::content::parts::part_text(&settings.theme.parts, "hero-title", "text")
             .unwrap_or(crate::content::parts::DEFAULT_HERO_TITLE)
             .to_owned(),
+        hero_accent: crate::content::parts::part_text(&settings.theme.parts, "hero-title", "accent")
+            .unwrap_or(crate::content::parts::DEFAULT_HERO_ACCENT)
+            .to_owned(),
         part_vars: crate::content::parts::part_vars_css(&settings.theme.parts),
         title: settings.site_title,
         description: settings.site_description.unwrap_or_default(),
@@ -1317,6 +1332,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         social_links: settings.social_links,
         navigation_class,
         navigation_options,
+        nav_corners_class,
         page_width_class,
         show_search: settings.shell_layout.show_search,
         mail_enabled: crate::ops::subscriptions::mail_enabled(),
@@ -1777,6 +1793,7 @@ mod tests {
             title: "YukiLog".to_owned(),
             brand_text: "YukiLog".to_owned(),
             hero_title: crate::content::parts::DEFAULT_HERO_TITLE.to_owned(),
+            hero_accent: crate::content::parts::DEFAULT_HERO_ACCENT.to_owned(),
             part_vars: String::new(),
             description: "夜航西飞".to_owned(),
             owner_name: "Sakurine".to_owned(),
@@ -1790,6 +1807,7 @@ mod tests {
             social_links: Vec::new(),
             navigation_class: "topbar",
             navigation_options: String::new(),
+            nav_corners_class: "",
             page_width_class: "width-wide",
             show_search: true,
             mail_enabled: false,

@@ -1400,17 +1400,58 @@ export class YukiApp extends LitElement {
     }
 
     .nav-corners .nav-links {
-      justify-self: var(--part-topnav-align, center);
+      justify-self: center;
       gap: 26px;
     }
 
-    /* topnav display 旋钮：仅图标 / 仅文字（默认 both 不加类） */
+    /* topnav align 旋钮：居中 = 现状（1fr auto 1fr 对称居中）；start/end 时
+       中列改 1fr 让链接盒有对齐空间 */
+    .nav-corners.topnav-align-start,
+    .nav-corners.topnav-align-end {
+      grid-template-columns: auto 1fr auto;
+    }
+
+    .nav-corners.topnav-align-start .nav-links {
+      justify-self: start;
+    }
+
+    .nav-corners.topnav-align-end .nav-links {
+      justify-self: end;
+    }
+
+    /* topnav display 旋钮：仅图标 / 仅文字（默认 both 不加类）。
+       角导航与胶囊顶栏平时隐藏图标（display:none），icons 模式要把它们放出来；
+       容器类提到 0-3-0  specificity，压过后面 .nav-corners/.nav-topbar 的隐藏规则 */
+    .nav-corners.topnav-icons .nav-icon,
+    .nav-topbar.topnav-icons .nav-icon {
+      display: flex;
+    }
+
     .topnav-icons .nav-label {
       display: none;
     }
 
-    .topnav-text .nav-icon {
-      display: none;
+    /* topnav align-mobile 旋钮：移动端胶囊顶栏改停靠（默认居中 = 现状） */
+    @media (max-width: 968px) {
+      .nav-topbar.topnav-mobile-end {
+        right: 14px;
+        left: auto;
+        translate: 0 -12px;
+      }
+
+      .nav-topbar.topnav-mobile-end.nav-sticky {
+        translate: 0 0;
+      }
+
+      .nav-topbar.topnav-mobile-start {
+        right: auto;
+        left: 14px;
+        translate: 0 -12px;
+      }
+
+      .nav-topbar.topnav-mobile-start.nav-sticky {
+        translate: 0 0;
+      }
     }
 
     .nav-corners .nav-actions {
@@ -5733,12 +5774,19 @@ export class YukiApp extends LitElement {
     return this.partText('brand', 'text') ?? this.siteData.siteTitle;
   }
 
-  /** topnav display 旋钮 → 导航容器类名。 */
+  /** topnav display / align 旋钮 → 导航容器类名。 */
   private topnavClass(): string {
     const display = this.partText('topnav', 'display');
-    if (display === 'icons') return ' topnav-icons';
-    if (display === 'text') return ' topnav-text';
-    return '';
+    let klass = '';
+    if (display === 'icons') klass += ' topnav-icons';
+    if (display === 'text') klass += ' topnav-text';
+    const align = this.partText('topnav', 'align');
+    if (align === 'start') klass += ' topnav-align-start';
+    if (align === 'end') klass += ' topnav-align-end';
+    const alignMobile = this.partText('topnav', 'align-mobile');
+    if (alignMobile === 'end') klass += ' topnav-mobile-end';
+    if (alignMobile === 'start') klass += ' topnav-mobile-start';
+    return klass;
   }
 
   /** 站点设置下发的主题 token → CSS 变量。 */
@@ -6096,7 +6144,7 @@ export class YukiApp extends LitElement {
     const variant = String(node.props.variant ?? 'cinematic');
     // hero-title 旋钮优先于布局字面量
     const title = this.partText('hero-title', 'text') ?? String(node.props.title ?? '');
-    const accentChars = new Set(String(node.props.accent ?? ''));
+    const accentChars = new Set(this.partText('hero-title', 'accent') ?? String(node.props.accent ?? ''));
     // 首屏背景来自站点设置的 heroBackgrounds 池（冷进入随机抽一张，
     // 多张时每 8 秒淡切；reduced-motion 只随机不轮播）。
     const heroBackgrounds = this.siteData.heroBackgrounds;

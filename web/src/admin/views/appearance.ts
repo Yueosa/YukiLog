@@ -26,7 +26,15 @@ export class AdmAppearance extends AdmView {
   @state() private selected = '';
   @state() private draft: PartsDraft = {};
   @state() private dirty = false;
+  @state() private previewWidth = 0; // 0 = 全宽
   private source: PartsDraft = {};
+
+  private static readonly VIEWPORTS: Array<{ width: number; label: string }> = [
+    { width: 375, label: '375 手机' },
+    { width: 768, label: '768 平板' },
+    { width: 1280, label: '1280 桌面' },
+    { width: 0, label: '全宽' },
+  ];
 
   static styles = [
     adminTheme,
@@ -190,17 +198,48 @@ export class AdmAppearance extends AdmView {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 10px;
         padding: 8px 12px;
         border-bottom: 1px solid var(--adm-line, #e2e8f0);
         color: var(--adm-muted, #667085);
         font-size: 12px;
       }
 
+      .preview .sizes {
+        display: flex;
+        gap: 4px;
+      }
+
+      .preview .sizes button {
+        padding: 3px 10px;
+        border: 1px solid var(--adm-line, #e2e8f0);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--adm-muted, #667085);
+        font-size: 11.5px;
+        cursor: pointer;
+      }
+
+      .preview .sizes button.on {
+        border-color: var(--adm-primary, #4a93c2);
+        background: var(--adm-primary, #4a93c2);
+        color: #fff;
+      }
+
+      .preview .stage {
+        display: flex;
+        justify-content: center;
+        padding: 10px;
+        background: color-mix(in srgb, var(--adm-line, #e2e8f0) 35%, #fff);
+      }
+
       .preview iframe {
         display: block;
         width: 100%;
-        height: 520px;
+        height: 560px;
         border: 0;
+        background: #fff;
+        box-shadow: 0 2px 12px rgb(15 23 42 / 8%);
       }
     `,
   ];
@@ -410,9 +449,31 @@ export class AdmAppearance extends AdmView {
       <div class="preview">
         <header>
           <span>实时预览（修改即时注入，不影响线上；保存后生效）</span>
+          <div class="sizes">
+            ${AdmAppearance.VIEWPORTS.map(
+              (viewport) => html`
+                <button
+                  type="button"
+                  class=${this.previewWidth === viewport.width ? 'on' : ''}
+                  @click=${() => {
+                    this.previewWidth = viewport.width;
+                  }}
+                >
+                  ${viewport.label}
+                </button>
+              `,
+            )}
+          </div>
           <a href="/" target="_blank" rel="noopener">新窗口打开 ↗</a>
         </header>
-        <iframe src="/" title="站点预览" @load=${() => this.postPreview()}></iframe>
+        <div class="stage">
+          <iframe
+            src="/"
+            title="站点预览"
+            style=${this.previewWidth ? `width:${this.previewWidth}px` : ''}
+            @load=${() => this.postPreview()}
+          ></iframe>
+        </div>
       </div>
     `;
   }

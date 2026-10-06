@@ -47,6 +47,9 @@ pub struct PartSpec {
 /// hero-title 旋钮留空时的默认欢迎语（Lit 端默认在 home-layout.ts）。
 pub const DEFAULT_HERO_TITLE: &str = "欢迎来看恋的博客";
 
+/// hero-title accent 旋钮留空时的默认高亮字符（Lit 端默认在 home-layout.ts）。
+pub const DEFAULT_HERO_ACCENT: &str = "恋";
+
 /// 部件白名单。新增部件/旋钮只改这里：写入校验、注册表下发、
 /// CSS 变量发射全部以本表为准（渲染器对未登记的键一律忽略）。
 pub const PARTS: &[PartSpec] = &[
@@ -90,18 +93,34 @@ pub const PARTS: &[PartSpec] = &[
                 },
                 hint: "首屏角导航的对齐方式。",
             },
+            KnobSpec {
+                key: "align-mobile",
+                label: "移动端对齐",
+                kind: KnobKind::Select {
+                    options: &["start", "center", "end"],
+                },
+                hint: "手机/平板胶囊顶栏的对齐（仅 Lit 端；右对齐可避开个人卡片）。",
+            },
         ],
     },
     PartSpec {
         id: "hero-title",
         label: "欢迎大文字",
         description: "首屏中央的逐字标题。",
-        knobs: &[KnobSpec {
-            key: "text",
-            label: "文字",
-            kind: KnobKind::Text { max_len: 40 },
-            hint: "留空则使用默认欢迎语；包含「恋」字会自动高亮。",
-        }],
+        knobs: &[
+            KnobSpec {
+                key: "text",
+                label: "文字",
+                kind: KnobKind::Text { max_len: 40 },
+                hint: "留空则使用默认欢迎语。",
+            },
+            KnobSpec {
+                key: "accent",
+                label: "高亮字符",
+                kind: KnobKind::Text { max_len: 8 },
+                hint: "标题里要着色的字符（逐字匹配），留空默认为「恋」。",
+            },
+        ],
     },
 ];
 

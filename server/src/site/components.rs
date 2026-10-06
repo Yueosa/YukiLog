@@ -11,7 +11,6 @@ use super::{ArticleCard, ArticleSort, DynamicCard, HomeStats, SiteView, escape_h
 
 /// 固定布局常量（与 Lit 端 home-layout.ts 保持一致）。
 const HOME_CONTENT_ID: &str = "nf-identity";
-const HERO_ACCENT: &str = "恋";
 const HERO_LEAD: &str = "这里分享她所热爱的技术、思考，以及情绪、挣扎";
 const IDENTITY_TRAITS: &str = "代码 · 记忆 · 夜航";
 const IDENTITY_STATUS: &str = "system.log\n这不是你亲手开启的故事吗？\n[2024-06-09 08:48:29]\n";
@@ -171,7 +170,7 @@ fn render_stats(stats: &HomeStats) -> String {
 }
 
 fn render_hero(context: &RenderContext<'_>) -> String {
-    let accent: HashSet<char> = HERO_ACCENT.chars().collect();
+    let accent: HashSet<char> = context.site.hero_accent.chars().collect();
     let title_characters = context
         .site
         .hero_title
@@ -328,6 +327,7 @@ mod tests {
             title: "YukiLog".to_owned(),
             brand_text: "YukiLog".to_owned(),
             hero_title: crate::content::parts::DEFAULT_HERO_TITLE.to_owned(),
+            hero_accent: crate::content::parts::DEFAULT_HERO_ACCENT.to_owned(),
             part_vars: String::new(),
             description: "站点说明".to_owned(),
             owner_name: "Sakurine".to_owned(),
@@ -341,6 +341,7 @@ mod tests {
             social_links: Vec::new(),
             navigation_class: "topbar",
             navigation_options: String::new(),
+            nav_corners_class: "",
             page_width_class: "width-wide",
             show_search: true,
             mail_enabled: false,
