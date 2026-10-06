@@ -15,7 +15,7 @@ use crate::{
 use super::{
     ArticleFilter, ArticleSort, HOME_ARTICLE_LIMIT, HOME_DYNAMIC_LIMIT, HomeStats, PageMeta,
     components::{RenderContext, render_home},
-    load_articles, load_dynamics, load_site, page,
+    load_articles, load_dynamics, load_pulse, load_site, page,
 };
 
 #[derive(Debug, Deserialize)]
@@ -47,11 +47,13 @@ pub async fn home(
     .await?;
     let dynamics = load_dynamics(&state, HOME_DYNAMIC_LIMIT).await?;
     let stats = load_home_stats(&state).await?;
+    let pulse = load_pulse(&state, 6).await?;
     let content = render_home(&RenderContext {
         site: &site,
         articles: &articles,
         dynamics: &dynamics,
         stats: &stats,
+        pulse: &pulse,
         sort,
     })?;
     page(&site, &PageMeta::new(&site, "首页", "/"), &content)

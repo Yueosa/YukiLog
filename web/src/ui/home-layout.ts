@@ -139,6 +139,11 @@ export const homeLayout: HomeNode = {
               type: 'dynamic-strip',
               props: { limit: 4, variant: 'compact' },
             },
+            {
+              id: 'nf-pulse',
+              type: 'pulse-panel',
+              props: { limit: 6 },
+            },
           ],
         },
       ],
@@ -155,6 +160,7 @@ const partNames: Record<string, string> = {
   'nf-stats': 'stats-panel',
   'nf-hitokoto': 'free-panel',
   'nf-dynamics': 'dynamic-strip',
+  'nf-pulse': 'pulse-panel',
 };
 
 export function partNameOf(nodeId: string): string | null {

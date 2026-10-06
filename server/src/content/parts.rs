@@ -139,6 +139,17 @@ pub const PARTS: &[PartSpec] = &[
         }],
     },
     PartSpec {
+        id: "free-panel",
+        label: "一言面板",
+        description: "侧栏的句子卡片。",
+        knobs: &[KnobSpec {
+            key: "source-url",
+            label: "句子源 URL",
+            kind: KnobKind::Text { max_len: 300 },
+            hint: "返回 {\"hitokoto\",\"from\"} JSON 的接口地址（http/https），留空用默认一言。",
+        }],
+    },
+    PartSpec {
         id: "identity-band",
         label: "个人信息带",
         description: "首屏下方的头像与个人说明区。",

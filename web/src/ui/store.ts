@@ -42,6 +42,7 @@ export class PublicStore {
   site: Slice<api.PublicSite> = fresh();
   hitokoto: Slice<api.Hitokoto> = fresh();
   friends: Slice<api.FriendLinkItem[]> = fresh();
+  pulse: Slice<api.PulseItem[]> = fresh();
   dynamics: Slice<DynamicsState> = fresh();
   archive: Slice<api.ArticleList> & { key: string } = { ...fresh(), key: '' };
   search: Slice<api.SearchResults> & { key: string } = { ...fresh(), key: '' };
@@ -339,6 +340,11 @@ export class PublicStore {
   ensureFriends(force = false) {
     if (!force && (this.friends.status === 'loading' || this.friends.status === 'ready')) return;
     void this.run('friends', this.friends, async () => (await api.fetchFriends()).items);
+  }
+
+  ensurePulse(force = false) {
+    if (!force && (this.pulse.status === 'loading' || this.pulse.status === 'ready')) return;
+    void this.run('pulse', this.pulse, async () => (await api.fetchPulse()).items);
   }
 
   loadSearch(q: string, page = 1, force = false) {

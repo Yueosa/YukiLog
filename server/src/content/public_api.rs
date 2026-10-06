@@ -5,7 +5,7 @@ use axum::{
     extract::{ConnectInfo, Path, Query, State},
     http::HeaderMap,
 };
-use chrono::Utc;
+use chrono::{DateTime, FixedOffset, Utc};
 use sea_orm::{
     ColumnTrait, EntityTrait, JoinType, PaginatorTrait, QueryFilter, QueryOrder, QuerySelect,
     RelationTrait, Select,
@@ -549,6 +549,81 @@ pub async fn friends(
         });
     }
     Ok(Json(FriendListResponse { items }))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PulseItem {
+    /// comment = 新评论；friend = 新友链
+    kind: &'static str,
+    /// 评论者昵称 / 友链名
+    author: String,
+    /// 文章标题（动态评论与友链为空串）
+    target_title: String,
+    target_url: String,
+    created_at: DateTime<FixedOffset>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PulseResponse {
+    items: Vec<PulseItem>,
+}
+
+/// 站点脉搏：最近可见评论与新加入友链的混合时间线（首页 free-panel2）。
+pub async fn pulse(
+    State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+) -> Result<Json<PulseResponse>, AppError> {
+    rate_limit(&state, &headers, peer, "public-pulse", LIST_COOLDOWN).await?;
+    let recent_comments = comments::Entity::find()
+        .filter(comments::Column::Status.eq("visible"))
+        .order_by_desc(comments::Column::CreatedAt)
+        .limit(4)
+        .all(&state.database)
+        .await?;
+    let mut items: Vec<PulseItem> = Vec::new();
+    for comment in recent_comments {
+        let (title, url) = if let Some(article_id) = comment.article_id {
+            let Some(article) = articles::Entity::find_by_id(article_id)
+                .one(&state.database)
+                .await?
+            else {
+                continue;
+            };
+            (article.title, format!("/articles/{}#comments", article.slug))
+        } else if let Some(dynamic_id) = comment.dynamic_id {
+            (String::new(), format!("/dynamics#dynamic-{dynamic_id}"))
+        } else {
+            continue;
+        };
+        items.push(PulseItem {
+            kind: "comment",
+            author: comment.display_name,
+            target_title: title,
+            target_url: url,
+            created_at: comment.created_at,
+        });
+    }
+    let recent_friends = friend_links::Entity::find()
+        .filter(friend_links::Column::IsVisible.eq(true))
+        .order_by_desc(friend_links::Column::CreatedAt)
+        .limit(3)
+        .all(&state.database)
+        .await?;
+    for friend in recent_friends {
+        items.push(PulseItem {
+            kind: "friend",
+            author: friend.name,
+            target_title: String::new(),
+            target_url: friend.url,
+            created_at: friend.created_at,
+        });
+    }
+    items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    items.truncate(6);
+    Ok(Json(PulseResponse { items }))
 }
 
 pub async fn search(

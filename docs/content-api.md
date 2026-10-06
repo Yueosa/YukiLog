@@ -109,11 +109,15 @@ GET 撞 429 会自动等待 0.9 秒重试一次）。错误响应
 - `GET /api/public/friends` → `{ items: [{ name, url, description, avatarUrl,
   host }] }`，只含 `is_visible` 友链；头像口径与 SSR 相同（外链头像 > 本地媒体 >
   对方站点 `/favicon.ico`）；
+- `GET /api/public/pulse` → `{ items: [{ kind: "comment" | "friend", author,
+  targetTitle, targetUrl, createdAt }] }`：站点脉搏，最近 4 条可见评论 +
+  最近 3 条可见友链按时间混排取前 6（首页 free-panel2 数据源）；
 - `GET /api/public/search?q=&page=N` → `{ articles: { items, total }, dynamics:
   { items, total } }`；关键词 trim 后最多 100 字符，文章匹配标题/摘要/正文、动态
   匹配正文，两组各自按发布时间倒序、每页 10 条；
 - `GET /api/hitokoto` → `{ text, from }`。服务器代理 `https://v1.hitokoto.cn`
-  （3 秒超时、内存缓存 10 分钟）；超时、非 2xx、非法响应一律回退内置句库并返回
+  （3 秒超时、内存缓存 10 分钟，源地址可用 free-panel `source-url` 旋钮覆盖，
+  自定义源需返回同款 `{"hitokoto","from"}` JSON）；超时、非 2xx、非法响应一律回退内置句库并返回
   200，绝不向前端返回 5xx。
 
 页面壳契约：`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/friends`、

@@ -26,7 +26,8 @@ hero（沉浸式首屏：轮换背景 / 欢迎大文字 / 语录卡 / ENTER 整�
    ├─ article-feed（alternating 文章卡片，5 篇）
    ├─ stats-panel（站点信息四格）
    ├─ free-panel（一言）
-   └─ dynamic-strip（最近动态 compact，4 条）
+   ├─ dynamic-strip（最近动态 compact，4 条）
+   └─ pulse-panel（站点脉搏：最近评论 + 新友链混合时间线，6 条）
 ```
 
 ## 部件清单（data-part 挂载点）
@@ -55,6 +56,7 @@ hero（沉浸式首屏：轮换背景 / 欢迎大文字 / 语录卡 / ENTER 整�
 | `stats-panel` | 站点信息区 |
 | `free-panel` | 其他信息区（v1 = 一言） |
 | `dynamic-strip` | 最近动态区 |
+| `pulse-panel` | 站点脉搏（最近评论 + 新友链混合时间线，`GET /api/public/pulse`） |
 
 ### 列表页与详情页（随部件 token 阶段逐步标记）
 

@@ -7,7 +7,7 @@ use askama::Template;
 
 use crate::error::AppError;
 
-use super::{ArticleCard, ArticleSort, DynamicCard, HomeStats, SiteView, escape_html};
+use super::{ArticleCard, ArticleSort, DynamicCard, HomeStats, PulseCard, SiteView, escape_html};
 
 /// 固定布局常量（与 Lit 端 home-layout.ts 保持一致）。
 const HOME_CONTENT_ID: &str = "nf-identity";
@@ -25,6 +25,7 @@ pub(super) struct RenderContext<'a> {
     pub(super) articles: &'a [ArticleCard],
     pub(super) dynamics: &'a [DynamicCard],
     pub(super) stats: &'a HomeStats,
+    pub(super) pulse: &'a [PulseCard],
     pub(super) sort: ArticleSort,
 }
 
@@ -120,8 +121,44 @@ pub(super) fn render_home(context: &RenderContext<'_>) -> Result<String, AppErro
     let strip = DynamicStripTemplate { items: &strip_items }
         .render()
         .map_err(|_| AppError::Internal("render dynamic strip"))?;
+    let mut pulse_items = String::new();
+    for item in context.pulse {
+        let external = if item.kind == "friend" && item.target_url.starts_with("http") {
+            r#" target="_blank" rel="noopener noreferrer""#
+        } else {
+            ""
+        };
+        let text = if item.kind == "comment" {
+            if item.target_title.is_empty() {
+                format!("<strong>{}</strong> 评论了一条动态", escape_html(&item.author))
+            } else {
+                format!(
+                    "<strong>{}</strong> 评论了《{}》",
+                    escape_html(&item.author),
+                    escape_html(&item.target_title)
+                )
+            }
+        } else {
+            format!("<strong>{}</strong> 加入了友链", escape_html(&item.author))
+        };
+        pulse_items.push_str(&format!(
+            r#"<a class="pulse-item" href="{}"{}><span class="pulse-dot {}" aria-hidden="true"></span><span class="pulse-text">{}</span><time>{}</time></a>"#,
+            escape_html(&item.target_url),
+            external,
+            item.kind,
+            text,
+            escape_html(&item.rel_time),
+        ));
+    }
+    let pulse = if context.pulse.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"<section class="pulse-panel" data-part="pulse-panel" data-reveal><p class="component-kicker">站点脉搏</p>{pulse_items}</section>"#
+        )
+    };
     Ok(format!(
-        r#"<section id="nf-root" class="layout-stack gap-none" data-reveal>{hero}<section id="nf-identity" class="layout-grid gap-lg grid-identity" data-part="identity-band" data-reveal>{identity}</section><section id="nf-stage" class="layout-grid gap-xl grid-feed-rail" data-reveal><section id="nf-main" class="layout-stack gap-xl" data-reveal>{masthead}{feed}</section><section id="nf-rail" class="layout-stack gap-lg is-sticky" data-reveal>{stats}{quote}{strip}</section></section></section>"#
+        r#"<section id="nf-root" class="layout-stack gap-none" data-reveal>{hero}<section id="nf-identity" class="layout-grid gap-lg grid-identity" data-part="identity-band" data-reveal>{identity}</section><section id="nf-stage" class="layout-grid gap-xl grid-feed-rail" data-reveal><section id="nf-main" class="layout-stack gap-xl" data-reveal>{masthead}{feed}</section><section id="nf-rail" class="layout-stack gap-lg is-sticky" data-reveal>{stats}{quote}{strip}{pulse}</section></section></section>"#
     ))
 }
 
@@ -391,6 +428,7 @@ mod tests {
             articles,
             dynamics,
             stats,
+            pulse: &[],
             sort: ArticleSort::Featured,
         }
     }

@@ -23,7 +23,7 @@ use crate::{
     },
     entities::{
         article_metrics, article_tags, articles, categories, comments, dynamic_media,
-        dynamic_metrics, dynamics, media_assets, site_settings, tags,
+        dynamic_metrics, dynamics, friend_links, media_assets, site_settings, tags,
     },
     error::AppError,
     markup,
@@ -125,6 +125,42 @@ struct ArticleCard {
 struct TagCard {
     name: String,
     slug: String,
+}
+
+/// 站点脉搏条目（最近评论 + 新友链混合时间线）
+#[derive(Clone)]
+struct PulseCard {
+    /// "comment" | "friend"
+    kind: &'static str,
+    author: String,
+    target_title: String,
+    target_url: String,
+    rel_time: String,
+}
+
+/// 相对时间：刚刚 / N 分钟前 / N 小时前 / N 天前 / N 周前 / 具体日期（与 Lit relTime 一致）
+fn rel_time(of: &chrono::DateTime<chrono::FixedOffset>) -> String {
+    let elapsed = chrono::Utc::now().signed_duration_since(of.with_timezone(&chrono::Utc));
+    let minutes = elapsed.num_seconds().max(0) / 60;
+    if minutes < 1 {
+        return "刚刚".to_owned();
+    }
+    if minutes < 60 {
+        return format!("{minutes} 分钟前");
+    }
+    let hours = minutes / 60;
+    if hours < 24 {
+        return format!("{hours} 小时前");
+    }
+    let days = hours / 24;
+    if days < 7 {
+        return format!("{days} 天前");
+    }
+    let weeks = days / 7;
+    if weeks < 5 {
+        return format!("{weeks} 周前");
+    }
+    of.format("%Y · %m · %d").to_string()
 }
 
 #[derive(Default)]
@@ -621,9 +657,10 @@ struct HomeStats {
     .social-icon{display:grid;width:34px;height:34px;place-items:center;border-radius:50%;transition:filter 300ms cubic-bezier(.22,.61,.36,1),transform 300ms cubic-bezier(.22,.61,.36,1)}
     .social-icon:hover{filter:brightness(1.35);transform:translateY(-2px)}
     .social-icon:hover svg{transform:scale(1.12)}
-    .enter-button{position:absolute;inset:auto 0 0 0;height:24vh;display:flex;align-items:flex-end;justify-content:center;padding:0 0 32px;border:0;background:none;color:rgb(238 243 248/66%)}
-    .enter-guide{display:flex;align-items:center;flex-direction:column;gap:8px;pointer-events:none;filter:drop-shadow(0 2px 10px rgb(9 17 30/55%))}
-    .enter-guide span{font-size:10px;letter-spacing:.3em}
+    .enter-button{position:absolute;inset:auto 0 0 0;height:24vh;display:flex;align-items:flex-end;justify-content:center;padding:0 0 32px;border:0;background:none;color:rgb(238 243 248/92%)}
+    .enter-guide{display:flex;align-items:center;flex-direction:column;gap:8px;padding:12px 26px;border:1px solid rgb(238 243 248/16%);border-radius:999px;background:rgb(6 12 22/32%);backdrop-filter:blur(8px);pointer-events:none;filter:drop-shadow(0 2px 12px rgb(9 17 30/65%));transition:background 300ms ease,border-color 300ms ease}
+    .enter-button:hover .enter-guide{border-color:rgb(238 243 248/30%);background:rgb(6 12 22/48%)}
+    .enter-guide span{font-size:11px;font-weight:600;letter-spacing:.34em;text-indent:.34em}
     .enter-guide svg{width:30px;height:30px;animation:enter-bob 2.4s ease-in-out infinite}
     @keyframes enter-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
     .hero-compact .hero-inner,.hero-split .hero-inner{gap:18px}
@@ -691,6 +728,16 @@ struct HomeStats {
     .dynamic-item:last-child{border-bottom:0}
     .dynamic-item:hover{color:var(--ink);translate:4px 0}
     .dynamic-item time{display:block;margin-bottom:2px;color:var(--faint);font-family:var(--mono);font-size:10.5px}
+    .pulse-panel{display:grid;gap:2px}
+    .pulse-item{display:flex;align-items:baseline;gap:9px;padding:9px 0;border-bottom:1px dashed var(--line);color:var(--muted);font-size:13px;line-height:1.6;text-decoration:none;transition:color 250ms ease}
+    .pulse-item:last-child{border-bottom:0}
+    .pulse-item:hover{color:var(--ink)}
+    .pulse-dot{width:6px;height:6px;flex:none;border-radius:50%;translate:0 -1px}
+    .pulse-dot.comment{background:var(--primary)}
+    .pulse-dot.friend{background:var(--secondary)}
+    .pulse-text{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .pulse-text strong{color:var(--ink);font-weight:600}
+    .pulse-item time{flex:none;color:var(--faint);font-family:var(--mono);font-size:11px}
     .dynamic-item span p{margin:0}
     .site-footer{display:flex;justify-content:space-between;gap:16px;padding:44px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;letter-spacing:.14em}
     .site-footer a:hover{color:var(--primary-d)}
@@ -1566,8 +1613,57 @@ async fn article_card(state: &AppState, article: articles::Model) -> Result<Arti
     })
 }
 
-async fn load_dynamics(state: &AppState, limit: u64) -> Result<Vec<DynamicCard>, AppError> {
-    let models = dynamics::Entity::find()
+/// 站点脉搏：最近可见评论 + 新友链（与 /api/public/pulse 同口径，SSR 首页用）。
+async fn load_pulse(state: &AppState, limit: usize) -> Result<Vec<PulseCard>, AppError> {
+    let recent_comments = comments::Entity::find()
+        .filter(comments::Column::Status.eq("visible"))
+        .order_by_desc(comments::Column::CreatedAt)
+        .limit(4)
+        .all(&state.database)
+        .await?;
+    let mut dated: Vec<(chrono::DateTime<chrono::FixedOffset>, PulseCard)> = Vec::new();
+    for comment in recent_comments {
+        let (title, url) = if let Some(article_id) = comment.article_id {
+            let Some(article) = articles::Entity::find_by_id(article_id)
+                .one(&state.database)
+                .await?
+            else {
+                continue;
+            };
+            (article.title, format!("/articles/{}#comments", article.slug))
+        } else if let Some(dynamic_id) = comment.dynamic_id {
+            (String::new(), format!("/dynamics#dynamic-{dynamic_id}"))
+        } else {
+            continue;
+        };
+        dated.push((comment.created_at, PulseCard {
+            kind: "comment",
+            author: comment.display_name,
+            target_title: title,
+            target_url: url,
+            rel_time: rel_time(&comment.created_at),
+        }));
+    }
+    let recent_friends = friend_links::Entity::find()
+        .filter(friend_links::Column::IsVisible.eq(true))
+        .order_by_desc(friend_links::Column::CreatedAt)
+        .limit(3)
+        .all(&state.database)
+        .await?;
+    for friend in recent_friends {
+        dated.push((friend.created_at, PulseCard {
+            kind: "friend",
+            author: friend.name,
+            target_title: String::new(),
+            target_url: friend.url,
+            rel_time: rel_time(&friend.created_at),
+        }));
+    }
+    dated.sort_by(|a, b| b.0.cmp(&a.0));
+    Ok(dated.into_iter().take(limit).map(|(_, card)| card).collect())
+}
+
+async fn load_dynamics(state: &AppState, limit: u64) -> Result<Vec<DynamicCard>, AppError> {    let models = dynamics::Entity::find()
         .filter(dynamics::Column::Status.eq("published"))
         .filter(dynamics::Column::PublishedAt.lte(Utc::now().fixed_offset()))
         .order_by_desc(dynamics::Column::PublishedAt)

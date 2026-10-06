@@ -490,6 +490,7 @@ export class YukiApp extends LitElement {
       this.store.loadHomeFeed(this.currentFeedSort());
       this.store.loadDynamics(1);
       this.store.ensureFriends();
+      this.store.ensurePulse();
       this.setTitle('');
       return;
     }
@@ -4084,13 +4085,29 @@ export class YukiApp extends LitElement {
       align-items: center;
       flex-direction: column;
       gap: 8px;
+      padding: 12px 26px;
+      border: 1px solid rgb(238 243 248 / 16%);
+      border-radius: 999px;
+      background: rgb(6 12 22 / 32%);
+      backdrop-filter: blur(8px);
+      color: rgb(238 243 248 / 92%);
       pointer-events: none;
-      filter: drop-shadow(0 2px 10px rgb(9 17 30 / 55%));
+      filter: drop-shadow(0 2px 12px rgb(9 17 30 / 65%));
+      transition:
+        background 300ms ease,
+        border-color 300ms ease;
+    }
+
+    .enter-button:hover .enter-guide {
+      border-color: rgb(238 243 248 / 30%);
+      background: rgb(6 12 22 / 48%);
     }
 
     .enter-guide span {
-      font-size: 10px;
-      letter-spacing: 0.3em;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.34em;
+      text-indent: 0.34em;
     }
 
     .enter-guide svg {
@@ -4566,6 +4583,69 @@ export class YukiApp extends LitElement {
       color: var(--faint);
       font-family: var(--mono);
       font-size: 10.5px;
+    }
+
+    /* 站点脉搏（最近评论 + 新友链混合时间线） */
+    .pulse-panel {
+      display: grid;
+      gap: 2px;
+    }
+
+    .pulse-item {
+      display: flex;
+      align-items: baseline;
+      gap: 9px;
+      padding: 9px 0;
+      border-bottom: 1px dashed var(--line);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      text-decoration: none;
+      transition: color 250ms ease;
+    }
+
+    .pulse-item:last-child {
+      border-bottom: 0;
+    }
+
+    .pulse-item:hover {
+      color: var(--ink);
+    }
+
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      flex: none;
+      border-radius: 50%;
+      translate: 0 -1px;
+    }
+
+    .pulse-dot.comment {
+      background: var(--primary);
+    }
+
+    .pulse-dot.friend {
+      background: var(--secondary);
+    }
+
+    .pulse-text {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .pulse-text strong {
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .pulse-item time {
+      flex: none;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 11px;
     }
     /* Layout studio */
     @keyframes hero-reveal {
@@ -6362,6 +6442,57 @@ export class YukiApp extends LitElement {
               )}
           </section>
         `;
+        }
+      case 'pulse-panel':
+        {
+          const limit = Math.max(1, Number(node.props.limit ?? 6));
+          const pulseSlice = this.store.pulse;
+          const items = (pulseSlice.data ?? []).slice(0, limit);
+        return html`
+            <section class="${base} pulse-panel" data-part=${part} data-reveal>
+              <p class="component-kicker">站点脉搏</p>
+              ${pulseSlice.status === 'idle' || pulseSlice.status === 'loading'
+                ? html`<div class="skel skel-line" style="width: 82%"></div>
+                    <div class="skel skel-line" style="width: 64%"></div>`
+                : nothing}
+              ${pulseSlice.status === 'error'
+                ? html`<p class="strip-note">
+                    脉搏暂时加载不出来，
+                    <a
+                      href="/"
+                      @click=${(event: Event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        this.store.ensurePulse(true);
+                      }}
+                      >重试</a
+                    >
+                  </p>`
+                : nothing}
+              ${pulseSlice.status === 'ready' && items.length === 0
+                ? html`<p class="strip-note">还没有新动静。</p>`
+                : nothing}
+              ${items.map(
+                (item) => html`
+                  <a
+                    class="pulse-item"
+                    href=${item.targetUrl}
+                    target=${item.kind === 'friend' && /^https?:/.test(item.targetUrl) ? '_blank' : nothing}
+                    rel=${item.kind === 'friend' && /^https?:/.test(item.targetUrl) ? 'noopener noreferrer' : nothing}
+                    @click=${(event: Event) => event.stopPropagation()}
+                  >
+                    <span class="pulse-dot ${item.kind}" aria-hidden="true"></span>
+                    <span class="pulse-text"
+                      >${item.kind === 'comment'
+                        ? html`<strong>${item.author}</strong> 评论了${item.targetTitle ? html`《${item.targetTitle}》` : '一条动态'}`
+                        : html`<strong>${item.author}</strong> 加入了友链`}</span
+                    >
+                    <time>${relTime(item.createdAt)}</time>
+                  </a>
+                `,
+              )}
+            </section>
+          `;
         }
       default:
         return nothing;

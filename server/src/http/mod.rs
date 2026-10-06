@@ -55,6 +55,7 @@ pub fn router(state: AppState) -> Router {
             get(public_api::dynamic_comments),
         )
         .route("/api/public/friends", get(public_api::friends))
+        .route("/api/public/pulse", get(public_api::pulse))
         .route("/api/public/search", get(public_api::search))
         .route("/api/hitokoto", get(crate::ops::hitokoto::hitokoto))
         .route(

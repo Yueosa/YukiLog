@@ -3,8 +3,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::Json;
+use axum::{Json, extract::State};
 use rand::{RngCore, rngs::OsRng};
+use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -43,11 +44,33 @@ static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 });
 static CACHE: LazyLock<Mutex<Option<(Instant, Hitokoto)>>> = LazyLock::new(|| Mutex::new(None));
 
-pub async fn hitokoto() -> Json<Hitokoto> {
-    Json(current().await)
+pub async fn hitokoto(State(state): State<crate::AppState>) -> Json<Hitokoto> {
+    Json(current(&state).await)
 }
 
-async fn current() -> Hitokoto {
+/// free-panel source-url 旋钮：自定义句子源（http/https，返回
+/// {"hitokoto","from"} JSON），无效或未设置时用默认一言。
+async fn source_url(state: &crate::AppState) -> Option<String> {
+    let model = crate::entities::site_settings::Entity::find_by_id(true)
+        .one(&state.database)
+        .await
+        .ok()??;
+    let url = model
+        .theme
+        .get("parts")?
+        .get("free-panel")?
+        .get("source-url")?
+        .as_str()?
+        .trim()
+        .to_owned();
+    if url.len() <= 300 && (url.starts_with("https://") || url.starts_with("http://")) {
+        Some(url)
+    } else {
+        None
+    }
+}
+
+async fn current(state: &crate::AppState) -> Hitokoto {
     {
         let cache = CACHE.lock().await;
         if let Some((seen, value)) = &*cache {
@@ -56,7 +79,8 @@ async fn current() -> Hitokoto {
             }
         }
     }
-    let value = fetch_remote(&CLIENT, REMOTE_URL)
+    let remote = source_url(state).await.unwrap_or_else(|| REMOTE_URL.to_owned());
+    let value = fetch_remote(&CLIENT, &remote)
         .await
         .unwrap_or_else(|_| fallback());
     *CACHE.lock().await = Some((Instant::now(), value.clone()));

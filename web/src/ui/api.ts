@@ -336,6 +336,23 @@ export function fetchHitokoto(): Promise<Hitokoto> {
   return get('/api/hitokoto');
 }
 
+/** 站点脉搏条目：新评论 / 新友链的混合时间线。 */
+export interface PulseItem {
+  kind: 'comment' | 'friend';
+  /** 评论者昵称 / 友链名 */
+  author: string;
+  /** 文章标题（动态评论与友链为空串） */
+  targetTitle: string;
+  targetUrl: string;
+  createdAt: string;
+}
+
+export function fetchPulse(): Promise<{ items: PulseItem[] }> {
+  return get<{ items: PulseItem[] }>('/api/public/pulse').then((data) => ({
+    items: itemsOf<PulseItem>(data?.items),
+  }));
+}
+
 /** 服务端搜索每节固定 10 条/页（SEARCH_LIMIT）。 */
 export const SEARCH_PAGE_SIZE = 10;
 
