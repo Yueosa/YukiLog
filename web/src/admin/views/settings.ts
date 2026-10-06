@@ -554,7 +554,12 @@ export class AdmSettings extends AdmView {
     return typeof value === 'string' ? value : null;
   }
 
-  @state() private focalTarget: { index: number; url: string; position: string | null } | null = null;
+  @state() private focalTarget: {
+    index: number;
+    url: string;
+    position: string | null;
+    size: string | null;
+  } | null = null;
 
   private heroItemId(item: HeroBackgroundSetting): string {
     return typeof item === 'string' ? item : item.mediaId;
@@ -564,14 +569,21 @@ export class AdmSettings extends AdmView {
     return typeof item === 'string' ? null : item.position;
   }
 
-  private onFocalSave(event: CustomEvent<{ position: string }>) {
+  private heroItemSize(item: HeroBackgroundSetting): string | null {
+    return typeof item === 'string' ? null : (item.size ?? null);
+  }
+
+  private onFocalSave(event: CustomEvent<{ position: string; size: string | null }>) {
     const target = this.focalTarget;
     this.focalTarget = null;
     if (!target || !this.draft) return;
     const ids = [...(this.draft.heroBackgroundMediaIds ?? [])];
     const item = ids[target.index];
     if (!item) return;
-    ids[target.index] = { mediaId: this.heroItemId(item), position: event.detail.position };
+    const mediaId = this.heroItemId(item);
+    ids[target.index] = event.detail.size
+      ? { mediaId, position: event.detail.position, size: event.detail.size }
+      : { mediaId, position: event.detail.position };
     this.setField('heroBackgroundMediaIds', ids);
   }
 
@@ -654,7 +666,12 @@ export class AdmSettings extends AdmView {
                         ?disabled=${!media}
                         @click=${() =>
                           media &&
-                          (this.focalTarget = { index, url: media.url, position: focal })}
+                          (this.focalTarget = {
+                            index,
+                            url: media.url,
+                            position: focal,
+                            size: this.heroItemSize(item),
+                          })}
                       >
                         ⌖
                       </button>
@@ -967,6 +984,7 @@ export class AdmSettings extends AdmView {
         ?open=${this.focalTarget !== null}
         .src=${this.focalTarget?.url ?? ''}
         .position=${this.focalTarget?.position ?? null}
+        .size=${this.focalTarget?.size ?? null}
         @adm-focal-save=${this.onFocalSave}
         @adm-close=${() => (this.focalTarget = null)}
       ></adm-focal-picker>

@@ -113,8 +113,9 @@ export interface PublicSite {
   /** 动态总数（统计卡使用，独立于动态列表请求）。 */
   dynamicCount?: number;
   totalViews?: number;
-  /** 首屏背景图池：多张时冷进入随机抽一张并每 8 秒淡切。 */
-  heroBackgrounds?: Array<{ url: string; position: string | null }>;
+  /** 首屏背景图池：多张时冷进入随机抽一张并每 8 秒淡切；position 为框选焦点，
+   *  size 为可选局部放大（background-size 百分比），有焦点的图按 cover/size 渲染。 */
+  heroBackgrounds?: Array<{ url: string; position: string | null; size: string | null }>;
   /** 首屏语录卡文本；为空时回退 siteDescription。 */
   heroQuote?: string | null;
 }

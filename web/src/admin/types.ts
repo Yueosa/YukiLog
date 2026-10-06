@@ -131,8 +131,10 @@ export type ThemeTokens = {
   mastheadFit?: 'cover' | 'contain' | 'stretch' | null;
 };
 
-/** 首屏背景项：纯媒体 id（居中）或带焦点位置的对象。 */
-export type HeroBackgroundSetting = string | { mediaId: string; position: string };
+/** 首屏背景项：纯媒体 id（居中）或带焦点位置（可再带局部放大 size）的对象。 */
+export type HeroBackgroundSetting =
+  | string
+  | { mediaId: string; position: string; size?: string | null };
 
 export type SiteSettings = {
   siteTitle: string;

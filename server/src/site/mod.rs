@@ -51,7 +51,7 @@ struct SiteView {
     owner_bio: String,
     avatar_url: String,
     masthead_url: String,
-    hero_backgrounds: Vec<(String, Option<String>)>,
+    hero_backgrounds: Vec<(String, Option<String>, Option<String>)>,
     hero_quote: String,
     favicon_url: String,
     origin: String,

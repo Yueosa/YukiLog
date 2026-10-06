@@ -43,7 +43,8 @@ pub struct SocialLink {
     pub url: String,
 }
 
-/// 首屏背景项：纯媒体 id（居中）或带焦点位置（"50% 30%"）的对象。
+/// 首屏背景项：纯媒体 id（居中）或带焦点位置（"50% 30%"）的对象；
+/// 焦点项可再带 size（background-size "w% h%"，滚轮局部放大），缺省为 cover。
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum HeroBackground {
@@ -52,6 +53,8 @@ pub enum HeroBackground {
         #[serde(rename = "mediaId")]
         media_id: Uuid,
         position: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        size: Option<String>,
     },
 }
 
@@ -67,6 +70,13 @@ impl HeroBackground {
         match self {
             Self::Id(_) => None,
             Self::Focal { position, .. } => Some(position.as_str()),
+        }
+    }
+
+    pub(crate) fn size(&self) -> Option<&str> {
+        match self {
+            Self::Id(_) => None,
+            Self::Focal { size, .. } => size.as_deref(),
         }
     }
 }
@@ -417,6 +427,21 @@ async fn validate_hero_backgrounds(
                 .unwrap_or(false);
             if !valid {
                 return Err(AppError::InvalidRequest("首屏背景焦点必须是 'x% y%' 格式"));
+            }
+        }
+        if let Some(size) = item.size() {
+            let valid = size
+                .split_once(' ')
+                .map(|(w, h)| {
+                    [w, h].iter().all(|part| {
+                        part.strip_suffix('%')
+                            .and_then(|number| number.parse::<u16>().ok())
+                            .is_some_and(|number| (25..=2000).contains(&number))
+                    })
+                })
+                .unwrap_or(false);
+            if !valid {
+                return Err(AppError::InvalidRequest("首屏背景缩放必须是 'w% h%'（25–2000）格式"));
             }
         }
     }

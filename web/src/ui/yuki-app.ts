@@ -160,7 +160,7 @@ interface SiteView extends PublicSiteData {
   mastheadUrl: string;
   /** null = 站点信息还没加载完成 */
   mailEnabled: boolean | null;
-  heroBackgrounds: Array<{ url: string; position: string | null }>;
+  heroBackgrounds: Array<{ url: string; position: string | null; size: string | null }>;
   heroQuote: string | null;
 }
 
@@ -5737,6 +5737,13 @@ export class YukiApp extends LitElement {
       filter: blur(42px) brightness(0.72);
     }
 
+    /* 焦点图层：贴视口几何（不参与 132% 视差超幅），cover/自定义缩放精确还原框选 */
+    .hero-bg-static {
+      position: absolute;
+      inset: 0;
+      z-index: -2;
+    }
+
     .hero-bg-layer.active {
       opacity: 1;
     }
@@ -7095,10 +7102,11 @@ export class YukiApp extends LitElement {
             ? html`
                 <div class="hero-background hero-bg-stack" role="img" aria-label="首屏背景">
                   ${heroBackgrounds.map((item, index) => {
+                    if (item.position) return nothing; // 焦点图在静态视口层渲染
                     // 缺省即 contain（完整显示 + 模糊填充），仅显式 cover/stretch 关闭
                     const fit = this.store.site.data?.theme?.heroBackgroundFit;
                     const contain = fit !== 'cover' && fit !== 'stretch';
-                    const focal = item.position ?? backgroundPosition;
+                    const focal = backgroundPosition;
                     // 冷启动只渲染当前层与已驻留就绪的层，其余层等轮到/预载完成再挂图，
                     // 避免全池图片同时下载抢占首图带宽
                     const showImage = index === this.heroBgIndex || this.heroBgRetained.has(item.url);
@@ -7117,6 +7125,22 @@ export class YukiApp extends LitElement {
                         style=${styleMap(layerStyle)}
                       ></div>
                     `;
+                  })}
+                </div>
+                <div class="hero-bg-static" aria-hidden="true">
+                  ${heroBackgrounds.map((item, index) => {
+                    if (!item.position) return nothing; // 普通图在视差层渲染
+                    // 焦点图脱离 132% 视差超幅，贴视口几何用 cover/自定义缩放精确还原框选
+                    const showImage = index === this.heroBgIndex || this.heroBgRetained.has(item.url);
+                    const layerStyle: Record<string, string> = {
+                      backgroundPosition: item.position,
+                      backgroundSize: item.size ?? 'cover',
+                    };
+                    if (showImage) layerStyle.backgroundImage = `url("${item.url}")`;
+                    return html`<div
+                      class="hero-bg-layer${index === this.heroBgIndex ? ' active' : ''}"
+                      style=${styleMap(layerStyle)}
+                    ></div>`;
                   })}
                 </div>
               `

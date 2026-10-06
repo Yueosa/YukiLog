@@ -36,6 +36,7 @@ const SEARCH_LIMIT: u64 = 10;
 pub struct HeroBackgroundJson {
     url: String,
     position: Option<String>,
+    size: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -284,7 +285,7 @@ pub async fn site(State(state): State<AppState>) -> Result<Json<PublicSiteRespon
     )
     .await
     .into_iter()
-    .map(|(url, position)| HeroBackgroundJson { url, position })
+    .map(|(url, position, size)| HeroBackgroundJson { url, position, size })
     .collect();
     let avatar_media_url = media_url(&state, settings.avatar_media_id).await?;
     let avatar_external_url = settings.avatar_external_url.clone().unwrap_or_default();

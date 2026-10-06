@@ -434,13 +434,12 @@ fn random_suffix() -> String {
     hex_lower(&bytes)
 }
 
-/// Decode the hero background id list stored on `site_settings`.
-/// Resolve hero backgrounds to `(url, focal position)` pairs, keeping list order
-/// and skipping entries whose media is missing or not an image.
+/// Resolve hero backgrounds to `(url, focal position, zoom size)` triples, keeping
+/// list order and skipping entries whose media is missing or not an image.
 pub(crate) async fn hero_background_urls<C: ConnectionTrait>(
     connection: &C,
     items: &[crate::content::settings::HeroBackground],
-) -> Vec<(String, Option<String>)> {
+) -> Vec<(String, Option<String>, Option<String>)> {
     if items.is_empty() {
         return Vec::new();
     }
@@ -460,6 +459,7 @@ pub(crate) async fn hero_background_urls<C: ConnectionTrait>(
             Some((
                 format!("/media/{}", media.storage_key),
                 item.position().map(str::to_owned),
+                item.size().map(str::to_owned),
             ))
         })
         .collect()

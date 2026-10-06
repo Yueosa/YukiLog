@@ -76,14 +76,15 @@ UUID 必须存在于媒体库，数组顺序即 `position` 展示顺序，传 `[
 - `GET /api/public/site` → `{ siteTitle, siteDescription, ownerName, ownerBio,
   avatarUrl, mastheadUrl, socialLinks: [{ label, url }], mailEnabled,
   articleCount, dynamicCount, friendCount, totalViews,
-  heroBackgrounds: [url], heroQuote | null, theme,
+  heroBackgrounds: [{ url, position, size }], heroQuote | null, theme,
   shellLayout }`。`avatarUrl` 本地头像媒体优先、为空回退外部头像 URL；
   `theme`/`shellLayout` 与 `GET /api/admin/settings` 同形；
   `articleCount`/`dynamicCount` 只计已发布且到点内容、`friendCount` 只计
   可见友链、`totalViews` 是 `article_metrics.view_count` 合计，四格口径与
-  SSR 首页统计卡一致；`heroBackgrounds` 是首屏轮换图的媒体 URL 数组（按配置
-  顺序、只含存在的 `image/*`，媒体 URL 保持 `/media/...` 相对路径），
-  `heroQuote` 为首屏语录，为空时前端回退站点说明；
+  SSR 首页统计卡一致；`heroBackgrounds` 按配置顺序、只含存在的 `image/*`，
+  `url` 保持 `/media/...` 相对路径；`position` 为框选焦点（`"x% y%"`，无则
+  null），`size` 为可选 background-size 百分比（`"w% h%"` 局部放大，无则
+  null）；`heroQuote` 为首屏语录，为空时前端回退站点说明；
 - `GET /api/public/articles?sort=featured|popular|recent&category=<slug>&tag=<slug>&page=N&pageSize=M`：
   默认 `sort=featured`、`page=1`、`pageSize=10`；`pageSize` 上限 20、`page` 上限
   10000；非法 `sort` 返回 422；只返回已发布文章。排序口径与 SSR 一致：featured

@@ -240,7 +240,7 @@ Slug 历史表。部分索引 `articles_featured_idx` 只覆盖已发布且带�
 | `avatar_media_id` | 个人头像媒体。 |
 | `avatar_external_url` | 可选外部头像链接；仅允许 `http(s)`、最长 512 字符。本地上传头像存在时优先，否则公开页与 favicon 使用此外部链接。 |
 | `masthead_media_id` | 可选刊头背景图片媒体；设置后各列表页刊头以暗色遮罩背景图渲染。 |
-| `hero_background_media_ids` | 首屏背景轮换图列表（jsonb 数组，元素为媒体 UUID 字符串，最多 12 张，CHECK 约束限定数组类型与长度）。访客每次冷进入随机抽一张；顺序轮换与定时间隔属前端行为，不存后端。 |
+| `hero_background_media_ids` | 首屏背景轮换图列表（jsonb 数组，最多 12 张，CHECK 约束限定数组类型与长度）。元素为媒体 UUID 字符串（按全局适应方式渲染，缺省 contain），或焦点对象 `{mediaId, position, size?}`：`position` 为 `"x% y%"` 框选焦点（该图按 cover 渲染并脱离视差超幅，精确还原框选窗口），可选 `size` 为 `"w% h%"` background-size 百分比（框选器滚轮局部放大）。访客每次冷进入随机抽一张；顺序轮换与定时间隔属前端行为，不存后端。 |
 | `hero_quote` | 可选首屏语录卡文本，最长 120 字；为空时前端回退到站点说明。 |
 | `social_links` | 社交链接 JSON 数组。 |
 | `theme` | 当前颜色、字体和视觉 token JSON 对象。 |
