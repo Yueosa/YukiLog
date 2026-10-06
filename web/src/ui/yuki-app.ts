@@ -2859,6 +2859,14 @@ export class YukiApp extends LitElement {
       font-family: var(--mono);
     }
 
+    .prose pre.lm-mermaid {
+      padding: 20px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      text-align: center;
+    }
+
     .prose .lm-mermaid svg {
       max-width: 100%;
       height: auto;
@@ -5713,6 +5721,7 @@ export class YukiApp extends LitElement {
       max-width: 92vw;
       max-height: 88vh;
       border-radius: 10px;
+      background: #fff;
       object-fit: contain;
       box-shadow: 0 30px 90px rgb(0 0 0 / 45%);
       cursor: default;

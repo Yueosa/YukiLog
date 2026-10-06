@@ -24,7 +24,12 @@ async function renderMath(elements: HTMLElement[]): Promise<void> {
       ? raw.replace(/^\s*\$\$\s*/, '').replace(/\s*\$\$\s*$/, '')
       : raw.replace(/^\$/, '').replace(/\$$/, '');
     try {
-      katex.render(tex, element, { displayMode, throwOnError: false });
+      katex.render(
+        // 零宽字符（\u200B 等）会让 KaTeX 报错并输出残影，先清掉
+        tex.replace(/[\u200B\u200C\u200D\uFEFF]/g, ''),
+        element,
+        { displayMode, throwOnError: false },
+      );
     } catch {
       // 渲染失败保留 TeX 源码，不打扰阅读
     }

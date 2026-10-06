@@ -830,6 +830,7 @@ struct HomeStats {
     .prose .lm-math{margin:1.5em 0;padding:14px 18px;overflow-x:auto;border-radius:12px;background:color-mix(in srgb,var(--primary) 6%,var(--surface));font-family:var(--mono);font-size:14px;white-space:pre-wrap}
     .prose span.lm-math{padding:2px 7px;margin:0;white-space:nowrap}
     .prose .lm-verbatim,.prose .lm-mermaid{font-family:var(--mono)}
+    .prose pre.lm-mermaid{padding:20px;border:1px solid var(--line);background:var(--surface);color:var(--ink);text-align:center}
     .prose .lm-mermaid svg{max-width:100%;height:auto;cursor:zoom-in}
     .prose .lm-ruby rt{color:var(--muted);font-size:.65em}
     .prose .lm-task{list-style:none;padding-left:.2em}
