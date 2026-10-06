@@ -26,6 +26,7 @@ export const deliveryKindLabel: Record<string, string> = {
   confirm_subscription: '确认邮件',
   article_published: '文章发布',
   dynamic_published: '动态发布',
+  comment_reply: '评论回复通知',
 };
 
 export const deliveryStatusLabel: Record<string, string> = {

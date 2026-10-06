@@ -182,10 +182,13 @@ export type Subscriber = {
 
 export type Delivery = {
   id: string;
-  subscriber_id: string;
+  /** comment_reply 类型为 null（非订阅者收件人，见 recipient_email） */
+  subscriber_id: string | null;
   kind: string;
   article_id: string | null;
   dynamic_id: string | null;
+  /** comment_reply：非订阅者收件人邮箱 */
+  recipient_email?: string | null;
   status: string;
   attempt_count: number;
   next_attempt_at: string;

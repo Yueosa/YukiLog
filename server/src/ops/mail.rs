@@ -13,8 +13,8 @@ use sea_orm::{
 
 use crate::{
     entities::{
-        admin_accounts, admin_notifications, articles, dynamic_media, dynamics, email_deliveries,
-        media_assets, subscribers,
+        admin_accounts, admin_notifications, articles, comments, dynamic_media, dynamics,
+        email_deliveries, media_assets, subscribers,
     },
     markup,
     ops::subscriptions::{SubscriptionState, TokenPurpose},
@@ -152,8 +152,24 @@ UPDATE admin_notifications
     }
 
     async fn send_delivery(&self, delivery: &email_deliveries::Model) -> Result<(), WorkerError> {
+        // comment_reply 走非订阅者路径（recipient_email + 评论内容），单独处理
+        if delivery.kind == "comment_reply" {
+            return self.send_comment_reply(delivery).await;
+        }
         let transaction = self.database.begin().await?;
-        let subscriber = subscribers::Entity::find_by_id(delivery.subscriber_id)
+        // 订阅类投递必有 subscriber_id（库约束）；防御性兜底按取消处理
+        let Some(subscriber_id) = delivery.subscriber_id else {
+            let current = email_deliveries::Entity::find_by_id(delivery.id)
+                .lock_exclusive()
+                .one(&transaction)
+                .await?;
+            if let Some(current) = current {
+                return finalize_delivery(transaction, current, "cancelled", None).await;
+            }
+            transaction.rollback().await?;
+            return Ok(());
+        };
+        let subscriber = subscribers::Entity::find_by_id(subscriber_id)
             .lock_shared()
             .one(&transaction)
             .await?;
@@ -317,6 +333,139 @@ UPDATE admin_notifications
             }
         }
         Ok(())
+    }
+
+    /// comment_reply：审核通过的回复 → 通知被回复者（非订阅者，单次事务性邮件，
+    /// 无退订链接）。终态语义与订阅类投递一致（451 重试 / 550 永久失败 / 未知转人工）。
+    async fn send_comment_reply(&self, delivery: &email_deliveries::Model) -> Result<(), WorkerError> {
+        let transaction = self.database.begin().await?;
+        let current = email_deliveries::Entity::find_by_id(delivery.id)
+            .lock_exclusive()
+            .one(&transaction)
+            .await?;
+        let Some(current) = current else {
+            transaction.rollback().await?;
+            return Ok(());
+        };
+        if current.status != "sending" {
+            transaction.rollback().await?;
+            return Ok(());
+        }
+        let Some(content) = self.comment_reply_content(&transaction, &current).await? else {
+            // 回复/被回复评论已不可见或目标内容已删除：不必再通知
+            return finalize_delivery(transaction, current, "cancelled", None).await;
+        };
+        let recipient = match current
+            .recipient_email
+            .as_deref()
+            .unwrap_or_default()
+            .parse::<Mailbox>()
+        {
+            Ok(recipient) => recipient,
+            Err(error) => {
+                let mut active = current.into_active_model();
+                active.status = Set("failed".to_owned());
+                active.attempt_count = Set(MAX_ATTEMPTS);
+                active.locked_at = Set(None);
+                active.last_error = Set(Some(excerpt(&error.to_string(), 2000)));
+                active.update(&transaction).await?;
+                transaction.commit().await?;
+                return Ok(());
+            }
+        };
+        let message = multipart_message(self.from.clone(), recipient, &content)?;
+        match self.transport.send(message).await {
+            Ok(_) => {
+                let mut active = current.into_active_model();
+                active.status = Set("sent".to_owned());
+                active.sent_at = Set(Some(chrono::Utc::now().fixed_offset()));
+                active.locked_at = Set(None);
+                active.last_error = Set(None);
+                active.update(&transaction).await?;
+                transaction.commit().await?;
+            }
+            Err(error) => {
+                let disposition = smtp_failure_disposition(&error);
+                let detail = excerpt(&error.to_string(), 2000);
+                let mut active = current.into_active_model();
+                active.locked_at = Set(None);
+                active.last_error = Set(Some(detail));
+                match disposition {
+                    SmtpFailureDisposition::Retry => {
+                        active.status = Set("failed".to_owned());
+                        active.next_attempt_at = Set(chrono::Utc::now().fixed_offset()
+                            + chrono::Duration::seconds(retry_delay(delivery.attempt_count) as i64));
+                    }
+                    SmtpFailureDisposition::Permanent => {
+                        active.status = Set("failed".to_owned());
+                        active.attempt_count = Set(MAX_ATTEMPTS);
+                    }
+                    SmtpFailureDisposition::Uncertain => {
+                        active.status = Set("uncertain".to_owned());
+                    }
+                }
+                active.update(&transaction).await?;
+                transaction.commit().await?;
+                tracing::warn!(
+                    delivery_id = %delivery.id,
+                    ?disposition,
+                    smtp_status = ?error.status(),
+                    "SMTP delivery did not complete normally"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// 组装 comment_reply 邮件内容；回复或被回复评论不可见、目标内容删除时返回 None。
+    async fn comment_reply_content<C: sea_orm::ConnectionTrait>(
+        &self,
+        connection: &C,
+        delivery: &email_deliveries::Model,
+    ) -> Result<Option<MailContent>, WorkerError> {
+        let Some(comment_id) = delivery.comment_id else {
+            return Ok(None);
+        };
+        let reply = comments::Entity::find_by_id(comment_id).one(connection).await?;
+        let Some(reply) = reply.filter(|comment| comment.status == "visible") else {
+            return Ok(None);
+        };
+        let Some(parent_id) = reply.parent_id else {
+            return Ok(None);
+        };
+        let parent = comments::Entity::find_by_id(parent_id).one(connection).await?;
+        let Some(parent) = parent.filter(|comment| comment.status == "visible") else {
+            return Ok(None);
+        };
+        let (title, link) = if let Some(article_id) = reply.article_id {
+            let article = articles::Entity::find_by_id(article_id).one(connection).await?;
+            let Some(article) = article else {
+                return Ok(None);
+            };
+            (
+                article.title,
+                format!("{}/articles/{}#comments", self.public_origin, article.slug),
+            )
+        } else if let Some(dynamic_id) = reply.dynamic_id {
+            let dynamic = dynamics::Entity::find_by_id(dynamic_id).one(connection).await?;
+            let Some(dynamic) = dynamic else {
+                return Ok(None);
+            };
+            (
+                "一条动态".to_owned(),
+                format!("{}/dynamics#dynamic-{}", self.public_origin, dynamic.id),
+            )
+        } else {
+            return Ok(None);
+        };
+        Ok(Some(comment_reply_content(
+            &parent.display_name,
+            &parent.content,
+            &reply.display_name,
+            &reply.content,
+            &title,
+            &link,
+        )))
     }
 
     async fn run_admin_notification(&self) -> Result<usize, WorkerError> {
@@ -569,6 +718,51 @@ fn paragraph_html(text: &str) -> String {
     )
 }
 
+/// comment_reply 模板：被回复者收到的事务性单次通知（无退订链接，不是订阅）。
+fn comment_reply_content(
+    parent_author: &str,
+    parent_text: &str,
+    reply_author: &str,
+    reply_text: &str,
+    title: &str,
+    link: &str,
+) -> MailContent {
+    let parent_excerpt = excerpt(parent_text, 200);
+    let reply_excerpt = excerpt(reply_text, 300);
+    let body = format!(
+        "{}{}{}{}{}{}",
+        format!(
+            r#"<h1 style="margin:0 0 14px;font-size:20px;">{}，你的评论收到了回复</h1>"#,
+            escape_html(parent_author)
+        ),
+        format!(
+            r#"<p style="margin:0 0 4px;font-size:13px;color:#667085;">你在《{}》下的评论：</p>"#,
+            escape_html(title)
+        ),
+        format!(
+            r#"<blockquote style="margin:0 0 14px;padding:10px 14px;border-left:3px solid #dfe3ea;color:#667085;">{}</blockquote>"#,
+            escape_html(&parent_excerpt).replace('\n', "<br>")
+        ),
+        format!(
+            r#"<p style="margin:0 0 4px;font-size:13px;color:#667085;">{} 的回复：</p>"#,
+            escape_html(reply_author)
+        ),
+        paragraph_html(&reply_excerpt),
+        button_html(link, "查看回复"),
+    );
+    MailContent {
+        subject: "你在 YukiLog 的评论收到了回复".to_owned(),
+        text: format!(
+            "{parent_author}，{reply_author} 回复了你的评论：\n\n{reply_excerpt}\n\n查看：{link}\n"
+        ),
+        html: brand_html(
+            "评论回复",
+            &body,
+            "你收到这封邮件是因为在 YukiLog 评论时留下了邮箱；这是单次通知，不是订阅，只有别人回复你时才会再收到。",
+        ),
+    }
+}
+
 fn confirm_subscription_content(origin: &str, token: &str) -> MailContent {
     let url = format!("{origin}/subscriptions/confirm/{token}");
     let body = format!(
@@ -763,6 +957,55 @@ fn required_env(name: &'static str) -> Result<String, WorkerError> {
     Ok(value)
 }
 
+/// 审核通过一条"回复别人的评论"时调用：被回复者留了邮箱且不是自答，
+/// 就队列一封 comment_reply 通知。唯一索引保证反复审核只发一封。
+pub(crate) async fn queue_comment_reply_notification(
+    database: &sea_orm::DatabaseConnection,
+    reply: &comments::Model,
+) -> Result<(), crate::error::AppError> {
+    let Some(parent_id) = reply.parent_id else {
+        return Ok(());
+    };
+    let parent = comments::Entity::find_by_id(parent_id).one(database).await?;
+    let Some(parent) = parent else {
+        return Ok(());
+    };
+    let Some(email) = parent
+        .email
+        .as_deref()
+        .map(str::trim)
+        .filter(|email| !email.is_empty())
+    else {
+        return Ok(());
+    };
+    // 自己回复自己（同邮箱）不通知
+    if reply
+        .email
+        .as_deref()
+        .map(str::trim)
+        .is_some_and(|own| own.eq_ignore_ascii_case(email))
+    {
+        return Ok(());
+    }
+    database
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Postgres,
+            r#"
+INSERT INTO email_deliveries (kind, article_id, dynamic_id, comment_id, recipient_email)
+VALUES ('comment_reply', $1, $2, $3, $4)
+ON CONFLICT (comment_id) WHERE kind = 'comment_reply' DO NOTHING
+"#,
+            [
+                reply.article_id.into(),
+                reply.dynamic_id.into(),
+                reply.id.into(),
+                email.into(),
+            ],
+        ))
+        .await?;
+    Ok(())
+}
+
 fn retry_delay(attempt: i16) -> u64 {
     let exponent = u32::from(attempt.clamp(1, 9) as u16 - 1);
     60_u64.saturating_mul(2_u64.pow(exponent)).min(6 * 60 * 60)
@@ -952,6 +1195,27 @@ mod tests {
         );
         assert_eq!(few.html.matches("<img").count(), 2);
         assert!(!few.html.contains("共 "));
+    }
+
+    #[test]
+    fn comment_reply_content_includes_context_and_escapes() {
+        let content = comment_reply_content(
+            "小明 <script>",
+            "写得真好\n受教了",
+            "恋",
+            "谢谢喜欢！",
+            "夜航西飞",
+            "https://blog.example.com/articles/ye-hang#comments",
+        );
+        assert_eq!(content.subject, "你在 YukiLog 的评论收到了回复");
+        assert!(content.text.contains("恋 回复了你的评论"));
+        assert!(content.text.contains("https://blog.example.com/articles/ye-hang#comments"));
+        assert!(content.html.contains("小明 &lt;script&gt;，你的评论收到了回复"));
+        assert!(content.html.contains("写得真好<br>受教了"));
+        assert!(content.html.contains("《夜航西飞》"));
+        // 事务性单次通知：没有退订链接，但说明邮件来源
+        assert!(!content.html.contains("不再接收邮件"));
+        assert!(content.html.contains("不是订阅"));
     }
 
     #[test]

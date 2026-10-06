@@ -87,10 +87,13 @@ pub struct AdminSubscriberResponse {
 #[derive(Debug, Serialize)]
 pub struct AdminDeliveryResponse {
     id: Uuid,
-    subscriber_id: Uuid,
+    /// comment_reply 类型为 null（非订阅者收件人）
+    subscriber_id: Option<Uuid>,
     kind: String,
     article_id: Option<Uuid>,
     dynamic_id: Option<Uuid>,
+    /// comment_reply：非订阅者收件人邮箱
+    recipient_email: Option<String>,
     status: String,
     attempt_count: i16,
     next_attempt_at: chrono::DateTime<chrono::FixedOffset>,
@@ -588,6 +591,7 @@ impl From<email_deliveries::Model> for AdminDeliveryResponse {
             kind: model.kind,
             article_id: model.article_id,
             dynamic_id: model.dynamic_id,
+            recipient_email: model.recipient_email,
             status: model.status,
             attempt_count: model.attempt_count,
             next_attempt_at: model.next_attempt_at,

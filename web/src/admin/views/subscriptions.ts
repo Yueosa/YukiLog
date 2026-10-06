@@ -87,8 +87,10 @@ export class AdmSubscriptions extends AdmView {
     return '—';
   }
 
-  private subscriberEmail(id: string): string {
-    return this.store.subscribers.find((s) => s.id === id)?.email ?? '—';
+  private subscriberEmail(item: Delivery): string {
+    if (item.kind === 'comment_reply') return item.recipient_email ?? '—';
+    if (!item.subscriber_id) return '—';
+    return this.store.subscribers.find((s) => s.id === item.subscriber_id)?.email ?? '—';
   }
 
   private renderSubscriberRow(item: Subscriber) {
@@ -117,7 +119,7 @@ export class AdmSubscriptions extends AdmView {
       <tr>
         <td><span class="badge">${enumLabel(deliveryKindLabel, item.kind)}</span></td>
         <td><span class="target" title=${this.deliveryTarget(item)}>${this.deliveryTarget(item)}</span></td>
-        <td>${this.subscriberEmail(item.subscriber_id)}</td>
+        <td>${this.subscriberEmail(item)}</td>
         <td><span class="badge ${this.deliveryStatusClass(item.status)}">${enumLabel(deliveryStatusLabel, item.status)}</span></td>
         <td class="mono">${item.attempt_count}</td>
         <td>${item.last_error ? html`<span class="faint err" title=${item.last_error}>${item.last_error}</span>` : html`<span class="faint">—</span>`}</td>

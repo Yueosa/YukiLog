@@ -480,10 +480,15 @@ pub mod email_deliveries {
     pub struct Model {
         #[sea_orm(primary_key, auto_increment = false)]
         pub id: Uuid,
-        pub subscriber_id: Uuid,
+        /// 订阅者收件人（comment_reply 类型为 NULL，走 recipient_email）
+        pub subscriber_id: Option<Uuid>,
         pub kind: String,
         pub article_id: Option<Uuid>,
         pub dynamic_id: Option<Uuid>,
+        /// comment_reply：被回复的评论（内容在投递时加载）
+        pub comment_id: Option<Uuid>,
+        /// comment_reply：非订阅者收件人邮箱
+        pub recipient_email: Option<String>,
         pub status: String,
         pub attempt_count: i16,
         pub next_attempt_at: DateTimeWithTimeZone,

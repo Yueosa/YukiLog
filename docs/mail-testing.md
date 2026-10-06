@@ -45,6 +45,14 @@ cargo test -p yukilog-server \
 该测试会从空数据库执行 baseline，并验证成功投递、临时拒绝、SMTP 结果不确定和
 过期 `sending` 隔离。不得把生产数据库 URL 传给它。
 
+## 评论回复通知（comment_reply）
+
+管理端把一条"回复别人的评论"审核为 `visible` 时，若被回复者留了邮箱（且与回复者
+不同邮箱），队列一封事务性通知邮件。同一回复评论只发一封（部分唯一索引）；回复或
+被回复评论在投递前被隐藏/删除则任务取消。该类型无订阅者与退订链接，收件人存于
+`email_deliveries.recipient_email`。模板与逃逸有单元测试
+（`mail::tests::comment_reply_content_includes_context_and_escapes`）。
+
 ## 生产启用顺序
 
 1. 保持 `YUKILOG_MAIL_ENABLED=false`；

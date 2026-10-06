@@ -659,9 +659,23 @@ pub async fn update_comment_status(
         .one(&state.database)
         .await?
         .ok_or(AppError::NotFound)?;
+    let was_visible = model.status == "visible";
     let mut active = model.into_active_model();
-    active.status = Set(input.status);
-    Ok(Json(active.update(&state.database).await?.into()))
+    active.status = Set(input.status.clone());
+    let updated: comments::Model = active.update(&state.database).await?;
+    // 审核通过一条回复：通知被回复者（邮件失败不影响审核本身）
+    if input.status == "visible" && !was_visible && updated.parent_id.is_some() {
+        if let Err(error) =
+            crate::ops::mail::queue_comment_reply_notification(&state.database, &updated).await
+        {
+            tracing::warn!(
+                comment_id = %updated.id,
+                %error,
+                "comment reply notification could not be queued"
+            );
+        }
+    }
+    Ok(Json(updated.into()))
 }
 
 pub async fn delete_comment(

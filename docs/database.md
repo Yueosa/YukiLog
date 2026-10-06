@@ -274,10 +274,12 @@ HMAC-SHA-256 签名生成；数据库不保存令牌明文或可直接使用的�
 | 字段 | 含义与读写 |
 | --- | --- |
 | `id` | 投递 UUID。 |
-| `subscriber_id` | 接收订阅者。 |
-| `kind` | 确认订阅、新文章或新动态。 |
-| `article_id` | 新文章目标；仅文章通知填写。 |
+| `subscriber_id` | 接收订阅者；`comment_reply` 类型为 NULL（收件人走 `recipient_email`）。 |
+| `kind` | 确认订阅、新文章、新动态或评论回复通知（`comment_reply`）。 |
+| `article_id` | 新文章目标；仅文章通知填写（`comment_reply` 按被回复内容归属二选一）。 |
 | `dynamic_id` | 新动态目标；仅动态通知填写。 |
+| `comment_id` | 触发通知的回复评论；仅 `comment_reply` 填写，投递时加载内容与上下文。 |
+| `recipient_email` | 非订阅者收件人邮箱；仅 `comment_reply` 填写（citext）。 |
 | `status` | `pending`、`sending`、`sent`、`failed` 或 `cancelled`。 |
 | `attempt_count` | 已尝试次数。 |
 | `next_attempt_at` | 首次发送或下次重试时间。 |
@@ -287,6 +289,10 @@ HMAC-SHA-256 签名生成；数据库不保存令牌明文或可直接使用的�
 | `sent_at` | 成功发送时间。 |
 
 提交订阅时生成确认邮件任务；发布内容的事务直接为活跃订阅者生成通知任务。
+管理端审核**通过**一条"回复别人的评论"时，若被回复者留了邮箱（且与回复者
+不同），队列一条 `comment_reply` 任务；唯一索引保证同一回复只发一封。回复或
+被回复评论在投递前被隐藏/删除，任务自动取消。评论回复通知是事务性单次邮件，
+无退订链接。
 数据库保证任务类型与内容目标匹配，同一订阅者对同一内容最多一条任务。初始系统
 不建立通用 outbox。
 
