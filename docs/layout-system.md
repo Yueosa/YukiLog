@@ -65,3 +65,28 @@ hero（沉浸式首屏：轮换背景 / 欢迎大文字 / 语录卡 / ENTER 整�
 - /articles/{slug}：post-head、post-cover、toc、prose、post-tags、like-bar、comment-section。
 
 候选 v2：hot-panel（热点信息区：最近评论人/最新友链）。
+
+## 部件 token（theme.parts）
+
+部件 token 已落地：`site_settings.theme` 新增 `parts` 字段，形态
+`{ "<部件 id>": { "<旋钮 key>": string | number | boolean } }`。
+
+- **白名单**：`server/src/content/parts.rs` 的 `PARTS` 注册表是唯一事实源。
+  写入站点设置时逐键校验（未知部件/旋钮、类型或范围不符一律 422）；
+  管理端外观页通过 `GET /api/admin/parts/registry` 拉取同一份注册表渲染表单。
+- **渲染**：SSR 在 `:root` 内联 `--part-<id>-<key>`（`part_vars_css`，白名单 +
+  CSS 消毒）；Lit 在 `siteThemeStyle()` 里同样全量落变量。纯视觉旋钮由部件 CSS
+  用 `var(--part-x-y, 现状默认值)` 消费（空 parts 时像素级等于现状）；结构性
+  旋钮（文案、显隐）由渲染器读取后作用到类名或文本上。
+- **外观页**：管理端 `#/appearance`，左部件列表右旋钮表单，底部 iframe 载入
+  公开站并用 postMessage（`yukilog:parts-preview`，同源校验）注入未保存的
+  草稿做实时预览；保存才把 `theme.parts` 写回 `PUT /api/admin/settings`。
+
+首批部件与旋钮：
+
+| 部件 | 旋钮 | 说明 |
+| --- | --- | --- |
+| `brand` | `text` / `scale` | 品牌文字（空 = 站点标题）与字号倍率 0.8–2.0 |
+| `topnav` | `display` / `align` | 图标+文字/仅图标/仅文字（SSR 仅内页顶栏生效）；首屏角导航对齐 start/center/end |
+| `hero-title` | `text` | 欢迎大文字（空 = 默认欢迎语，含「恋」自动高亮） |
+

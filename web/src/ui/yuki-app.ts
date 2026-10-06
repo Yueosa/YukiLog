@@ -597,6 +597,7 @@ export class YukiApp extends LitElement {
     this.addEventListener('click', this.handleSiteClick);
     this.addEventListener('submit', this.handleSiteSubmit);
     window.addEventListener('keydown', this.handleLightboxKeydown);
+    window.addEventListener('message', this.handlePartsPreview);
     // 滚动恢复由 SPA 自己管理，浏览器原生恢复会让列表页跳动。
     if ('scrollRestoration' in window.history) window.history.scrollRestoration = 'manual';
     // 冷进入一律从顶部开始：浏览器原生恢复会在 JS 执行前把页面拉回旧位置，
@@ -617,6 +618,7 @@ export class YukiApp extends LitElement {
     this.removeEventListener('click', this.handleSiteClick);
     this.removeEventListener('submit', this.handleSiteSubmit);
     window.removeEventListener('keydown', this.handleLightboxKeydown);
+    window.removeEventListener('message', this.handlePartsPreview);
     this.revealObserver?.disconnect();
     this.revealObserver = null;
     this.momentObserver?.disconnect();
@@ -1375,7 +1377,7 @@ export class YukiApp extends LitElement {
     .brand {
       flex-shrink: 0;
       color: inherit;
-      font-size: 20px;
+      font-size: calc(20px * var(--part-brand-scale, 1));
       font-weight: 600;
       letter-spacing: 0.14em;
       text-decoration: none;
@@ -1384,7 +1386,7 @@ export class YukiApp extends LitElement {
 
     .nav-corners .brand {
       justify-self: start;
-      font-size: 20px;
+      font-size: calc(20px * var(--part-brand-scale, 1));
       letter-spacing: 0.14em;
       text-transform: uppercase;
     }
@@ -1398,8 +1400,17 @@ export class YukiApp extends LitElement {
     }
 
     .nav-corners .nav-links {
-      justify-self: center;
+      justify-self: var(--part-topnav-align, center);
       gap: 26px;
+    }
+
+    /* topnav display 旋钮：仅图标 / 仅文字（默认 both 不加类） */
+    .topnav-icons .nav-label {
+      display: none;
+    }
+
+    .topnav-text .nav-icon {
+      display: none;
     }
 
     .nav-corners .nav-actions {
@@ -5693,9 +5704,45 @@ export class YukiApp extends LitElement {
     return href === '/' ? path === '/' : path === href || path.startsWith(`${href}/`);
   }
 
+  /** 管理端外观页 iframe 预览注入的部件覆盖（不落库，postMessage 同源校验）。 */
+  private previewParts: Record<string, Record<string, string | number | boolean>> | null = null;
+
+  private readonly handlePartsPreview = (event: MessageEvent) => {
+    if (event.origin !== window.location.origin) return;
+    const data = event.data as { type?: string; parts?: unknown } | null;
+    if (data?.type !== 'yukilog:parts-preview') return;
+    this.previewParts =
+      data.parts && typeof data.parts === 'object'
+        ? (data.parts as Record<string, Record<string, string | number | boolean>>)
+        : null;
+    this.requestUpdate();
+  };
+
+  /** 部件 token：预览覆盖优先，其次站点设置。 */
+  private parts(): Record<string, Record<string, string | number | boolean>> {
+    return this.previewParts ?? this.store.site.data?.theme?.parts ?? {};
+  }
+
+  private partText(part: string, key: string): string | null {
+    const value = this.parts()[part]?.[key];
+    return typeof value === 'string' && value !== '' ? value : null;
+  }
+
+  /** 顶栏品牌文字：brand.text 旋钮优先，缺省站点标题。 */
+  private brandText(): string {
+    return this.partText('brand', 'text') ?? this.siteData.siteTitle;
+  }
+
+  /** topnav display 旋钮 → 导航容器类名。 */
+  private topnavClass(): string {
+    const display = this.partText('topnav', 'display');
+    if (display === 'icons') return ' topnav-icons';
+    if (display === 'text') return ' topnav-text';
+    return '';
+  }
+
   /** 站点设置下发的主题 token → CSS 变量。 */
-  private siteThemeStyle(): Record<string, string> {
-    const theme = this.store.site.data?.theme;
+  private siteThemeStyle(): Record<string, string> {    const theme = this.store.site.data?.theme;
     const colors = theme?.colors;
     if (!colors) return {};
     const style: Record<string, string> = {};
@@ -5727,6 +5774,24 @@ export class YukiApp extends LitElement {
     if (theme?.mastheadPosition) style['--masthead-pos'] = theme.mastheadPosition;
     if (theme?.mastheadFit) {
       style['--masthead-fit'] = theme.mastheadFit === 'stretch' ? '100% 100%' : theme.mastheadFit;
+    }
+    // 部件 token 全量落成 --part-<id>-<key>（白名单在服务端，未登记的键这里自然无害：
+    // CSS 只消费 var() 引用得到的变量；id/key 限定字符集，值剔除 CSS 注入面）。
+    for (const [part, knobs] of Object.entries(this.parts())) {
+      if (!/^[a-z0-9-]+$/.test(part) || !knobs || typeof knobs !== 'object') continue;
+      for (const [key, value] of Object.entries(knobs)) {
+        if (!/^[a-z0-9-]+$/.test(key)) continue;
+        const name = `--part-${part}-${key}`;
+        if (typeof value === 'number' && Number.isFinite(value)) {
+          style[name] = String(value);
+        } else if (typeof value === 'boolean') {
+          style[name] = value ? '1' : '0';
+        } else if (typeof value === 'string') {
+          // eslint-disable-next-line no-control-regex
+          const clean = value.replace(/[;{}<>\\\x00-\x1f]/g, '').slice(0, 120);
+          if (clean) style[name] = clean;
+        }
+      }
     }
     return style;
   }
@@ -5774,7 +5839,7 @@ export class YukiApp extends LitElement {
     if (this.shell.navigation === 'sidebar') {
       return html`
         <nav class="site-nav nav-sidebar">
-          <a class="brand" href="/">${this.siteData.siteTitle}</a>
+          <a class="brand" href="/">${this.brandText()}</a>
           ${links}
           <div class="nav-foot">写给时间的长信<br />RSS · Mail</div>
         </nav>
@@ -5784,13 +5849,13 @@ export class YukiApp extends LitElement {
       return html`<nav class="site-nav nav-dock"><a class="brand" href="/">Y</a>${links}</nav>`;
     }
     return html`
-      <div class="nav-corners${this.navPastHero ? ' hidden' : ''}">
-        <a class="brand" href="/">${this.siteData.siteTitle}</a>
+      <div class="nav-corners${this.topnavClass()}${this.navPastHero ? ' hidden' : ''}">
+        <a class="brand" href="/">${this.brandText()}</a>
         ${links}
         ${actions}
       </div>
-      <nav class="site-nav nav-topbar${this.navPastHero ? ' nav-sticky' : ''}">
-        <a class="brand" href="/">${this.siteData.siteTitle}</a>
+      <nav class="site-nav nav-topbar${this.topnavClass()}${this.navPastHero ? ' nav-sticky' : ''}">
+        <a class="brand" href="/">${this.brandText()}</a>
         ${links}
         <div class="nav-inner-actions">${actions}</div>
       </nav>
@@ -5805,7 +5870,7 @@ export class YukiApp extends LitElement {
             >
               <section class="mobile-menu" @click=${(event: Event) => event.stopPropagation()}>
                 <header class="mobile-menu-header">
-                  <strong>${this.siteData.siteTitle}</strong>
+                  <strong>${this.brandText()}</strong>
                   <button
                     class="nav-action"
                     type="button"
@@ -6029,7 +6094,8 @@ export class YukiApp extends LitElement {
 
   private renderHero(node: HomeNode) {
     const variant = String(node.props.variant ?? 'cinematic');
-    const title = String(node.props.title ?? '');
+    // hero-title 旋钮优先于布局字面量
+    const title = this.partText('hero-title', 'text') ?? String(node.props.title ?? '');
     const accentChars = new Set(String(node.props.accent ?? ''));
     // 首屏背景来自站点设置的 heroBackgrounds 池（冷进入随机抽一张，
     // 多张时每 8 秒淡切；reduced-motion 只随机不轮播）。

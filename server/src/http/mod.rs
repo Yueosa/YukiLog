@@ -172,6 +172,10 @@ pub fn router(state: AppState) -> Router {
             get(settings::get_settings).put(settings::put_settings),
         )
         .route(
+            "/api/admin/parts/registry",
+            get(crate::content::parts::registry),
+        )
+        .route(
             "/api/admin/subscribers",
             get(crate::ops::subscriptions::admin_list_subscribers),
         )

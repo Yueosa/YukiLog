@@ -45,6 +45,12 @@ const COVER_CLASSES: [&str; 6] = [
 #[derive(Clone)]
 struct SiteView {
     title: String,
+    /// 品牌旋钮覆盖后的导航品牌文字（默认 = title）
+    brand_text: String,
+    /// hero-title 旋钮覆盖后的首屏大文字（默认 = parts::DEFAULT_HERO_TITLE）
+    hero_title: String,
+    /// 部件旋钮落成的 `--part-*` 声明串（已按白名单+CSS 消毒）
+    part_vars: String,
     description: String,
     owner_name: String,
     owner_bio: String,
@@ -56,7 +62,7 @@ struct SiteView {
     origin: String,
     social_links: Vec<SocialLink>,
     navigation_class: &'static str,
-    navigation_options: &'static str,
+    navigation_options: String,
     page_width_class: &'static str,
     show_search: bool,
     mail_enabled: bool,
@@ -268,7 +274,7 @@ struct HomeStats {
   <title data-away="唔, 不看我了吗...Ծ‸Ծ">{{ page_title }} · {{ site.title }}</title>
   <script>(()=>{const d=document.documentElement;try{if(window.sessionStorage.getItem('yukilog.splash'))return}catch{return}d.classList.add('splash-run','is-intro')})();</script>
   <style>
-    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--masthead-tint:{{ site.masthead_tint }}%;--hero-pos:{{ site.hero_position }};--hero-fit:{{ site.hero_fit }};--masthead-pos:{{ site.masthead_position }};--masthead-fit:{{ site.masthead_fit }};--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
+    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--masthead-tint:{{ site.masthead_tint }}%;--hero-pos:{{ site.hero_position }};--hero-fit:{{ site.hero_fit }};--masthead-pos:{{ site.masthead_position }};--masthead-fit:{{ site.masthead_fit }};{{ site.part_vars|safe }}--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
     *{box-sizing:border-box}
     @view-transition{navigation:auto}
     ::view-transition-old(root),::view-transition-new(root){animation-duration:240ms;animation-timing-function:cubic-bezier(.22,.61,.36,1)}
@@ -290,10 +296,10 @@ struct HomeStats {
     .nav-corners.hidden{opacity:0;visibility:hidden;translate:0 -10px}
     .nav-corners>*{pointer-events:auto}
     .nav-corners.hidden>*{pointer-events:none}
-    .brand{flex-shrink:0;color:inherit;font-size:20px;font-weight:600;letter-spacing:.14em;white-space:nowrap}
+    .brand{flex-shrink:0;color:inherit;font-size:calc(20px * var(--part-brand-scale,1));font-weight:600;letter-spacing:.14em;white-space:nowrap}
     .nav-corners .brand{justify-self:start;text-transform:uppercase}
     .nav-links{display:flex;min-width:0;align-items:center;flex-wrap:nowrap;gap:4px}
-    .nav-corners .nav-links{justify-self:center;gap:26px}
+    .nav-corners .nav-links{justify-self:var(--part-topnav-align,center);gap:26px}
     .nav-corners .nav-actions{justify-self:end}
     .nav-corners .nav-item{padding:4px 0;color:rgb(238 243 248/80%);font-size:12px;font-weight:500;letter-spacing:.18em;transition:color 250ms ease}
     .nav-corners .nav-item:hover,.nav-corners .nav-item.active{color:#fff}
@@ -301,6 +307,8 @@ struct HomeStats {
     .nav-topbar{position:fixed;top:14px;left:50%;display:flex;width:auto;align-items:center;gap:2px;padding:6px;border:1px solid var(--line);border-radius:999px;background:rgb(255 255 255/92%);box-shadow:0 8px 28px rgb(28 39 51/10%);color:var(--ink);opacity:0;visibility:hidden;translate:-50% -12px;backdrop-filter:blur(12px);transition:opacity 380ms ease,translate 380ms cubic-bezier(.22,.61,.36,1),visibility 380ms}
     .nav-topbar.nav-sticky{opacity:1;visibility:visible;translate:-50% 0}
     .nav-topbar .brand{display:none}
+    .site-nav.topnav-icons .nav-label{display:none}
+    .site-nav.topnav-text .nav-icon{display:none}
     .nav-topbar .nav-item{display:flex;align-items:center;gap:6px;padding:8px 18px;border-radius:999px;color:var(--muted);font-size:13.5px;font-weight:500;white-space:nowrap;transition:color 250ms ease,background 250ms ease}
     .nav-topbar .nav-item:hover{color:var(--ink)}
     .nav-topbar .nav-item.active{background:var(--ink);color:#fff}
@@ -804,9 +812,9 @@ struct HomeStats {
     </div>
     <span class="prelude-hint">点击或按任意键跳过</span>
   </div>
-  {% if immersive_home %}<div class="nav-corners" id="nav-corners"><a class="brand" href="/">{{ site.title }}</a><div class="nav-links"><a class="nav-item{% if current_section == "home" %} active{% endif %}" href="/"><span class="nav-label">首页</span></a><a class="nav-item{% if current_section == "articles" %} active{% endif %}" href="/articles"><span class="nav-label">文章</span></a><a class="nav-item{% if current_section == "dynamics" %} active{% endif %}" href="/dynamics"><span class="nav-label">动态</span></a><a class="nav-item{% if current_section == "friends" %} active{% endif %}" href="/friends"><span class="nav-label">友链</span></a></div><div class="nav-actions">{% if site.show_search %}<a class="nav-action" href="/search" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></a>{% endif %}<button class="nav-action nav-hamburger menu-toggle" type="button" aria-label="打开菜单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div></div>{% endif %}
+  {% if immersive_home %}<div class="nav-corners" id="nav-corners"><a class="brand" href="/">{{ site.brand_text }}</a><div class="nav-links"><a class="nav-item{% if current_section == "home" %} active{% endif %}" href="/"><span class="nav-label">首页</span></a><a class="nav-item{% if current_section == "articles" %} active{% endif %}" href="/articles"><span class="nav-label">文章</span></a><a class="nav-item{% if current_section == "dynamics" %} active{% endif %}" href="/dynamics"><span class="nav-label">动态</span></a><a class="nav-item{% if current_section == "friends" %} active{% endif %}" href="/friends"><span class="nav-label">友链</span></a></div><div class="nav-actions">{% if site.show_search %}<a class="nav-action" href="/search" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></svg></a>{% endif %}<button class="nav-action nav-hamburger menu-toggle" type="button" aria-label="打开菜单"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div></div>{% endif %}
   <nav id="site-nav" class="site-nav nav-{{ site.navigation_class }} {{ site.navigation_options }}{% if immersive_home %}{% else %} nav-sticky{% endif %}" aria-label="主导航">
-    <a class="brand" href="/">{{ site.title }}</a>
+    <a class="brand" href="/">{{ site.brand_text }}</a>
     <div class="nav-links">
       <a class="nav-item{% if current_section == "home" %} active{% endif %}" href="/"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5v8a1.5 1.5 0 0 1-1.5 1.5h-5v-6h-5v6h-5A1.5 1.5 0 0 1 3 19.5z"/></svg></span><span class="nav-label">首页</span></a>
       <a class="nav-item{% if current_section == "articles" %} active{% endif %}" href="/articles"><span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 10h6M9 14h6M9 18h4M15 3v4h4"/></svg></span><span class="nav-label">文章</span></a>
@@ -1259,14 +1267,23 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         NavigationVariant::Sidebar => "sidebar",
         NavigationVariant::FloatingDock => "floating-dock",
     };
-    let navigation_options = match (
-        settings.shell_layout.brand_position,
-        settings.shell_layout.translucent,
-    ) {
-        (BrandPosition::Center, true) => "brand-center nav-translucent",
-        (BrandPosition::Center, false) => "brand-center",
-        (BrandPosition::Start, true) => "nav-translucent",
-        (BrandPosition::Start, false) => "",
+    let navigation_options = {
+        let mut options = match (
+            settings.shell_layout.brand_position,
+            settings.shell_layout.translucent,
+        ) {
+            (BrandPosition::Center, true) => "brand-center nav-translucent".to_owned(),
+            (BrandPosition::Center, false) => "brand-center".to_owned(),
+            (BrandPosition::Start, true) => "nav-translucent".to_owned(),
+            (BrandPosition::Start, false) => String::new(),
+        };
+        // topnav display 旋钮：SSR 内页顶栏有图标，角导航没有（始终保留文字）
+        match crate::content::parts::part_text(&settings.theme.parts, "topnav", "display") {
+            Some("icons") => options.push_str(" topnav-icons"),
+            Some("text") => options.push_str(" topnav-text"),
+            _ => {}
+        }
+        options
     };
     let page_width_class = match settings.shell_layout.max_width {
         ShellWidth::Content => "width-content",
@@ -1280,6 +1297,13 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         crate::content::settings::FontFamily::Mono => "font-mono",
     };
     Ok(SiteView {
+        brand_text: crate::content::parts::part_text(&settings.theme.parts, "brand", "text")
+            .unwrap_or(&settings.site_title)
+            .to_owned(),
+        hero_title: crate::content::parts::part_text(&settings.theme.parts, "hero-title", "text")
+            .unwrap_or(crate::content::parts::DEFAULT_HERO_TITLE)
+            .to_owned(),
+        part_vars: crate::content::parts::part_vars_css(&settings.theme.parts),
         title: settings.site_title,
         description: settings.site_description.unwrap_or_default(),
         owner_name: settings.owner_name,
@@ -1751,6 +1775,9 @@ mod tests {
     fn test_site() -> SiteView {
         SiteView {
             title: "YukiLog".to_owned(),
+            brand_text: "YukiLog".to_owned(),
+            hero_title: crate::content::parts::DEFAULT_HERO_TITLE.to_owned(),
+            part_vars: String::new(),
             description: "夜航西飞".to_owned(),
             owner_name: "Sakurine".to_owned(),
             owner_bio: String::new(),
@@ -1762,7 +1789,7 @@ mod tests {
             origin: "https://blog.example.com".to_owned(),
             social_links: Vec::new(),
             navigation_class: "topbar",
-            navigation_options: "",
+            navigation_options: String::new(),
             page_width_class: "width-wide",
             show_search: true,
             mail_enabled: false,

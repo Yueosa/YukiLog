@@ -123,6 +123,27 @@ export type ThemeTokens = {
   mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
   /** 刊头背景适应。 */
   mastheadFit?: 'cover' | 'contain' | 'stretch' | null;
+  /** 部件 token：{ 部件 id: { 旋钮 key: 值 } }，白名单见服务端 content/parts.rs。 */
+  parts?: Record<string, Record<string, string | number | boolean>>;
+};
+
+/** 部件注册表（GET /api/admin/parts/registry）：外观页表单按此渲染。 */
+export type PartsRegistry = {
+  parts: Array<{
+    id: string;
+    label: string;
+    description: string;
+    knobs: Array<{
+      key: string;
+      label: string;
+      hint: string;
+      kind: 'text' | 'number' | 'select' | 'boolean';
+      maxLen?: number;
+      min?: number;
+      max?: number;
+      options?: string[];
+    }>;
+  }>;
 };
 
 /** 首屏背景项：纯媒体 id（居中）或带焦点位置（可再带局部放大 size）的对象。 */

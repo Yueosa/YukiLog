@@ -104,6 +104,9 @@ pub struct ThemeTokens {
     /// 刊头背景适应（cover/contain/stretch），None 为 cover。
     #[serde(default)]
     pub masthead_fit: Option<String>,
+    /// 部件 token：{ 部件 id: { 旋钮 key: 值 } }，白名单见 content/parts.rs。
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub parts: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -344,6 +347,7 @@ impl SiteSettingsWrite {
         if self.theme.shape.radius > 32 {
             return Err(AppError::InvalidRequest("主题圆角不能超过 32"));
         }
+        crate::content::parts::validate_parts(&self.theme.parts)?;
         Ok(())
     }
 }

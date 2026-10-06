@@ -107,6 +107,8 @@ export interface SiteTheme {
   mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
   /** 刊头背景适应，缺省 cover。 */
   mastheadFit?: 'cover' | 'contain' | 'stretch' | null;
+  /** 部件 token：{ 部件 id: { 旋钮 key: 值 } }，白名单见服务端 content/parts.rs。 */
+  parts?: Record<string, Record<string, string | number | boolean>>;
 }
 
 export interface PublicSite {

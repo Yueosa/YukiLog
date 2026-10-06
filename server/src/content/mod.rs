@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod overview;
+pub mod parts;
 pub mod public;
 pub mod public_api;
 pub mod settings;

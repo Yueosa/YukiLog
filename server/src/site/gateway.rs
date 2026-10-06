@@ -260,6 +260,9 @@ mod tests {
     fn site_view() -> SiteView {
         SiteView {
             title: "YukiLog".to_owned(),
+            brand_text: "YukiLog".to_owned(),
+            hero_title: crate::content::parts::DEFAULT_HERO_TITLE.to_owned(),
+            part_vars: String::new(),
             description: "夜航西飞".to_owned(),
             owner_name: "Sakurine".to_owned(),
             owner_bio: String::new(),
@@ -271,7 +274,7 @@ mod tests {
             origin: "https://blog.example.com".to_owned(),
             social_links: Vec::new(),
             navigation_class: "topbar",
-            navigation_options: "",
+            navigation_options: String::new(),
             page_width_class: "width-wide",
             show_search: true,
             mail_enabled: false,
