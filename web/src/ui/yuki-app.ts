@@ -4620,11 +4620,11 @@ export class YukiApp extends LitElement {
       translate: 0 -1px;
     }
 
-    .pulse-dot.comment {
+    .pulse-dot.pulse-comment {
       background: var(--primary);
     }
 
-    .pulse-dot.friend {
+    .pulse-dot.pulse-friend {
       background: var(--secondary);
     }
 
@@ -6481,7 +6481,7 @@ export class YukiApp extends LitElement {
                     rel=${item.kind === 'friend' && /^https?:/.test(item.targetUrl) ? 'noopener noreferrer' : nothing}
                     @click=${(event: Event) => event.stopPropagation()}
                   >
-                    <span class="pulse-dot ${item.kind}" aria-hidden="true"></span>
+                    <span class="pulse-dot pulse-${item.kind}" aria-hidden="true"></span>
                     <span class="pulse-text"
                       >${item.kind === 'comment'
                         ? html`<strong>${item.author}</strong> 评论了${item.targetTitle ? html`《${item.targetTitle}》` : '一条动态'}`

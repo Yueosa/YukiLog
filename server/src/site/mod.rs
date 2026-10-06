@@ -733,8 +733,8 @@ struct HomeStats {
     .pulse-item:last-child{border-bottom:0}
     .pulse-item:hover{color:var(--ink)}
     .pulse-dot{width:6px;height:6px;flex:none;border-radius:50%;translate:0 -1px}
-    .pulse-dot.comment{background:var(--primary)}
-    .pulse-dot.friend{background:var(--secondary)}
+    .pulse-dot.pulse-comment{background:var(--primary)}
+    .pulse-dot.pulse-friend{background:var(--secondary)}
     .pulse-text{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .pulse-text strong{color:var(--ink);font-weight:600}
     .pulse-item time{flex:none;color:var(--faint);font-family:var(--mono);font-size:11px}
