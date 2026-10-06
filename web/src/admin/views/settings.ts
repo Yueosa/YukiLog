@@ -703,7 +703,7 @@ export class AdmSettings extends AdmView {
           <label class="field">
             <span>适应方式</span>
             <select
-              .value=${draft.theme.heroBackgroundFit ?? 'cover'}
+              .value=${draft.theme.heroBackgroundFit ?? 'contain'}
               @change=${(e: Event) =>
                 this.setField('theme', {
                   ...draft.theme,

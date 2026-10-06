@@ -280,6 +280,10 @@ export class YukiApp extends LitElement {
   private heroBgIndex = 0;
   private heroBgSeeded = false;
   private heroBgTimer: number | null = null;
+  private heroReady = false;
+  private splashAwaitingHero = false;
+  /** 会话级驻留的首屏/刊头图：挂在组件上防内存缓存被逐出，SPA 换页回来不再重载。 */
+  private readonly retainedImages: HTMLImageElement[] = [];
   private splashActive = false;
   private splashDone = false;
   private splashStarted = false;
@@ -376,8 +380,8 @@ export class YukiApp extends LitElement {
       return;
     }
     prelude.addEventListener('click', this.handleSplashSkip);
-    // 兜底：CSS 不可用时 6s 强制进场
-    this.splashTimers.push(window.setTimeout(() => this.leaveSplash(), 6000));
+    // 兜底：CSS 不可用或资源 6s 内未就绪时强制进场
+    this.splashTimers.push(window.setTimeout(() => this.leaveSplash(true), 6000));
     const exit = this.splashExitAnimation(prelude);
     exit?.ready.then(
       () => {
@@ -396,17 +400,34 @@ export class YukiApp extends LitElement {
   private readonly handleSplashSkip = () => {
     if (this.splashDone) return;
     this.splashPrelude()?.classList.add('is-skipped');
-    this.leaveSplash();
+    this.leaveSplash(true);
   };
 
-  private leaveSplash() {
+  private leaveSplash(force = false) {
     if (this.splashDone) return;
+    // 开屏动画兼作加载屏：站点数据未就绪、或已配置首屏背景但当前图未加载完时，
+    // 暂停退场动画继续等待（点击/按键/6s 兜底可强制跳过）。
+    if (!force && !this.studio && !this.previewOnly) {
+      const siteStatus = this.store.site.status;
+      const sitePending = siteStatus === 'idle' || siteStatus === 'loading';
+      const heroPending = this.siteData.heroBackgrounds.length > 0 && !this.heroReady;
+      if (sitePending || heroPending) {
+        if (!this.splashAwaitingHero) {
+          this.splashAwaitingHero = true;
+          this.splashPrelude()?.classList.add('is-waiting');
+          this.requestUpdate();
+        }
+        return;
+      }
+    }
+    this.splashAwaitingHero = false;
     this.splashDone = true;
     this.splashTimers.forEach((timer) => window.clearTimeout(timer));
     this.splashTimers = [];
     window.removeEventListener('keydown', this.handleSplashSkip);
     document.body.style.overflow = '';
     const prelude = this.splashPrelude();
+    prelude?.classList.remove('is-waiting');
     prelude?.classList.add('is-leaving');
     // is-intro 解除 → 首屏入场动画开始（CSS），退场动画结束后移除开屏层
     this.requestUpdate();
@@ -435,7 +456,7 @@ export class YukiApp extends LitElement {
             <path class="prelude-line" pathLength="1" d="M0 30H1200" />
           </svg>
         </div>
-        <span class="prelude-hint">点击或按任意键跳过</span>
+        <span class="prelude-hint">${this.splashAwaitingHero ? '正在加载首屏资源 · 点击或按任意键跳过' : '点击或按任意键跳过'}</span>
       </div>
     `;
   }
@@ -2602,11 +2623,24 @@ export class YukiApp extends LitElement {
     }
 
     .filter-bar {
+      display: grid;
+      gap: 12px;
+      margin: 26px 0 0;
+    }
+
+    .filter-group {
       display: flex;
+      align-items: center;
       justify-content: center;
       flex-wrap: wrap;
       gap: 10px;
-      margin: 26px 0 0;
+    }
+
+    .filter-label {
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.14em;
     }
 
     .filter-chip:hover {
@@ -5681,7 +5715,7 @@ export class YukiApp extends LitElement {
       position: absolute;
       inset: 0;
       background-position: var(--hero-pos, center);
-      background-size: var(--hero-fit, cover);
+      background-size: var(--hero-fit, contain);
       background-repeat: no-repeat;
       opacity: 0;
       transition: opacity 1400ms ease;
@@ -5745,6 +5779,11 @@ export class YukiApp extends LitElement {
     .prelude.is-skipped {
       animation-name: prelude-exit-now;
       animation-delay: 0s;
+    }
+
+    /* 等待首屏资源时冻结退场动画，开屏层停留为加载屏 */
+    .prelude.is-waiting {
+      animation-play-state: paused;
     }
 
     .prelude.is-leaving {
@@ -7047,8 +7086,9 @@ export class YukiApp extends LitElement {
             ? html`
                 <div class="hero-background hero-bg-stack" role="img" aria-label="首屏背景">
                   ${heroBackgrounds.map((item, index) => {
-                    const contain =
-                      this.store.site.data?.theme?.heroBackgroundFit === 'contain';
+                    // 缺省即 contain（完整显示 + 模糊填充），仅显式 cover/stretch 关闭
+                    const fit = this.store.site.data?.theme?.heroBackgroundFit;
+                    const contain = fit !== 'cover' && fit !== 'stretch';
                     const focal = item.position ?? backgroundPosition;
                     return html`
                       ${contain
@@ -7109,16 +7149,42 @@ export class YukiApp extends LitElement {
     `;
   }
 
+  /** 会话级驻留预载：Image 对象保留在组件上，内存缓存不被逐出，SPA 换页不再重载。 */
+  private retainImage(url: string): Promise<void> {
+    return new Promise((resolve) => {
+      const image = new Image();
+      this.retainedImages.push(image);
+      image.onload = () => resolve();
+      image.onerror = () => resolve();
+      image.src = url;
+    });
+  }
+
   // 首屏背景池：站点数据到达后随机抽一张并启动 8 秒淡切（仅公开运行时一次）。
+  // 抽中的当前图优先加载并作为开屏（兼加载屏）收场的就绪信号；其余图随后驻留预载。
   private maybeSeedHeroBackgrounds() {
     if (this.studio || this.previewOnly || this.heroBgSeeded) return;
     const backgrounds = this.siteData.heroBackgrounds;
-    if (backgrounds.length === 0) return;
+    if (backgrounds.length === 0) {
+      // 未配置首屏背景：若开屏还在等待数据且数据已有定论，直接收场
+      const siteStatus = this.store.site.status;
+      if (this.splashAwaitingHero && siteStatus !== 'idle' && siteStatus !== 'loading') {
+        this.leaveSplash();
+      }
+      return;
+    }
     this.heroBgSeeded = true;
     this.heroBgIndex = Math.floor(Math.random() * backgrounds.length);
-    backgrounds.forEach((item) => {
-      const preload = new Image();
-      preload.src = item.url;
+    const active = backgrounds[this.heroBgIndex];
+    void this.retainImage(active.url).then(() => {
+      this.heroReady = true;
+      if (this.splashAwaitingHero) this.leaveSplash();
+      // 当前图就绪后再驻留预载其余轮换图与刊头图，避免抢占首图带宽
+      for (const item of backgrounds) {
+        if (item.url !== active.url) void this.retainImage(item.url);
+      }
+      const masthead = this.siteData.mastheadUrl;
+      if (masthead) void this.retainImage(masthead);
     });
     if (backgrounds.length > 1 && !this.reducedMotion && this.heroBgTimer === null) {
       this.heroBgTimer = window.setInterval(() => {
@@ -8153,22 +8219,32 @@ export class YukiApp extends LitElement {
         <p class="search-hint">ENTER 搜索 · 支持标题 / 正文 / 标签</p>
         ${categories.length + tags.length > 0
           ? html`<div class="filter-bar">
-              ${categories.map(
-                (item) =>
-                  html`<a
-                    class="filter-chip${category === item.slug ? ' on' : ''}"
-                    href=${filterHref('category', item.slug)}
-                    >${item.name}</a
-                  >`,
-              )}
-              ${tags.map(
-                (item) =>
-                  html`<a
-                    class="filter-chip${tag === item.slug ? ' on' : ''}"
-                    href=${filterHref('tag', item.slug)}
-                    >#${item.name}</a
-                  >`,
-              )}
+              ${categories.length
+                ? html`<div class="filter-group">
+                    <span class="filter-label">分类</span>
+                    ${categories.map(
+                      (item) =>
+                        html`<a
+                          class="filter-chip${category === item.slug ? ' on' : ''}"
+                          href=${filterHref('category', item.slug)}
+                          >${item.name}</a
+                        >`,
+                    )}
+                  </div>`
+                : nothing}
+              ${tags.length
+                ? html`<div class="filter-group">
+                    <span class="filter-label">标签</span>
+                    ${tags.map(
+                      (item) =>
+                        html`<a
+                          class="filter-chip${tag === item.slug ? ' on' : ''}"
+                          href=${filterHref('tag', item.slug)}
+                          >#${item.name}</a
+                        >`,
+                    )}
+                  </div>`
+                : nothing}
             </div>`
           : nothing}
         ${this.renderSearchResults(query, category, tag, page, params)}
@@ -8256,7 +8332,7 @@ export class YukiApp extends LitElement {
           : nothing}
       `;
     }
-    return html`<p class="search-hint">输入关键词，或者从下面的分类与标签开始逛。</p>`;
+    return html`<p class="search-hint">输入关键词，或者从上面的分类与标签开始逛。</p>`;
   }
 
   private renderSite() {

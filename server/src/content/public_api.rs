@@ -26,7 +26,7 @@ use crate::{
 };
 
 const LIST_COOLDOWN: Duration = Duration::from_secs(1);
-const SEARCH_COOLDOWN: Duration = Duration::from_secs(2);
+const SEARCH_COOLDOWN: Duration = Duration::from_millis(800);
 const DEFAULT_PAGE_SIZE: u64 = 10;
 const MAX_PAGE_SIZE: u64 = 20;
 const SEARCH_LIMIT: u64 = 10;

@@ -91,7 +91,7 @@ export interface SiteTheme {
   mastheadOverlay?: number | null;
   /** 首屏背景对齐，缺省 center。 */
   heroBackgroundPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
-  /** 首屏背景适应，缺省 cover。 */
+  /** 首屏背景适应，缺省 contain（完整显示 + 模糊填充）。 */
   heroBackgroundFit?: 'cover' | 'contain' | 'stretch' | null;
   /** 刊头背景对齐，缺省 center。 */
   mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;

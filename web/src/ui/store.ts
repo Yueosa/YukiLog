@@ -347,7 +347,18 @@ export class PublicStore {
       if (this.search.status === 'loading' || this.search.status === 'ready') return;
     }
     this.search.key = key;
-    void this.run('search', this.search, () => api.fetchSearch(q, page));
+    void this.run('search', this.search, async () => {
+      try {
+        return await api.fetchSearch(q, page);
+      } catch (error) {
+        // 搜索有限流冷却：连续检索撞上 429 时稍等自动重试一次，不打扰用户
+        if (error instanceof api.ApiError && error.status === 429) {
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          return await api.fetchSearch(q, page);
+        }
+        throw error;
+      }
+    });
   }
 
   /* ---------- 派生统计 ---------- */

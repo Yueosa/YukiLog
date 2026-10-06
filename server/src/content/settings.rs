@@ -85,7 +85,7 @@ pub struct ThemeTokens {
     /// 首屏背景对齐（center/top/bottom/left/right），None 为 center。
     #[serde(default)]
     pub hero_background_position: Option<String>,
-    /// 首屏背景适应（cover/contain/stretch），None 为 cover。
+    /// 首屏背景适应（cover/contain/stretch），None 为 contain（完整显示）。
     #[serde(default)]
     pub hero_background_fit: Option<String>,
     /// 刊头背景对齐，None 为 center。

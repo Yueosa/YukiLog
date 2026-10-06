@@ -69,7 +69,8 @@ UUID 必须存在于媒体库，数组顺序即 `position` 展示顺序，传 `[
 ## 公开内容 API
 
 访客端 Lit SPA 的只读数据源。全部 GET、无需鉴权、JSON 一律 camelCase。列表与
-搜索按 IP 做基础限流（列表 1 次/秒、搜索 1 次/2 秒，超限返回 429）。错误响应
+搜索按 IP 做基础限流（列表 1 次/秒、搜索 1 次/0.8 秒，超限返回 429；Lit 端搜索
+撞 429 会自动等待重试一次）。错误响应
 沿用 `{ code, message }` 形态，时间字段一律 RFC 3339 字符串。
 
 - `GET /api/public/site` → `{ siteTitle, siteDescription, ownerName, ownerBio,

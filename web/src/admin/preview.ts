@@ -160,12 +160,12 @@ export const previewMedia: MediaAsset[] = [
   },
   {
     id: 'med-4',
-    url: '/media/seed/masthead-strip.gif',
-    original_name: 'masthead-strip.gif',
+    url: '/media/seed/mc.gif',
+    original_name: 'mc.gif',
     media_type: 'image/gif',
     byte_size: 645_120,
-    width: 1200,
-    height: 300,
+    width: 800,
+    height: 337,
   },
   {
     id: 'med-5',
@@ -345,7 +345,7 @@ export const previewSettings: SiteSettings = {
   avatarMediaId: 'med-2',
   avatarExternalUrl: 'https://q1.qlogo.cn/g?b=qq&nk=1303028790&s=640',
   mastheadMediaId: null,
-  heroBackgroundMediaIds: [],
+  heroBackgroundMediaIds: ['med-1', { mediaId: 'med-4', position: '50% 40%' }],
   heroQuote: '我能走到这里，是因为你没有放弃',
   socialLinks: [
     { label: 'GitHub', url: 'https://github.com/Yueosa' },

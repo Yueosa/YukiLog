@@ -1313,9 +1313,9 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
             .hero_background_position
             .unwrap_or_else(|| "center".to_owned()),
         hero_fit: match settings.theme.hero_background_fit.as_deref() {
-            Some("contain") => "contain".to_owned(),
+            Some("cover") => "cover".to_owned(),
             Some("stretch") => "100% 100%".to_owned(),
-            _ => "cover".to_owned(),
+            _ => "contain".to_owned(),
         },
         masthead_position: settings
             .theme
