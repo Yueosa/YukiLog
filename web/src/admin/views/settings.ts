@@ -485,13 +485,13 @@ export class AdmSettings extends AdmView {
         </div>
         <p class="note">全站文章 / 动态 / 友链 / 搜索页刊头的背景图。</p>
         <label class="field masthead-tint-field">
-          <span>蒙版强度（${Math.round((draft.theme.mastheadOverlay ?? 0.58) * 100)}%）</span>
+          <span>蒙版强度（${Math.round((draft.theme.mastheadOverlay ?? 0) * 100)}%）</span>
           <input
             type="range"
             min="0"
             max="95"
             step="1"
-            .value=${String(Math.round((draft.theme.mastheadOverlay ?? 0.58) * 100))}
+            .value=${String(Math.round((draft.theme.mastheadOverlay ?? 0) * 100))}
             @input=${(e: Event) => {
               const value = Number((e.currentTarget as HTMLInputElement).value) / 100;
               this.setField('theme', { ...draft.theme, mastheadOverlay: value });
@@ -554,7 +554,7 @@ export class AdmSettings extends AdmView {
     return typeof value === 'string' ? value : null;
   }
 
-  private focalTarget: { index: number; url: string; position: string | null } | null = null;
+  @state() private focalTarget: { index: number; url: string; position: string | null } | null = null;
 
   private heroItemId(item: HeroBackgroundSetting): string {
     return typeof item === 'string' ? item : item.mediaId;
@@ -562,6 +562,17 @@ export class AdmSettings extends AdmView {
 
   private heroItemPosition(item: HeroBackgroundSetting): string | null {
     return typeof item === 'string' ? null : item.position;
+  }
+
+  private onFocalSave(event: CustomEvent<{ position: string }>) {
+    const target = this.focalTarget;
+    this.focalTarget = null;
+    if (!target || !this.draft) return;
+    const ids = [...(this.draft.heroBackgroundMediaIds ?? [])];
+    const item = ids[target.index];
+    if (!item) return;
+    ids[target.index] = { mediaId: this.heroItemId(item), position: event.detail.position };
+    this.setField('heroBackgroundMediaIds', ids);
   }
 
   private pickerSelectedId(): string | null {
@@ -952,6 +963,13 @@ export class AdmSettings extends AdmView {
         @adm-pick=${this.onPickerPick}
         @adm-close=${() => (this.pickerTarget = null)}
       ></adm-media-picker>
+      <adm-focal-picker
+        ?open=${this.focalTarget !== null}
+        .src=${this.focalTarget?.url ?? ''}
+        .position=${this.focalTarget?.position ?? null}
+        @adm-focal-save=${this.onFocalSave}
+        @adm-close=${() => (this.focalTarget = null)}
+      ></adm-focal-picker>
     `;
   }
 }

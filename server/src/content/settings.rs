@@ -79,7 +79,7 @@ pub struct ThemeTokens {
     pub typography: ThemeTypography,
     pub shape: ThemeShape,
     pub motion: MotionLevel,
-    /// 刊头背景蒙版强度（0–0.95 压盖比例），None 时前端用默认 0.58。
+    /// 刊头背景深色蒙版强度（0–0.95 压暗比例），None 时前端不压暗（0）。
     #[serde(default)]
     pub masthead_overlay: Option<f32>,
     /// 首屏背景对齐（center/top/bottom/left/right），None 为 center。

@@ -4084,7 +4084,7 @@ export class YukiApp extends LitElement {
       margin-bottom: 44px;
     }
 
-    /* 刊头背景（如旧版的 gif 标题背景）：压一层页面色保证文字可读 */
+    /* 刊头背景：蒙版为深色（强度可调，默认 0），文字固定白色 + 硬阴影保证可读 */
     .masthead.has-bg {
       background-position: var(--masthead-pos, center);
       background-size: var(--masthead-fit, cover);
@@ -4092,15 +4092,13 @@ export class YukiApp extends LitElement {
       overflow: hidden;
       padding: 30px 32px;
       border-radius: 18px;
-      background-size: cover;
-      background-position: center;
     }
 
     .masthead.has-bg::before {
       content: '';
       position: absolute;
       inset: 0;
-      background: color-mix(in srgb, var(--page) var(--masthead-tint, 58%), transparent);
+      background: rgb(10 14 20 / var(--masthead-tint, 0%));
     }
 
     .masthead.has-bg::after {
@@ -4109,8 +4107,8 @@ export class YukiApp extends LitElement {
       inset: 0;
       background: linear-gradient(
         180deg,
-        transparent 56%,
-        color-mix(in srgb, var(--page) 88%, transparent)
+        transparent 52%,
+        rgb(10 14 20 / 55%)
       );
     }
 
@@ -4121,9 +4119,10 @@ export class YukiApp extends LitElement {
     .page-head.has-bg h1,
     .page-head.has-bg .kicker,
     .page-head.has-bg .inner-lede {
+      color: #fff;
       text-shadow:
-        0 1px 14px rgb(255 255 255 / 70%),
-        0 0 4px rgb(255 255 255 / 50%);
+        0 2px 0 rgb(9 13 20 / 55%),
+        0 6px 20px rgb(9 13 20 / 35%);
     }
 
     .masthead.has-bg > * {
@@ -6151,7 +6150,7 @@ export class YukiApp extends LitElement {
       letter-spacing: 0.18em;
     }
 
-    /* 列表页刊头背景：轻压一层页面色 + 底部渐变加深，保证文字对比 */
+    /* 列表页刊头背景：与组件刊头一致，深色蒙版 + 白色硬阴影文字 */
     .page-head.has-bg {
       background-position: var(--masthead-pos, center);
       background-size: var(--masthead-fit, cover);
@@ -6160,15 +6159,13 @@ export class YukiApp extends LitElement {
       padding: 40px 36px 36px;
       border-bottom: 0;
       border-radius: 20px;
-      background-position: center;
-      background-size: cover;
     }
 
     .page-head.has-bg::before {
       position: absolute;
       inset: 0;
       content: '';
-      background: color-mix(in srgb, var(--page) var(--masthead-tint, 58%), transparent);
+      background: rgb(10 14 20 / var(--masthead-tint, 0%));
     }
 
     .page-head.has-bg::after {
@@ -6177,8 +6174,8 @@ export class YukiApp extends LitElement {
       content: '';
       background: linear-gradient(
         180deg,
-        transparent 56%,
-        color-mix(in srgb, var(--page) 88%, transparent)
+        transparent 52%,
+        rgb(10 14 20 / 55%)
       );
     }
 

@@ -104,8 +104,9 @@ RSS 使用配置中的公开 Origin 生成绝对链接和稳定 GUID，最多返
 `<title>` 带 `data-away` 文案，标签页隐藏时切换为卖萌文本、回来恢复；跨页导航
 启用 `@view-transition { navigation: auto }`（240ms 淡入加轻微位移，尊重
 `prefers-reduced-motion`）。站点设置配置刊头背景媒体后，文章/动态/友链/搜索等
-列表页刊头（`.page-head` / `.masthead` 的 `has-bg` 变体）以背景图加暗色模糊
-遮罩渲染，保证文字可读。
+列表页刊头（`.page-head` / `.masthead` 的 `has-bg` 变体）以背景图渲染，可叠加
+强度可调的深色蒙版（默认 0，即不压暗）与底部深色渐变；刊头文字固定为白色并带
+硬阴影，保证任意背景图下可读。
 
 `/friends` 页底部有友链申请表单（名称、站点 URL、邮箱、可选图标 URL 与简介），
 内联脚本 POST `/api/friend-link-applications`，成功提示审核后展示，失败显示

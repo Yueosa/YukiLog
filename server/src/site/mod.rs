@@ -595,8 +595,8 @@ struct HomeStats {
     .masthead-editorial .lead{margin:10px 0 0;color:var(--muted)}
     .page-head.has-bg,.masthead.has-bg{position:relative;isolation:isolate;overflow:hidden;padding:64px 44px;border:0;border-radius:20px}
     .masthead-bg{position:absolute;z-index:-2;inset:0;background:var(--masthead-pos,center)/var(--masthead-fit,cover) no-repeat}
-    .page-head.has-bg h1,.masthead.has-bg h1,.page-head.has-bg .kicker,.masthead.has-bg .kicker,.page-head.has-bg .inner-lede,.masthead.has-bg .lead{text-shadow:0 1px 14px rgb(255 255 255/70%),0 0 4px rgb(255 255 255/50%)}
-    .page-head.has-bg::before,.masthead.has-bg::before{position:absolute;z-index:-1;inset:0;content:'';background:color-mix(in srgb,var(--page) var(--masthead-tint,58%),transparent)}
+    .page-head.has-bg h1,.masthead.has-bg h1,.page-head.has-bg .kicker,.masthead.has-bg .kicker,.page-head.has-bg .inner-lede,.masthead.has-bg .lead{color:#fff;text-shadow:0 2px 0 rgb(9 13 20/55%),0 6px 20px rgb(9 13 20/35%)}
+    .page-head.has-bg::before,.masthead.has-bg::before{position:absolute;z-index:-1;inset:0;content:'';background:rgb(10 14 20/var(--masthead-tint,0%))}
     .profile-card{width:min(100%,420px)}
     .profile-button{display:block;width:100%;padding:26px;border:1px solid var(--line);border-radius:16px;background:var(--surface);color:var(--ink);text-align:center}
     .profile-face{display:block}
@@ -1307,7 +1307,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         border: settings.theme.colors.border,
         radius: settings.theme.shape.radius,
         scale: settings.theme.typography.scale,
-        masthead_tint: (settings.theme.masthead_overlay.unwrap_or(0.58) * 100.0).round() as u8,
+        masthead_tint: (settings.theme.masthead_overlay.unwrap_or(0.0) * 100.0).round() as u8,
         hero_position: settings
             .theme
             .hero_background_position
