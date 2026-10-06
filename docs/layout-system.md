@@ -10,7 +10,6 @@
 
 - `site_settings.theme`：颜色、字体、间距、圆角、阴影和动画 Token；
 - `site_settings.shell_layout`：全局导航和页面外壳；
-- ~~`page_layouts.layout`~~：已停用（表保留但不读写，见 docs/database.md）。
 
 主题 schema v1 使用固定语义 Token：背景、表面、正文、弱化文字、主色、辅色和
 边框色；颜色只接受 6/8 位十六进制。字体选择映射到代码内置字体栈，字号比例限制在

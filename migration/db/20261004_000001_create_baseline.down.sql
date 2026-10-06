@@ -1,5 +1,4 @@
 DROP TRIGGER IF EXISTS subscribers_set_updated_at ON subscribers;
-DROP TRIGGER IF EXISTS page_layouts_set_updated_at ON page_layouts;
 DROP TRIGGER IF EXISTS site_settings_set_updated_at ON site_settings;
 DROP TRIGGER IF EXISTS admin_notifications_set_updated_at ON admin_notifications;
 DROP TRIGGER IF EXISTS friend_links_set_updated_at ON friend_links;
@@ -10,7 +9,6 @@ DROP TRIGGER IF EXISTS admin_accounts_set_updated_at ON admin_accounts;
 
 DROP TABLE IF EXISTS email_deliveries;
 DROP TABLE IF EXISTS subscribers;
-DROP TABLE IF EXISTS page_layouts;
 DROP TABLE IF EXISTS site_settings;
 DROP TABLE IF EXISTS admin_notifications;
 DROP TABLE IF EXISTS friend_links;

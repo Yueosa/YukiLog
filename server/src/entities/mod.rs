@@ -444,23 +444,7 @@ pub mod site_settings {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
-pub mod page_layouts {
-    use sea_orm::entity::prelude::*;
 
-    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
-    #[sea_orm(table_name = "page_layouts")]
-    pub struct Model {
-        #[sea_orm(primary_key, auto_increment = false)]
-        pub page_key: String,
-        pub layout: Json,
-        pub updated_at: DateTimeWithTimeZone,
-    }
-
-    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-    pub enum Relation {}
-
-    impl ActiveModelBehavior for ActiveModel {}
-}
 
 pub mod subscribers {
     use sea_orm::entity::prelude::*;
