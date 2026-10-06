@@ -524,6 +524,8 @@ struct HomeStats {
     .post-back:hover{color:var(--primary-d)}
     .post-head{margin-bottom:36px}
     .post-cover{width:100%;margin:0 0 32px;border-radius:14px;background:var(--surface-soft) center/cover no-repeat;aspect-ratio:16/10}
+    .post-cover.natural{max-height:68vh}
+    .post-cover.shrink{width:min(100%,calc(68vh * var(--r)));margin-right:auto;margin-left:auto}
     .article-page h1{margin:0 0 12px;font-family:var(--serif);font-size:clamp(30px,4.4vw,42px);font-weight:700;line-height:1.3}
     .post-meta{display:flex;flex-wrap:wrap;gap:10px;margin:0;color:var(--faint);font-family:var(--mono);font-size:12px;letter-spacing:.06em}
     .post-summary{margin:14px 0 0;color:var(--muted);font-size:15.5px;line-height:1.9}
@@ -728,15 +730,14 @@ struct HomeStats {
     .dynamic-item:hover{color:var(--ink);translate:4px 0}
     .dynamic-item time{display:block;margin-bottom:2px;color:var(--faint);font-family:var(--mono);font-size:10.5px}
     .pulse-panel{display:grid;gap:2px}
-    .pulse-item{display:flex;align-items:baseline;gap:9px;padding:13px 0;border-bottom:1px dashed var(--line);color:var(--muted);font-size:13.5px;line-height:1.75;text-decoration:none;transition:color 250ms ease}
+    .pulse-item{display:block;padding:13px 0;border-bottom:1px dashed var(--line);color:var(--muted);font-size:13.5px;line-height:1.75;text-decoration:none;transition:color 250ms ease}
     .pulse-item:last-child{border-bottom:0}
     .pulse-item:hover{color:var(--ink)}
-    .pulse-dot{width:6px;height:6px;flex:none;border-radius:50%;translate:0 -1px}
+    .pulse-item time{display:block;margin-bottom:2px;color:var(--faint);font-family:var(--mono);font-size:10.5px}
+    .pulse-dot{display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;translate:0 -1px}
     .pulse-dot.pulse-comment{background:var(--primary)}
     .pulse-dot.pulse-friend{background:var(--secondary)}
-    .pulse-text{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .pulse-text strong{color:var(--ink);font-weight:600}
-    .pulse-item time{flex:none;color:var(--faint);font-family:var(--mono);font-size:10.5px}
     .dynamic-item span p{margin:0}
     .site-footer{display:flex;justify-content:space-between;gap:16px;padding:44px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;letter-spacing:.14em}
     .site-footer a:hover{color:var(--primary-d)}
@@ -1815,6 +1816,31 @@ async fn media_url(state: &AppState, id: Option<Uuid>) -> Result<String, AppErro
         .await?
         .map(|media| format!("/media/{}", media.storage_key))
         .unwrap_or_default())
+}
+
+/// 封面 URL + 图片宽高比（宽/高；无媒体或缺尺寸时为 None）。
+async fn cover_url_and_ratio(
+    state: &AppState,
+    id: Option<Uuid>,
+) -> Result<(String, Option<f64>), AppError> {
+    let Some(id) = id else {
+        return Ok((String::new(), None));
+    };
+    let media = media_assets::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?;
+    Ok(match media {
+        Some(media) => {
+            let ratio = match (media.width, media.height) {
+                (Some(width), Some(height)) if width > 0 && height > 0 => {
+                    Some(width as f64 / height as f64)
+                }
+                _ => None,
+            };
+            (format!("/media/{}", media.storage_key), ratio)
+        }
+        None => (String::new(), None),
+    })
 }
 
 fn date(value: DateTime<FixedOffset>) -> String {

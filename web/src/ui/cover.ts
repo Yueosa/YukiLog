@@ -67,6 +67,16 @@ export class YukiCover extends LitElement {
       aspect-ratio: var(--cover-natural, var(--cover-ratio, 16 / 9));
     }
 
+    /* 竖/方图详情头图：按限高收缩居中，不要模糊填充带 */
+    .frame.adaptive.shrink {
+      width: min(100%, calc(var(--cover-max-h, 72vh) * var(--cover-natural)));
+      margin-inline: auto;
+    }
+
+    .frame.adaptive.shrink .bg {
+      display: none;
+    }
+
     .bg {
       position: absolute;
       inset: 0;
@@ -147,7 +157,7 @@ export class YukiCover extends LitElement {
     const showImage = this.src !== '' && this.phase !== 'broken';
     return html`
       <div
-        class="frame${this.adaptive ? ' adaptive' : ''} ${this.phase}"
+        class="frame${this.adaptive ? ' adaptive' : ''}${this.adaptive && this.naturalRatio > 0 && this.naturalRatio < 1.25 ? ' shrink' : ''} ${this.phase}"
         style=${styleMap(frameStyle)}
       >
         ${showImage

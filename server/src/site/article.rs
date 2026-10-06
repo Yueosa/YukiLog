@@ -13,7 +13,7 @@ use crate::{
     markup,
 };
 
-use super::{PageMeta, avatar_fallback, date, host_of, load_site, media_url, page};
+use super::{PageMeta, avatar_fallback, cover_url_and_ratio, date, host_of, load_site, page};
 
 struct CommentCard {
     display_name: String,
@@ -29,7 +29,7 @@ struct CommentCard {
 
 #[derive(Template)]
 #[template(
-    source = r##"<article class="article-page"><a class="post-back" href="/articles">← 返回</a><header class="post-head" data-reveal><p class="component-kicker">{{ category }}</p><h1>{{ title }}</h1><p class="post-meta"><time>{{ published }}</time></p>{% if summary != "" %}<p class="post-summary">{{ summary }}</p>{% endif %}</header>{% if toc.len() > 1 %}<nav class="post-toc" aria-label="目录"><div class="post-toc-sticky"><p class="post-toc-kicker">目录</p>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</div></nav>{% endif %}{% if cover_url != "" %}<div class="post-cover" style="background-image:url({{ cover_url }})" role="img" aria-label="{{ title }}"></div>{% endif %}{% if toc.len() > 1 %}<details class="post-toc-mobile" data-reveal><summary>目录 · {{ toc.len() }} 节</summary>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</details>{% endif %}<div class="prose">{{ body_html|safe }}</div></article><section class="comments" data-reveal><header class="comments-head"><h2>评论</h2><span class="comments-count">{{ comments.len() }} 条</span></header><button class="comment-compose" type="button" aria-expanded="false"><span class="comment-avatar">{{ compose_avatar|safe }}</span><span class="comment-compose-hint">写下你的想法，点这里开始评论…</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><form class="comment-form" data-article-id="{{ article_id }}" hidden><div class="comment-form-grid"><label>昵称<input name="display_name" required maxlength="80" placeholder="怎么称呼你"></label><label>邮箱（选填，会公开展示）<input name="email" type="email" maxlength="254" placeholder="用于头像和公开展示"></label><label>网站（选填）<input name="website" type="url" maxlength="2048" placeholder="https://"></label></div><label class="comment-content">内容<textarea name="content" required rows="4" maxlength="5000" placeholder="想说什么都可以，慢一点也没关系。"></textarea></label><div class="comment-form-foot"><p class="comment-note">评论会在审核后显示；昵称和邮箱会公开展示。</p><div class="comment-form-actions"><button class="comment-cancel" type="button">先不写了</button><button type="submit">寄出评论</button></div></div></form><p class="comment-submitted" hidden>评论已寄出，审核通过后会显示。</p>{% if comments.is_empty() %}<p class="empty">暂时还没有评论。</p>{% else %}<ol class="comment-list">{% for comment in comments %}<li class="comment"><header>{% if comment.avatar_url == "" %}<span class="comment-avatar">{{ comment.fallback_svg|safe }}</span>{% else %}<span class="comment-avatar has-img"><img src="{{ comment.avatar_url }}" alt="" loading="lazy" onerror="this.classList.add('is-broken')">{{ comment.fallback_svg|safe }}</span>{% endif %}<div class="comment-who"><div class="comment-line">{% if comment.website != "" %}<a class="comment-name" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.display_name }}</a>{% else %}<span class="comment-name">{{ comment.display_name }}</span>{% endif %}<time>{{ comment.created }}</time></div><div class="comment-meta">{% if comment.website != "" %}<a class="comment-site" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.host }}</a>{% endif %}{% if comment.email != "" %}<span>{{ comment.email }}</span>{% endif %}{% if comment.agent_label != "" %}<span>{{ comment.agent_label }}</span>{% endif %}</div></div></header><p>{{ comment.content }}</p></li>{% endfor %}</ol>{% endif %}</section>"##,
+    source = r##"<article class="article-page"><a class="post-back" href="/articles">← 返回</a><header class="post-head" data-reveal><p class="component-kicker">{{ category }}</p><h1>{{ title }}</h1><p class="post-meta"><time>{{ published }}</time></p>{% if summary != "" %}<p class="post-summary">{{ summary }}</p>{% endif %}</header>{% if toc.len() > 1 %}<nav class="post-toc" aria-label="目录"><div class="post-toc-sticky"><p class="post-toc-kicker">目录</p>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</div></nav>{% endif %}{% if cover_url != "" %}<div class="post-cover{{ cover_class }}" style="background-image:url({{ cover_url }});{{ cover_style }}" role="img" aria-label="{{ title }}"></div>{% endif %}{% if toc.len() > 1 %}<details class="post-toc-mobile" data-reveal><summary>目录 · {{ toc.len() }} 节</summary>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</details>{% endif %}<div class="prose">{{ body_html|safe }}</div></article><section class="comments" data-reveal><header class="comments-head"><h2>评论</h2><span class="comments-count">{{ comments.len() }} 条</span></header><button class="comment-compose" type="button" aria-expanded="false"><span class="comment-avatar">{{ compose_avatar|safe }}</span><span class="comment-compose-hint">写下你的想法，点这里开始评论…</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button><form class="comment-form" data-article-id="{{ article_id }}" hidden><div class="comment-form-grid"><label>昵称<input name="display_name" required maxlength="80" placeholder="怎么称呼你"></label><label>邮箱（选填，会公开展示）<input name="email" type="email" maxlength="254" placeholder="用于头像和公开展示"></label><label>网站（选填）<input name="website" type="url" maxlength="2048" placeholder="https://"></label></div><label class="comment-content">内容<textarea name="content" required rows="4" maxlength="5000" placeholder="想说什么都可以，慢一点也没关系。"></textarea></label><div class="comment-form-foot"><p class="comment-note">评论会在审核后显示；昵称和邮箱会公开展示。</p><div class="comment-form-actions"><button class="comment-cancel" type="button">先不写了</button><button type="submit">寄出评论</button></div></div></form><p class="comment-submitted" hidden>评论已寄出，审核通过后会显示。</p>{% if comments.is_empty() %}<p class="empty">暂时还没有评论。</p>{% else %}<ol class="comment-list">{% for comment in comments %}<li class="comment"><header>{% if comment.avatar_url == "" %}<span class="comment-avatar">{{ comment.fallback_svg|safe }}</span>{% else %}<span class="comment-avatar has-img"><img src="{{ comment.avatar_url }}" alt="" loading="lazy" onerror="this.classList.add('is-broken')">{{ comment.fallback_svg|safe }}</span>{% endif %}<div class="comment-who"><div class="comment-line">{% if comment.website != "" %}<a class="comment-name" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.display_name }}</a>{% else %}<span class="comment-name">{{ comment.display_name }}</span>{% endif %}<time>{{ comment.created }}</time></div><div class="comment-meta">{% if comment.website != "" %}<a class="comment-site" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.host }}</a>{% endif %}{% if comment.email != "" %}<span>{{ comment.email }}</span>{% endif %}{% if comment.agent_label != "" %}<span>{{ comment.agent_label }}</span>{% endif %}</div></div></header><p>{{ comment.content }}</p></li>{% endfor %}</ol>{% endif %}</section>"##,
     ext = "html"
 )]
 struct ArticleDetailTemplate<'a> {
@@ -38,6 +38,8 @@ struct ArticleDetailTemplate<'a> {
     published: &'a str,
     summary: &'a str,
     cover_url: &'a str,
+    cover_class: &'a str,
+    cover_style: &'a str,
     body_html: &'a str,
     toc: &'a [markup::Heading],
     comments: &'a [CommentCard],
@@ -61,7 +63,16 @@ pub async fn article_detail(
         .one(&state.database)
         .await?
         .ok_or(AppError::NotFound)?;
-    let cover_url = media_url(&state, article.cover_media_id).await?;
+    let (cover_url, cover_ratio) = cover_url_and_ratio(&state, article.cover_media_id).await?;
+    // 详情头图：竖/方图按 68vh 限高收缩居中（无模糊填充带），横图全宽自然比例
+    let (cover_class, cover_style): (String, String) = match cover_ratio {
+        Some(ratio) if ratio < 1.25 => (
+            " shrink".to_owned(),
+            format!("aspect-ratio:{ratio:.4};--r:{ratio:.4}"),
+        ),
+        Some(ratio) => (" natural".to_owned(), format!("aspect-ratio:{ratio:.4}")),
+        None => (String::new(), String::new()),
+    };
     let comment_models = comments::Entity::find()
         .filter(comments::Column::ArticleId.eq(article.id))
         .filter(comments::Column::Status.eq("visible"))
@@ -109,6 +120,8 @@ pub async fn article_detail(
         published: &published,
         summary: article.summary.as_deref().unwrap_or_default(),
         cover_url: &cover_url,
+        cover_class: &cover_class,
+        cover_style: &cover_style,
         body_html: &rendered.html,
         toc: &rendered.headings,
         comments: &comment_cards,

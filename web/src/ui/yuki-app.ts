@@ -4571,16 +4571,14 @@ export class YukiApp extends LitElement {
       font-size: 10.5px;
     }
 
-    /* 站点脉搏（最近评论 + 新友链混合时间线） */
+    /* 站点脉搏（最近评论 + 新友链混合时间线，结构与 dynamic-item 一致） */
     .pulse-panel {
       display: grid;
       gap: 2px;
     }
 
     .pulse-item {
-      display: flex;
-      align-items: baseline;
-      gap: 9px;
+      display: block;
       padding: 13px 0;
       border-bottom: 1px dashed var(--line);
       color: var(--muted);
@@ -4598,10 +4596,19 @@ export class YukiApp extends LitElement {
       color: var(--ink);
     }
 
+    .pulse-item time {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10.5px;
+    }
+
     .pulse-dot {
+      display: inline-block;
       width: 6px;
       height: 6px;
-      flex: none;
+      margin-right: 8px;
       border-radius: 50%;
       translate: 0 -1px;
     }
@@ -4614,24 +4621,9 @@ export class YukiApp extends LitElement {
       background: var(--secondary);
     }
 
-    .pulse-text {
-      min-width: 0;
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
     .pulse-text strong {
       color: var(--ink);
       font-weight: 600;
-    }
-
-    .pulse-item time {
-      flex: none;
-      color: var(--faint);
-      font-family: var(--mono);
-      font-size: 10.5px;
     }
     /* Layout studio */
     @keyframes hero-reveal {
@@ -6467,13 +6459,13 @@ export class YukiApp extends LitElement {
                     rel=${item.kind === 'friend' && /^https?:/.test(item.targetUrl) ? 'noopener noreferrer' : nothing}
                     @click=${(event: Event) => event.stopPropagation()}
                   >
-                    <span class="pulse-dot pulse-${item.kind}" aria-hidden="true"></span>
+                    <time>${relTime(item.createdAt)}</time>
                     <span class="pulse-text"
+                      ><span class="pulse-dot pulse-${item.kind}" aria-hidden="true"></span
                       >${item.kind === 'comment'
                         ? html`<strong>${item.author}</strong> 评论了${item.targetTitle ? html`《${item.targetTitle}》` : '一条动态'}`
                         : html`<strong>${item.author}</strong> 加入了友链`}</span
                     >
-                    <time>${relTime(item.createdAt)}</time>
                   </a>
                 `,
               )}

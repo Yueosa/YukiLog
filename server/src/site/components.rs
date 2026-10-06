@@ -142,12 +142,12 @@ pub(super) fn render_home(context: &RenderContext<'_>) -> Result<String, AppErro
             format!("<strong>{}</strong> 加入了友链", escape_html(&item.author))
         };
         pulse_items.push_str(&format!(
-            r#"<a class="pulse-item" href="{}"{}><span class="pulse-dot pulse-{}" aria-hidden="true"></span><span class="pulse-text">{}</span><time>{}</time></a>"#,
+            r#"<a class="pulse-item" href="{}"{}><time>{}</time><span class="pulse-text"><span class="pulse-dot pulse-{}" aria-hidden="true"></span>{}</span></a>"#,
             escape_html(&item.target_url),
             external,
+            escape_html(&item.rel_time),
             item.kind,
             text,
-            escape_html(&item.rel_time),
         ));
     }
     let pulse = if context.pulse.is_empty() {
