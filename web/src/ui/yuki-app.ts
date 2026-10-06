@@ -5589,6 +5589,12 @@ export class YukiApp extends LitElement {
       .nav-hamburger {
         display: grid;
       }
+
+      /* 链接 display:none 后自动布局会把操作区挤进中间 auto 列（视觉居中），
+         改两列让搜索/汉堡回到右端 */
+      .nav-corners {
+        grid-template-columns: auto 1fr;
+      }
     }
 
     @media (max-width: 900px) {

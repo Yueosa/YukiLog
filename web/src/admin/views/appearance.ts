@@ -305,9 +305,21 @@ export class AdmAppearance extends AdmView {
   private async save() {
     const settings = this.store.settings;
     if (!settings) return;
+    // 与站点设置页同款逐字段构造：整对象展开会把 updatedAt 等响应字段
+    // 带进 PUT，服务端 deny_unknown_fields 直接 422（保存悄悄失败）
     await this.store.saveSettings({
-      ...settings,
+      siteTitle: settings.siteTitle,
+      siteDescription: settings.siteDescription,
+      ownerName: settings.ownerName,
+      ownerBio: settings.ownerBio,
+      avatarMediaId: settings.avatarMediaId,
+      avatarExternalUrl: settings.avatarExternalUrl,
+      mastheadMediaId: settings.mastheadMediaId,
+      heroBackgroundMediaIds: [...(settings.heroBackgroundMediaIds ?? [])],
+      heroQuote: settings.heroQuote,
+      socialLinks: settings.socialLinks,
       theme: { ...settings.theme, parts: structuredClone(this.draft) },
+      shellLayout: structuredClone(settings.shellLayout),
     });
     this.source = structuredClone(this.draft);
     this.dirty = false;
