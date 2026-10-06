@@ -84,9 +84,17 @@ JSON-LD（`headline/datePublished/dateModified/author/mainEntityOfPage`，
 十六进制 Token；Hero 背景只能引用已验证的图片媒体 ID，由服务端解析为同源
 `/media/` 地址。数据库内容不会成为任意脚本或自由 CSS。
 
-Markdown 先由 `pulldown-cmark` 转换，再由 `ammonia` 清理。Askama 默认转义标题、
-摘要、评论、站点资料和搜索词；只有清理后的 Markdown 及由服务端组件模板生成的
+正文使用自研标记语言 LianMarkup（.ly，仓库在 YukiLog 隔壁，path 依赖
+`lianmarkup` crate）解析为 HTML，代码块经 syntect 服务端高亮后由 `ammonia`
+清理。Askama 默认转义标题、
+摘要、评论、站点资料和搜索词；只有清理后的正文及由服务端组件模板生成的
 HTML 会进入安全输出位置。
+
+LianMarkup 是 Markdown 子集加博客向扩展（`@toc` 目录、`[^旁注]`、callout、
+折叠块、剧透、注音、LaTeX 透传），禁止内嵌 HTML；产物契约为
+`{ html, toc, notes }`（见 LianMarkup 仓库 docs/产物契约.md）。旁注当前渲染为
+文末 `.lm-notes` 列表，三栏文章页重构时挪入右侧栏；mermaid 与数学块透传
+`lm-mermaid` / `lm-math` 类，等客户端增强（KaTeX/mermaid.js 尚未接入）。
 
 RSS 使用配置中的公开 Origin 生成绝对链接和稳定 GUID，最多返回最近 50 项，响应为
 `application/rss+xml` 并缓存 5 分钟。文章摘要缺失时只截取正文前 500 个字符；
@@ -125,7 +133,7 @@ RSS 使用配置中的公开 Origin 生成绝对链接和稳定 GUID，最多返
 ## 文章页
 
 `/articles/{slug}` 依次输出刊头（分类、标题、发布时间与摘要）、目录、封面、
-`prose` 正文和评论区。Markdown 渲染时收集 h1–h3 并注入 `h-{序号}` 锚点 id
+`prose` 正文和评论区。LianMarkup 渲染时收集标题并注入 `h-{序号}` 锚点 id
 （支持 `{#custom-id}`，仅保留 `[a-zA-Z0-9._:-]`）。目录多于一项时：宽屏
 （≥1280px）显示正文左侧 sticky 的 `nav.post-toc`（细滚动条悬停显现），窄屏
 显示正文前可折叠的 `details.post-toc-mobile`；宽屏下滚动监听

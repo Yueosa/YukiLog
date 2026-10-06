@@ -37,7 +37,8 @@ Browser
   `auth.rs`；
 - `entities/`：SeaORM 实体；
 - `http/`：路由注册、中间件与健康检查；
-- `markup/`：Markdown 渲染与 User-Agent 短标签解析；
+- `markup/`：LianMarkup(.ly) 正文渲染（含 syntect 代码高亮、ammonia 白名单）
+  与 User-Agent 短标签解析；
 - `content/`：内容与互动的 API handler（`public`/`public_api`/`admin`/
   `settings`，以及仪表盘聚合 `overview`）；`public_api` 是访客 SPA 的只读 JSON
   数据源，`public` 是评论/点赞/浏览等互动端点；
