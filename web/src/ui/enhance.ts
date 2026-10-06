@@ -91,10 +91,13 @@ function normalizeMermaidSvg(markup: string): string {
     svg.removeAttribute('height');
   }
   // mermaid 把双向边标签画在节点矩形之前，长标签会被节点盖住；
-  // 把 edgeLabels 组挪到节点之后绘制（标签压在节点上）
-  const root = svg.querySelector(':scope > g') ?? svg;
-  for (const labels of root.querySelectorAll(':scope > .edgeLabels')) {
-    root.appendChild(labels);
+  // 把 edgeLabels 组挪到节点之后绘制（标签压在节点上）。
+  // 用 classList 判定而不是 :scope 选择器（SVG 上下文里 :scope 匹配不可靠）
+  const root = svg.querySelector('g.root') ?? svg;
+  for (const child of [...root.children]) {
+    if (child.classList.contains('edgeLabels')) {
+      root.appendChild(child);
+    }
   }
   return new XMLSerializer().serializeToString(svg);
 }
