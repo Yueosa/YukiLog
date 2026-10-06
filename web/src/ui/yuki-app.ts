@@ -8015,6 +8015,17 @@ export class YukiApp extends LitElement {
           : keyed(window.location.pathname, this.renderInnerPage())}
         <footer class="site-footer">
           <span>YUKILOG</span>
+          <span>
+            <a
+              href="?ssr=1"
+              @click=${(event: Event) => {
+                event.preventDefault();
+                // 整页跳转：让网关按 ?ssr=1 直出阅读版（SPA 内部路由到不了 SSR）
+                window.location.assign(`${window.location.pathname}?ssr=1`);
+              }}
+              >阅读版</a
+            >
+          </span>
           <span>© ${new Date().getFullYear()} LIAN / SAKURINE</span>
         </footer>
         <button

@@ -716,7 +716,7 @@ struct HomeStats {
   </nav>
   <main><div class="page {{ site.page_width_class }}">{{ content|safe }}</div></main>
   {% if site.mail_enabled %}<section class="subscribe" id="subscribe"><form method="post" action="/subscriptions"><strong>订阅更新</strong><input type="email" name="email" required maxlength="254" autocomplete="email" placeholder="you@example.com"><label><input type="checkbox" name="articles" checked>文章</label><label><input type="checkbox" name="dynamics">动态</label><button type="submit">订阅</button></form></section>{% endif %}
-  <footer class="site-footer"><span>© {{ site.owner_name }} · YukiLog</span><span><a href="/feed.xml">RSS</a>{% if site.mail_enabled %} · <a href="#subscribe">MAIL</a>{% endif %}</span></footer>
+  <footer class="site-footer"><span>© {{ site.owner_name }} · YukiLog</span><span><a href="?ssr=0">沉浸版</a> · <a href="/feed.xml">RSS</a>{% if site.mail_enabled %} · <a href="#subscribe">MAIL</a>{% endif %}</span></footer>
 </body>
 </html>"##,
     ext = "html"
