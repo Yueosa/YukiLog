@@ -1423,7 +1423,9 @@ export class YukiApp extends LitElement {
        角导航与胶囊顶栏平时隐藏图标（display:none），icons 模式要把它们放出来；
        容器类提到 0-3-0  specificity，压过后面 .nav-corners/.nav-topbar 的隐藏规则 */
     .nav-corners.topnav-icons .nav-icon,
-    .nav-topbar.topnav-icons .nav-icon {
+    .nav-topbar.topnav-icons .nav-icon,
+    .nav-corners.topnav-both .nav-icon,
+    .nav-topbar.topnav-both .nav-icon {
       display: flex;
     }
 
@@ -5581,6 +5583,12 @@ export class YukiApp extends LitElement {
       .nav-corners .nav-actions {
         display: flex;
       }
+
+      /* 角导航链接藏起后汉堡必须接管（原先只在 640px 以下出现，
+         641–968 区间什么导航入口都没有） */
+      .nav-hamburger {
+        display: grid;
+      }
     }
 
     @media (max-width: 900px) {
@@ -5684,11 +5692,23 @@ export class YukiApp extends LitElement {
       }
 
       .welcome-quote {
-        padding: 22px 20px;
+        gap: 12px;
+        padding: 14px 18px 12px;
+        border-radius: 18px;
       }
 
       .quote-text {
         font-size: 15px;
+      }
+
+      /* 手机端社交图标：先压缩间距和尺寸争取一行放下，实在放不下才换行 */
+      .social-row {
+        gap: 6px 10px;
+      }
+
+      .social-icon {
+        width: 30px;
+        height: 30px;
       }
 
       .nav-topbar .nav-links {
@@ -5780,6 +5800,7 @@ export class YukiApp extends LitElement {
     let klass = '';
     if (display === 'icons') klass += ' topnav-icons';
     if (display === 'text') klass += ' topnav-text';
+    if (display === 'both') klass += ' topnav-both';
     const align = this.partText('topnav', 'align');
     if (align === 'start') klass += ' topnav-align-start';
     if (align === 'end') klass += ' topnav-align-end';

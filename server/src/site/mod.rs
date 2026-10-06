@@ -314,6 +314,7 @@ struct HomeStats {
     .nav-topbar.nav-sticky{opacity:1;visibility:visible;translate:-50% 0}
     .nav-topbar .brand{display:none}
     .site-nav.topnav-icons .nav-label{display:none}
+    .site-nav.topnav-icons .nav-icon,.site-nav.topnav-both .nav-icon{display:flex}
     .site-nav.topnav-text .nav-icon{display:none}
     .nav-topbar .nav-item{display:flex;align-items:center;gap:6px;padding:8px 18px;border-radius:999px;color:var(--muted);font-size:13.5px;font-weight:500;white-space:nowrap;transition:color 250ms ease,background 250ms ease}
     .nav-topbar .nav-item:hover{color:var(--ink)}
@@ -773,11 +774,11 @@ struct HomeStats {
     .to-top .arrow{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     @media(max-width:1400px){.layout-grid.grid-three-rail{grid-template-columns:1fr;max-width:900px}}
     @media(max-width:1080px){.layout-grid.grid-feed-rail{grid-template-columns:1fr}.grid-feed-rail .is-sticky{position:static;max-height:none}.layout-grid.grid-identity{grid-template-columns:auto minmax(0,1fr)}.grid-identity .profile-log{display:none}}
-    @media(max-width:968px){.nav-corners{padding:0 24px}.nav-corners .nav-links{display:none}.nav-corners .nav-actions{display:flex}}
+    @media(max-width:968px){.nav-corners{padding:0 24px}.nav-corners .nav-links{display:none}.nav-corners .nav-actions{display:flex}.nav-hamburger{display:grid}}
     @media(max-width:900px){.nav-sidebar{position:sticky;top:0;width:100%;height:auto;padding:80px 18px 14px;border-right:0;border-bottom:1px solid var(--line)}.nav-sidebar .nav-links{flex-direction:row;margin-top:14px;overflow:auto}.shell-sidebar main{margin-left:0}.layout-bento{width:min(100% - 24px,680px);grid-template-columns:1fr;grid-auto-rows:auto}.is-sticky{position:relative;top:auto}.layout-split,.layout-split.split-right{grid-template-columns:1fr}}
     @media(max-width:760px){.page{width:min(100% - 40px,1180px);padding-top:108px}.archive-row{grid-template-columns:64px minmax(0,1fr)}.archive-row .meta{display:none}.friends-grid{grid-template-columns:1fr}.feed-alternating .article,.feed-alternating .article:nth-of-type(even),.feed-alternating .article:has(.is-portrait),.feed-alternating .article:nth-of-type(even):has(.is-portrait){grid-template-columns:1fr}.feed-alternating .article:nth-of-type(even) .article-cover{order:0}.feed-alternating .article-cover.is-portrait{width:min(320px,88%)}.layout-grid,.layout-grid.grid-three-rail{grid-template-columns:minmax(0,1fr);gap:20px;padding:76px 16px 56px}}
     @media(max-width:760px){.comment-form-grid,.friend-apply-grid{grid-template-columns:1fr}}
-    @media(max-width:640px){.hero h1{font-size:clamp(36px,11vw,48px)}.hero-inner{gap:4vh}.welcome-quote{padding:22px 20px}.quote-text{font-size:15px}.nav-topbar .nav-links{display:none}.nav-hamburger{display:grid}.mobile-menu{padding-inline:24px}.layout-grid.grid-identity{width:min(100% - 40px,1180px);gap:20px}.layout-grid.grid-feed-rail{width:min(100% - 40px,1180px);gap:48px;padding:56px 0 72px}.site-footer{flex-direction:column;align-items:center;gap:6px;text-align:center}}
+    @media(max-width:640px){.hero h1{font-size:clamp(36px,11vw,48px)}.hero-inner{gap:4vh}.welcome-quote{gap:12px;padding:14px 18px 12px;border-radius:18px}.quote-text{font-size:15px}.social-row{gap:6px 10px}.social-icon{width:30px;height:30px}.nav-topbar .nav-links{display:none}.nav-hamburger{display:grid}.mobile-menu{padding-inline:24px}.layout-grid.grid-identity{width:min(100% - 40px,1180px);gap:20px}.layout-grid.grid-feed-rail{width:min(100% - 40px,1180px);gap:48px;padding:56px 0 72px}.site-footer{flex-direction:column;align-items:center;gap:6px;text-align:center}}
     .prelude{position:fixed;inset:0;z-index:300;display:none;overflow:hidden;background:var(--page)}
     html.splash-run .prelude{display:grid;grid-template-rows:1fr auto;animation:prelude-exit .9s cubic-bezier(.22,.7,.2,1) 2.3s forwards}
     html.splash-run .prelude.is-skipped{animation-name:prelude-exit-now;animation-delay:0s}
@@ -1287,6 +1288,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         match crate::content::parts::part_text(&settings.theme.parts, "topnav", "display") {
             Some("icons") => options.push_str(" topnav-icons"),
             Some("text") => options.push_str(" topnav-text"),
+            Some("both") => options.push_str(" topnav-both"),
             _ => {}
         }
         options
