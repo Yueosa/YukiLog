@@ -90,5 +90,11 @@ function normalizeMermaidSvg(markup: string): string {
     svg.setAttribute('width', '100%');
     svg.removeAttribute('height');
   }
+  // mermaid 把双向边标签画在节点矩形之前，长标签会被节点盖住；
+  // 把 edgeLabels 组挪到节点之后绘制（标签压在节点上）
+  const root = svg.querySelector(':scope > g') ?? svg;
+  for (const labels of root.querySelectorAll(':scope > .edgeLabels')) {
+    root.appendChild(labels);
+  }
   return new XMLSerializer().serializeToString(svg);
 }
