@@ -73,7 +73,7 @@ export const homeLayout: HomeNode = {
             {
               id: 'nf-traits',
               type: 'text-block',
-              props: { text: '代码 · 记忆 · 夜航', source: 'literal', variant: 'caption', alignment: 'left' },
+              props: { text: '灵魂 · 夜航 · 记忆', source: 'literal', variant: 'caption', alignment: 'left' },
             },
           ],
         },

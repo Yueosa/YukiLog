@@ -27,13 +27,15 @@ pub async fn home(
     State(state): State<AppState>,
     Query(query): Query<HomeQuery>,
 ) -> Result<Html<String>, AppError> {
+    let site = load_site(&state).await?;
+    // 无 ?sort= 参数时用 masthead default-sort 旋钮（默认精选）
     let sort = match query.sort.as_deref() {
-        None | Some("featured") => ArticleSort::Featured,
+        None => site.default_sort,
+        Some("featured") => ArticleSort::Featured,
         Some("popular") => ArticleSort::Popular,
         Some("recent") => ArticleSort::Recent,
         Some(_) => return Err(AppError::InvalidRequest("无效的排序方式")),
     };
-    let site = load_site(&state).await?;
     let articles = load_articles(
         &state,
         HOME_ARTICLE_LIMIT,

@@ -8,7 +8,7 @@ use axum::{
 
 use crate::{AppState, error::AppError};
 
-use super::{SiteView, article, escape_html, home, lists, load_site};
+use super::{ArticleSort, FeedFields, SiteView, article, escape_html, home, lists, load_site};
 
 const BOT_MARKERS: &[&str] = &[
     "bot",
@@ -264,6 +264,17 @@ mod tests {
             hero_title: crate::content::parts::DEFAULT_HERO_TITLE.to_owned(),
             hero_accent: crate::content::parts::DEFAULT_HERO_ACCENT.to_owned(),
             part_vars: String::new(),
+            identity_traits: crate::content::parts::DEFAULT_IDENTITY_TRAITS.to_owned(),
+            default_sort: ArticleSort::Featured,
+            feed_fields: FeedFields {
+                cover: true,
+                category: true,
+                date: true,
+                summary: true,
+                tags: true,
+                views: true,
+                likes: true,
+            },
             description: "夜航西飞".to_owned(),
             owner_name: "Sakurine".to_owned(),
             owner_bio: String::new(),
@@ -292,8 +303,6 @@ mod tests {
             radius: 16,
             scale: 1.0,
             masthead_tint: 58,
-            hero_position: "center".to_owned(),
-            hero_fit: "cover".to_owned(),
             masthead_position: "center".to_owned(),
             masthead_fit: "cover".to_owned(),
         }

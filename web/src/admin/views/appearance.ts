@@ -16,6 +16,9 @@ const OPTION_LABELS: Record<string, string> = {
   start: '左对齐',
   center: '居中',
   end: '右对齐',
+  featured: '精选',
+  popular: '最热',
+  recent: '最近',
 };
 
 /** 外观：按部件调旋钮。左部件列表、右旋钮表单、底部 iframe 实时预览

@@ -50,6 +50,9 @@ pub const DEFAULT_HERO_TITLE: &str = "欢迎来看恋的博客";
 /// hero-title accent 旋钮留空时的默认高亮字符（Lit 端默认在 home-layout.ts）。
 pub const DEFAULT_HERO_ACCENT: &str = "恋";
 
+/// identity-band traits 旋钮留空时的默认标签行（Lit 端默认在 home-layout.ts）。
+pub const DEFAULT_IDENTITY_TRAITS: &str = "灵魂 · 夜航 · 记忆";
+
 /// 部件白名单。新增部件/旋钮只改这里：写入校验、注册表下发、
 /// CSS 变量发射全部以本表为准（渲染器对未登记的键一律忽略）。
 pub const PARTS: &[PartSpec] = &[
@@ -122,6 +125,44 @@ pub const PARTS: &[PartSpec] = &[
             },
         ],
     },
+    PartSpec {
+        id: "identity-band",
+        label: "个人信息带",
+        description: "首屏下方的头像与个人说明区。",
+        knobs: &[KnobSpec {
+            key: "traits",
+            label: "标签行",
+            kind: KnobKind::Text { max_len: 60 },
+            hint: "个人标签，用 · 分隔（留空 = 默认「灵魂 · 夜航 · 记忆」）。",
+        }],
+    },
+    PartSpec {
+        id: "masthead",
+        label: "文章刊头",
+        description: "首页文章流的刊头与排序切换。",
+        knobs: &[KnobSpec {
+            key: "default-sort",
+            label: "默认排序",
+            kind: KnobKind::Select {
+                options: &["featured", "popular", "recent"],
+            },
+            hint: "访客首次进入首页时的排序（留空 = 精选）。",
+        }],
+    },
+    PartSpec {
+        id: "article-feed",
+        label: "文章卡片流",
+        description: "首页文章卡片列表的逐字段开关（勾选 = 显示，默认全部显示）。",
+        knobs: &[
+            KnobSpec { key: "cover", label: "封面", kind: KnobKind::Boolean, hint: "文章封面图。" },
+            KnobSpec { key: "category", label: "分类", kind: KnobKind::Boolean, hint: "文章分类名。" },
+            KnobSpec { key: "date", label: "日期", kind: KnobKind::Boolean, hint: "发布日期。" },
+            KnobSpec { key: "summary", label: "摘要", kind: KnobKind::Boolean, hint: "文章摘要。" },
+            KnobSpec { key: "tags", label: "标签", kind: KnobKind::Boolean, hint: "文章标签。" },
+            KnobSpec { key: "views", label: "阅读数", kind: KnobKind::Boolean, hint: "阅读计数。" },
+            KnobSpec { key: "likes", label: "喜欢数", kind: KnobKind::Boolean, hint: "喜欢计数。" },
+        ],
+    },
 ];
 
 fn find_part(id: &str) -> Option<&'static PartSpec> {
@@ -172,6 +213,13 @@ pub fn part_value<'a>(parts: &'a Map<String, Value>, part: &str, key: &str) -> O
 
 pub fn part_text<'a>(parts: &'a Map<String, Value>, part: &str, key: &str) -> Option<&'a str> {
     part_value(parts, part, key)?.as_str().filter(|text| !text.is_empty())
+}
+
+/// 布尔旋钮读取（未设置或类型漂移时回退 default）。
+pub fn part_bool(parts: &Map<String, Value>, part: &str, key: &str, default: bool) -> bool {
+    part_value(parts, part, key)
+        .and_then(Value::as_bool)
+        .unwrap_or(default)
 }
 
 /// 把部件旋钮落成 `--part-<id>-<key>` 声明串（SSR `:root` 内联）。

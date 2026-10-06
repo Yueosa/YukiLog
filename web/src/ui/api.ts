@@ -99,10 +99,6 @@ export interface SiteTheme {
   shape?: Partial<{ radius: number; borderedCards: boolean }>;
   /** 刊头背景深色蒙版强度（0-0.95），缺省前端不压暗（0）。 */
   mastheadOverlay?: number | null;
-  /** 首屏背景对齐，缺省 center。 */
-  heroBackgroundPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
-  /** 首屏背景适应，缺省 contain（完整显示 + 模糊填充）。 */
-  heroBackgroundFit?: 'cover' | 'contain' | 'stretch' | null;
   /** 刊头背景对齐，缺省 center。 */
   mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
   /** 刊头背景适应，缺省 cover。 */

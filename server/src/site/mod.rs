@@ -53,6 +53,12 @@ struct SiteView {
     hero_accent: String,
     /// 部件旋钮落成的 `--part-*` 声明串（已按白名单+CSS 消毒）
     part_vars: String,
+    /// identity-band traits 旋钮覆盖后的标签行（默认 = parts::DEFAULT_IDENTITY_TRAITS）
+    identity_traits: String,
+    /// masthead default-sort 旋钮：首页无 ?sort= 参数时的排序（默认精选）
+    default_sort: ArticleSort,
+    /// article-feed 字段开关（默认全 true）
+    feed_fields: FeedFields,
     description: String,
     owner_name: String,
     owner_bio: String,
@@ -81,10 +87,20 @@ struct SiteView {
     radius: u8,
     scale: f32,
     masthead_tint: u8,
-    hero_position: String,
-    hero_fit: String,
     masthead_position: String,
     masthead_fit: String,
+}
+
+/// article-feed 部件的字段开关（article-feed.* 旋钮，未设置 = 全显示）。
+#[derive(Clone)]
+struct FeedFields {
+    cover: bool,
+    category: bool,
+    date: bool,
+    summary: bool,
+    tags: bool,
+    views: bool,
+    likes: bool,
 }
 
 #[derive(Clone)]
@@ -277,7 +293,7 @@ struct HomeStats {
   <title data-away="唔, 不看我了吗...Ծ‸Ծ">{{ page_title }} · {{ site.title }}</title>
   <script>(()=>{const d=document.documentElement;try{if(window.sessionStorage.getItem('yukilog.splash'))return}catch{return}d.classList.add('splash-run','is-intro')})();</script>
   <style>
-    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--masthead-tint:{{ site.masthead_tint }}%;--hero-pos:{{ site.hero_position }};--hero-fit:{{ site.hero_fit }};--masthead-pos:{{ site.masthead_position }};--masthead-fit:{{ site.masthead_fit }};{{ site.part_vars|safe }}--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
+    :root{--page:{{ site.background }};--surface:{{ site.surface }};--surface-soft:#eef2f5;--ink:{{ site.text }};--muted:{{ site.text_muted }};--faint:#a7b5c2;--line:{{ site.border }};--primary:{{ site.primary }};--primary-d:#4a93c2;--secondary:{{ site.secondary }};--secondary-d:#d57f95;--radius:{{ site.radius }}px;--scale:{{ site.scale }};--masthead-tint:{{ site.masthead_tint }}%;--hero-pos:center;--hero-fit:contain;--masthead-pos:{{ site.masthead_position }};--masthead-fit:{{ site.masthead_fit }};{{ site.part_vars|safe }}--serif:'LXGW WenKai GB','Noto Serif SC','Songti SC',Georgia,serif;--mono:ui-monospace,'SFMono-Regular',Consolas,monospace}
     *{box-sizing:border-box}
     @view-transition{navigation:auto}
     ::view-transition-old(root),::view-transition-new(root){animation-duration:240ms;animation-timing-function:cubic-bezier(.22,.61,.36,1)}
@@ -1321,6 +1337,31 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
             .unwrap_or(crate::content::parts::DEFAULT_HERO_ACCENT)
             .to_owned(),
         part_vars: crate::content::parts::part_vars_css(&settings.theme.parts),
+        identity_traits: crate::content::parts::part_text(
+            &settings.theme.parts,
+            "identity-band",
+            "traits",
+        )
+        .unwrap_or(crate::content::parts::DEFAULT_IDENTITY_TRAITS)
+        .to_owned(),
+        default_sort: match crate::content::parts::part_text(
+            &settings.theme.parts,
+            "masthead",
+            "default-sort",
+        ) {
+            Some("popular") => ArticleSort::Popular,
+            Some("recent") => ArticleSort::Recent,
+            _ => ArticleSort::Featured,
+        },
+        feed_fields: FeedFields {
+            cover: crate::content::parts::part_bool(&settings.theme.parts, "article-feed", "cover", true),
+            category: crate::content::parts::part_bool(&settings.theme.parts, "article-feed", "category", true),
+            date: crate::content::parts::part_bool(&settings.theme.parts, "article-feed", "date", true),
+            summary: crate::content::parts::part_bool(&settings.theme.parts, "article-feed", "summary", true),
+            tags: crate::content::parts::part_bool(&settings.theme.parts, "article-feed", "tags", true),
+            views: crate::content::parts::part_bool(&settings.theme.parts, "article-feed", "views", true),
+            likes: crate::content::parts::part_bool(&settings.theme.parts, "article-feed", "likes", true),
+        },
         title: settings.site_title,
         description: settings.site_description.unwrap_or_default(),
         owner_name: settings.owner_name,
@@ -1350,15 +1391,6 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         radius: settings.theme.shape.radius,
         scale: settings.theme.typography.scale,
         masthead_tint: (settings.theme.masthead_overlay.unwrap_or(0.0) * 100.0).round() as u8,
-        hero_position: settings
-            .theme
-            .hero_background_position
-            .unwrap_or_else(|| "center".to_owned()),
-        hero_fit: match settings.theme.hero_background_fit.as_deref() {
-            Some("cover") => "cover".to_owned(),
-            Some("stretch") => "100% 100%".to_owned(),
-            _ => "contain".to_owned(),
-        },
         masthead_position: settings
             .theme
             .masthead_position
@@ -1797,6 +1829,17 @@ mod tests {
             hero_title: crate::content::parts::DEFAULT_HERO_TITLE.to_owned(),
             hero_accent: crate::content::parts::DEFAULT_HERO_ACCENT.to_owned(),
             part_vars: String::new(),
+            identity_traits: crate::content::parts::DEFAULT_IDENTITY_TRAITS.to_owned(),
+            default_sort: ArticleSort::Featured,
+            feed_fields: FeedFields {
+                cover: true,
+                category: true,
+                date: true,
+                summary: true,
+                tags: true,
+                views: true,
+                likes: true,
+            },
             description: "夜航西飞".to_owned(),
             owner_name: "Sakurine".to_owned(),
             owner_bio: String::new(),
@@ -1825,8 +1868,6 @@ mod tests {
             radius: 16,
             scale: 1.0,
             masthead_tint: 58,
-            hero_position: "center".to_owned(),
-            hero_fit: "cover".to_owned(),
             masthead_position: "center".to_owned(),
             masthead_fit: "cover".to_owned(),
         }

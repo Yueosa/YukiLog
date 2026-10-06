@@ -87,6 +87,15 @@ hero（沉浸式首屏：轮换背景 / 欢迎大文字 / 语录卡 / ENTER 整�
 | 部件 | 旋钮 | 说明 |
 | --- | --- | --- |
 | `brand` | `text` / `scale` | 品牌文字（空 = 站点标题）与字号倍率 0.8–2.0 |
-| `topnav` | `display` / `align` | 图标+文字/仅图标/仅文字（SSR 仅内页顶栏生效）；首屏角导航对齐 start/center/end |
-| `hero-title` | `text` | 欢迎大文字（空 = 默认欢迎语，含「恋」自动高亮） |
+| `topnav` | `display` / `align` / `align-mobile` | 图标+文字/仅图标/仅文字（SSR 仅内页顶栏生效）；角导航对齐 start/center/end；移动端胶囊顶栏停靠（仅 Lit） |
+| `hero-title` | `text` / `accent` | 欢迎大文字（空 = 默认欢迎语）与高亮字符（空 = 「恋」） |
+| `identity-band` | `traits` | 个人标签行（空 = 「灵魂 · 夜航 · 记忆」） |
+| `masthead` | `default-sort` | 首页默认排序 featured/popular/recent（空 = 精选） |
+| `article-feed` | `cover` `category` `date` `summary` `tags` `views` `likes` | 文章卡片逐字段开关（boolean，空 = 全显示） |
+
+2026-10 起 `heroBackgroundPosition` / `heroBackgroundFit` 已从 theme 移除：
+全局背景对齐/适应被焦点框选 + 滚轮局部缩放取代，非焦点图恒定 contain
+（完整显示 + 模糊填充）。旧库里的残留键需在部署时清理
+（`theme - 'heroBackgroundPosition' - 'heroBackgroundFit'`），
+否则 `deny_unknown_fields` 会让设置读取失败。
 

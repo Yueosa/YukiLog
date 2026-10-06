@@ -115,10 +115,6 @@ export type ThemeTokens = {
   motion: 'none' | 'subtle' | 'expressive';
   /** 刊头背景深色蒙版强度（0-0.95），null 时前端默认 0（不压暗）。 */
   mastheadOverlay?: number | null;
-  /** 首屏背景对齐。 */
-  heroBackgroundPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
-  /** 首屏背景适应。 */
-  heroBackgroundFit?: 'cover' | 'contain' | 'stretch' | null;
   /** 刊头背景对齐。 */
   mastheadPosition?: 'center' | 'top' | 'bottom' | 'left' | 'right' | null;
   /** 刊头背景适应。 */

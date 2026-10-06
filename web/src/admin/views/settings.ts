@@ -692,41 +692,7 @@ export class AdmSettings extends AdmView {
             : nothing}
         </div>
         <p class="note">${heroBackgroundLabel.note}</p>
-        <div class="grid">
-          <label class="field">
-            <span>背景对齐</span>
-            <select
-              .value=${draft.theme.heroBackgroundPosition ?? 'center'}
-            @change=${(e: Event) =>
-              this.setField('theme', {
-                ...draft.theme,
-                heroBackgroundPosition: (e.currentTarget as HTMLSelectElement).value as typeof draft.theme.heroBackgroundPosition,
-              })}
-          >
-            <option value="center">居中</option>
-            <option value="top">置顶</option>
-            <option value="bottom">置底</option>
-            <option value="left">靠左</option>
-              <option value="right">靠右</option>
-            </select>
-          </label>
-          <label class="field">
-            <span>适应方式</span>
-            <select
-              .value=${draft.theme.heroBackgroundFit ?? 'contain'}
-              @change=${(e: Event) =>
-                this.setField('theme', {
-                  ...draft.theme,
-                  heroBackgroundFit: (e.currentTarget as HTMLSelectElement).value as typeof draft.theme.heroBackgroundFit,
-                })}
-            >
-              <option value="cover">裁剪填满</option>
-              <option value="contain">完整显示（模糊填充）</option>
-              <option value="stretch">拉伸铺满</option>
-            </select>
-          </label>
-        </div>
-        <p class="note">超宽图选「完整显示」能看全画面，两侧用同图模糊填充，不会有黑边。</p>
+        <p class="note">非焦点图恒定「完整显示（模糊填充）」；点选图片可框选焦点并滚轮局部放大。</p>
         <label class="field" style="margin-top: 12px">
           <span>${heroBackgroundLabel.quoteLabel}</span>
           <span class="quote-row">

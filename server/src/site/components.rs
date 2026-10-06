@@ -7,12 +7,11 @@ use askama::Template;
 
 use crate::error::AppError;
 
-use super::{ArticleCard, ArticleSort, DynamicCard, HomeStats, SiteView, escape_html};
+use super::{ArticleCard, ArticleSort, DynamicCard, FeedFields, HomeStats, SiteView, escape_html};
 
 /// 固定布局常量（与 Lit 端 home-layout.ts 保持一致）。
 const HOME_CONTENT_ID: &str = "nf-identity";
 const HERO_LEAD: &str = "这里分享她所热爱的技术、思考，以及情绪、挣扎";
-const IDENTITY_TRAITS: &str = "代码 · 记忆 · 夜航";
 const IDENTITY_STATUS: &str = "system.log\n这不是你亲手开启的故事吗？\n[2024-06-09 08:48:29]\n";
 const AVATAR_LABEL: &str = "恋的头像";
 const MASTHEAD_KICKER: &str = "01";
@@ -93,13 +92,13 @@ pub(super) fn render_home(context: &RenderContext<'_>) -> Result<String, AppErro
     let feed = ArticleFeedTemplate {
         articles: context.articles,
         variant: "alternating",
-        show_cover: true,
-        show_summary: true,
-        show_date: true,
-        show_category: true,
-        show_tags: true,
-        show_views: true,
-        show_likes: true,
+        show_cover: context.site.feed_fields.cover,
+        show_summary: context.site.feed_fields.summary,
+        show_date: context.site.feed_fields.date,
+        show_category: context.site.feed_fields.category,
+        show_tags: context.site.feed_fields.tags,
+        show_views: context.site.feed_fields.views,
+        show_likes: context.site.feed_fields.likes,
     }
     .render()
     .map_err(|_| AppError::Internal("render article feed"))?;
@@ -146,7 +145,7 @@ fn render_identity_band(context: &RenderContext<'_>) -> String {
         r#"{avatar}<section id="nf-who" class="layout-stack gap-sm" data-reveal><div class="primitive-text text-heading text-left" data-reveal>{}</div><div class="primitive-text text-body text-left" data-reveal>{}</div><div class="primitive-text text-caption text-left" data-reveal>{}</div></section><pre class="profile-log" data-reveal>{}</pre>"#,
         escape_html(&site.owner_name),
         escape_html(&site.owner_bio),
-        escape_html(IDENTITY_TRAITS),
+        escape_html(&site.identity_traits),
         escape_html(IDENTITY_STATUS)
     )
 }
@@ -329,6 +328,17 @@ mod tests {
             hero_title: crate::content::parts::DEFAULT_HERO_TITLE.to_owned(),
             hero_accent: crate::content::parts::DEFAULT_HERO_ACCENT.to_owned(),
             part_vars: String::new(),
+            identity_traits: crate::content::parts::DEFAULT_IDENTITY_TRAITS.to_owned(),
+            default_sort: ArticleSort::Featured,
+            feed_fields: FeedFields {
+                cover: true,
+                category: true,
+                date: true,
+                summary: true,
+                tags: true,
+                views: true,
+                likes: true,
+            },
             description: "站点说明".to_owned(),
             owner_name: "Sakurine".to_owned(),
             owner_bio: String::new(),
@@ -357,8 +367,6 @@ mod tests {
             radius: 16,
             scale: 1.0,
             masthead_tint: 0,
-            hero_position: "center".to_owned(),
-            hero_fit: "cover".to_owned(),
             masthead_position: "center".to_owned(),
             masthead_fit: "cover".to_owned(),
         }

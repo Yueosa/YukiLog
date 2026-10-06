@@ -92,12 +92,6 @@ pub struct ThemeTokens {
     /// 刊头背景深色蒙版强度（0–0.95 压暗比例），None 时前端不压暗（0）。
     #[serde(default)]
     pub masthead_overlay: Option<f32>,
-    /// 首屏背景对齐（center/top/bottom/left/right），None 为 center。
-    #[serde(default)]
-    pub hero_background_position: Option<String>,
-    /// 首屏背景适应（cover/contain/stretch），None 为 contain（完整显示）。
-    #[serde(default)]
-    pub hero_background_fit: Option<String>,
     /// 刊头背景对齐，None 为 center。
     #[serde(default)]
     pub masthead_position: Option<String>,
@@ -107,6 +101,8 @@ pub struct ThemeTokens {
     /// 部件 token：{ 部件 id: { 旋钮 key: 值 } }，白名单见 content/parts.rs。
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub parts: serde_json::Map<String, serde_json::Value>,
+    // 注：heroBackgroundPosition / heroBackgroundFit 已于 2026-10 移除
+    // （焦点框选 + 局部缩放取代全局对齐/适应）；旧库里的残留键在部署时清理。
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -286,30 +282,14 @@ impl SiteSettingsWrite {
             }
         }
         const POSITIONS: [&str; 5] = ["center", "top", "bottom", "left", "right"];
-        for (value, name) in [
-            (&self.theme.hero_background_position, "首屏背景对齐"),
-            (&self.theme.masthead_position, "刊头背景对齐"),
-        ] {
-            if let Some(position) = value {
-                if !POSITIONS.contains(&position.as_str()) {
-                    return Err(AppError::InvalidRequest(match name {
-                        "首屏背景对齐" => "首屏背景对齐必须是 center/top/bottom/left/right",
-                        _ => "刊头背景对齐必须是 center/top/bottom/left/right",
-                    }));
-                }
+        if let Some(position) = &self.theme.masthead_position {
+            if !POSITIONS.contains(&position.as_str()) {
+                return Err(AppError::InvalidRequest("刊头背景对齐必须是 center/top/bottom/left/right"));
             }
         }
-        for (fit, name) in [
-            (&self.theme.masthead_fit, "刊头背景适应"),
-            (&self.theme.hero_background_fit, "首屏背景适应"),
-        ] {
-            if let Some(fit) = fit {
-                if !["cover", "contain", "stretch"].contains(&fit.as_str()) {
-                    return Err(AppError::InvalidRequest(match name {
-                        "刊头背景适应" => "刊头背景适应必须是 cover/contain/stretch",
-                        _ => "首屏背景适应必须是 cover/contain/stretch",
-                    }));
-                }
+        if let Some(fit) = &self.theme.masthead_fit {
+            if !["cover", "contain", "stretch"].contains(&fit.as_str()) {
+                return Err(AppError::InvalidRequest("刊头背景适应必须是 cover/contain/stretch"));
             }
         }
         if let Some(quote) = &self.hero_quote {

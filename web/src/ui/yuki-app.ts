@@ -167,7 +167,7 @@ export class YukiApp extends LitElement {
   private spaNavigated = false;
   private revealInstant = false;
   private quoteRefreshBusy = false;
-  private feedSort: api.FeedSort = 'featured';
+  private feedSort: api.FeedSort | null = null;
   private commentFormOpen = false;
   private commentBusy = false;
   private commentError = '';
@@ -487,7 +487,7 @@ export class YukiApp extends LitElement {
       if (sortParam === 'featured' || sortParam === 'popular' || sortParam === 'recent') {
         this.feedSort = sortParam;
       }
-      this.store.loadHomeFeed(this.feedSort);
+      this.store.loadHomeFeed(this.currentFeedSort());
       this.store.loadDynamics(1);
       this.store.ensureFriends();
       this.setTitle('');
@@ -605,6 +605,8 @@ export class YukiApp extends LitElement {
     window.scrollTo(0, 0);
     this.unsubscribeStore = this.store.subscribe(() => {
       this.syncDocumentTitle();
+      // 站点数据到达后旋钮才可读：确保当前有效排序的文章流已加载（幂等）
+      if (window.location.pathname === '/') this.store.loadHomeFeed(this.currentFeedSort());
       this.requestUpdate();
     });
     this.startSplash();
@@ -5800,6 +5802,20 @@ export class YukiApp extends LitElement {
     return this.partText('brand', 'text') ?? this.siteData.siteTitle;
   }
 
+  /** 当前文章流排序：手动切换/URL 参数 > masthead default-sort 旋钮 > 精选。 */
+  private currentFeedSort(): api.FeedSort {
+    if (this.feedSort) return this.feedSort;
+    const knob = this.partText('masthead', 'default-sort');
+    if (knob === 'popular' || knob === 'recent' || knob === 'featured') return knob;
+    return 'featured';
+  }
+
+  /** article-feed 字段开关：旋钮（boolean）优先，缺省用布局字段集。 */
+  private feedFieldOn(fields: Set<ArticleField>, key: ArticleField): boolean {
+    const value = this.parts()['article-feed']?.[key];
+    return typeof value === 'boolean' ? value : fields.has(key);
+  }
+
   /** topnav display / align 旋钮 → 导航容器类名。 */
   private topnavClass(): string {
     const display = this.partText('topnav', 'display');
@@ -5841,10 +5857,6 @@ export class YukiApp extends LitElement {
     const overlay = theme?.mastheadOverlay;
     if (typeof overlay === 'number' && overlay >= 0 && overlay <= 0.95) {
       style['--masthead-tint'] = `${Math.round(overlay * 100)}%`;
-    }
-    if (theme?.heroBackgroundPosition) style['--hero-pos'] = theme.heroBackgroundPosition;
-    if (theme?.heroBackgroundFit) {
-      style['--hero-fit'] = theme.heroBackgroundFit === 'stretch' ? '100% 100%' : theme.heroBackgroundFit;
     }
     if (theme?.mastheadPosition) style['--masthead-pos'] = theme.mastheadPosition;
     if (theme?.mastheadFit) {
@@ -6222,9 +6234,8 @@ export class YukiApp extends LitElement {
                 <div class="hero-background hero-bg-stack" role="img" aria-label="首屏背景">
                   ${heroBackgrounds.map((item, index) => {
                     if (item.position) return nothing; // 焦点图在静态视口层渲染
-                    // 缺省即 contain（完整显示 + 模糊填充），仅显式 cover/stretch 关闭
-                    const fit = this.store.site.data?.theme?.heroBackgroundFit;
-                    const contain = fit !== 'cover' && fit !== 'stretch';
+                    // 非焦点图恒定 contain（完整显示 + 模糊填充）；
+                    // 全局对齐/适应选项已随焦点框选 + 局部缩放移除
                     const focal = backgroundPosition;
                     // 冷启动只渲染当前层与已驻留就绪的层，其余层等轮到/预载完成再挂图，
                     // 避免全池图片同时下载抢占首图带宽
@@ -6232,13 +6243,11 @@ export class YukiApp extends LitElement {
                     const layerStyle: Record<string, string> = { backgroundPosition: focal };
                     if (showImage) layerStyle.backgroundImage = `url("${item.url}")`;
                     return html`
-                      ${contain
-                        ? html`<div
-                            class="hero-bg-layer blur${index === this.heroBgIndex ? ' active' : ''}"
-                            style=${styleMap(layerStyle)}
-                            aria-hidden="true"
-                          ></div>`
-                        : nothing}
+                      <div
+                        class="hero-bg-layer blur${index === this.heroBgIndex ? ' active' : ''}"
+                        style=${styleMap(layerStyle)}
+                        aria-hidden="true"
+                      ></div>
                       <div
                         class="hero-bg-layer${index === this.heroBgIndex ? ' active' : ''}"
                         style=${styleMap(layerStyle)}
@@ -6362,7 +6371,7 @@ export class YukiApp extends LitElement {
     };
     const sortLinked =
       variant === 'minimal' && (rawTitle === '' || Object.values(sortTitles).includes(rawTitle));
-    const title = sortLinked ? sortTitles[this.feedSort] : rawTitle;
+    const title = sortLinked ? sortTitles[this.currentFeedSort()] : rawTitle;
     return html`
       <header class="node node-masthead masthead masthead-${variant}" data-part="masthead">
         <p class="kicker">${String(node.props.kicker ?? 'YukiLog · Vol. 01')}</p>
@@ -6379,7 +6388,7 @@ export class YukiApp extends LitElement {
                 ([value, label]) => html`
                   <button
                     type="button"
-                    aria-pressed=${this.feedSort === value}
+                    aria-pressed=${this.currentFeedSort() === value}
                     @click=${(event: Event) => {
                       event.stopPropagation();
                       this.feedSort = value;
@@ -6406,13 +6415,17 @@ export class YukiApp extends LitElement {
 
   private renderTextBlock(node: HomeNode) {
     const source = String(node.props.source ?? 'literal');
-    const text =
+    let text =
       {
         'owner-name': this.siteData.ownerName,
         'owner-bio': this.siteData.ownerBio,
         'site-title': this.siteData.siteTitle,
         'site-description': this.siteData.siteDescription,
       }[source] ?? String(node.props.text ?? '');
+    // identity-band traits 旋钮
+    if (node.id === 'nf-traits') {
+      text = this.partText('identity-band', 'traits') ?? text;
+    }
     const variant = String(node.props.variant ?? 'body');
     return html`
       <div
@@ -6471,7 +6484,7 @@ export class YukiApp extends LitElement {
     const variant = String(node.props.variant ?? 'compact');
     const fields = new Set((node.props.fields as ArticleField[]) ?? []);
     const limit = Math.max(1, Number(node.props.limit ?? 5));
-    const sort = this.feedSort;
+    const sort = this.currentFeedSort();
     const feedSlice = this.store.homeFeed(sort);
     const items = feedSlice?.data?.items ?? [];
     const total = feedSlice?.data?.total ?? 0;
@@ -6486,7 +6499,7 @@ export class YukiApp extends LitElement {
         ${items.slice(0, limit).map(
           (article) => html`
             <article class="article" data-reveal>
-              ${fields.has('cover')
+              ${this.feedFieldOn(fields, 'cover')
                 ? html`<a
                     class="article-cover"
                     href=${`/articles/${article.slug}`}
@@ -6501,23 +6514,23 @@ export class YukiApp extends LitElement {
                 : nothing}
               <div class="article-copy">
                 <div class="meta">
-                  ${fields.has('category') && article.category
+                  ${this.feedFieldOn(fields, 'category') && article.category
                     ? html`<span class="cat">${article.category.name}</span>`
                     : nothing}
-                  ${fields.has('date') ? html`<time>${formatDate(article.publishedAt)}</time>` : nothing}
+                  ${this.feedFieldOn(fields, 'date') ? html`<time>${formatDate(article.publishedAt)}</time>` : nothing}
                 </div>
                 <h3><a href=${`/articles/${article.slug}`}>${article.title}</a></h3>
-                ${fields.has('summary') ? html`<p class="summary">${article.summary}</p>` : nothing}
+                ${this.feedFieldOn(fields, 'summary') ? html`<p class="summary">${article.summary}</p>` : nothing}
                 <div class="foot">
-                  ${fields.has('tags')
+                  ${this.feedFieldOn(fields, 'tags')
                     ? html`<div class="tags">
                         ${article.tags.map(
                           (tag) => html`<a href=${`/search?tag=${encodeURIComponent(tag.slug)}`}>#${tag.name}</a>`,
                         )}
                       </div>`
                     : nothing}
-                  ${fields.has('views') ? html`<span>${article.views} 阅读</span>` : nothing}
-                  ${fields.has('likes') ? html`<span>${article.likes} 喜欢</span>` : nothing}
+                  ${this.feedFieldOn(fields, 'views') ? html`<span>${article.views} 阅读</span>` : nothing}
+                  ${this.feedFieldOn(fields, 'likes') ? html`<span>${article.likes} 喜欢</span>` : nothing}
                 </div>
               </div>
             </article>
