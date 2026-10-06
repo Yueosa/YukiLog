@@ -4415,7 +4415,8 @@ export class YukiApp extends LitElement {
 
     .article-copy .foot {
       display: flex;
-      gap: 16px;
+      flex-wrap: wrap;
+      gap: 8px 16px;
       margin-top: 14px;
       color: var(--faint);
       font-size: 12px;
@@ -4423,7 +4424,8 @@ export class YukiApp extends LitElement {
 
     .article-copy .foot .tags {
       display: flex;
-      gap: 10px;
+      flex-wrap: wrap;
+      gap: 6px 10px;
       margin-right: auto;
     }
 
@@ -5905,12 +5907,20 @@ export class YukiApp extends LitElement {
       }
 
       .feed-alternating .article,
-      .feed-alternating .article:nth-child(even) {
+      .feed-alternating .article:nth-child(even),
+      .feed-alternating .article:has(yuki-cover[orientation='portrait']),
+      .feed-alternating .article:nth-child(even):has(yuki-cover[orientation='portrait']) {
         grid-template-columns: 1fr;
       }
 
       .feed-alternating .article:nth-child(even) .article-cover {
         order: 0;
+      }
+
+      /* 竖封面单列后别占满全宽（与 SSR 同口径） */
+      .feed-alternating .article-cover:has(yuki-cover[orientation='portrait']) {
+        width: min(320px, 88%);
+        margin-inline: auto;
       }
 
       .layout-grid,
