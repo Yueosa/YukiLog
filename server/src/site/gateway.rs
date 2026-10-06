@@ -289,6 +289,7 @@ mod tests {
             navigation_class: "topbar",
             navigation_options: String::new(),
             nav_corners_class: "",
+            enter_class: "",
             page_width_class: "width-wide",
             show_search: true,
             mail_enabled: false,

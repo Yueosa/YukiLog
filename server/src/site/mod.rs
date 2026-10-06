@@ -72,6 +72,8 @@ struct SiteView {
     navigation_class: &'static str,
     navigation_options: String,
     nav_corners_class: &'static str,
+    /// hero-enter style 旋钮挂到 hero 容器的类（"" / " enter-wave" / " enter-none"）
+    enter_class: &'static str,
     page_width_class: &'static str,
     show_search: bool,
     mail_enabled: bool,
@@ -586,6 +588,15 @@ struct HomeStats {
     .hero{position:relative;display:grid;min-height:100svh;place-items:center;overflow:hidden;isolation:isolate;background:radial-gradient(circle at 70% 18%,rgb(74 147 194/24%),transparent 46%),linear-gradient(180deg,#122539,#0e1d30);color:#eef3f8}
     .hero::before{position:absolute;z-index:-1;inset:0;content:'';background:linear-gradient(180deg,rgb(6 14 26/55%),rgb(6 14 26/18%) 45%,rgb(9 17 30/66%) 100%)}
     .hero::after{position:absolute;z-index:-1;right:0;bottom:0;left:0;height:16vh;content:'';background:linear-gradient(180deg,transparent,rgb(247 248 247/82%))}
+    .hero.enter-none::after,.hero.enter-wave::after{display:none}
+    .hero-waves{position:absolute;z-index:-1;right:0;bottom:0;left:0;height:96px;overflow:hidden;pointer-events:none}
+    .hero-waves .wave{position:absolute;bottom:0;left:0;width:200%;height:100%;animation:hero-wave-slide linear infinite}
+    .hero-waves .wave-back{fill:rgb(255 255 255/28%);animation-duration:26s;animation-direction:reverse}
+    .hero-waves .wave-mid{fill:rgb(255 255 255/45%);animation-duration:17s}
+    .hero-waves .wave-front{fill:var(--page);animation-duration:11s}
+    @keyframes hero-wave-slide{to{transform:translateX(-50%)}}
+    @media (prefers-reduced-motion: reduce){.hero-waves .wave{animation:none}}
+    @media (max-width:640px){.hero-waves{height:60px}}
     .hero-background{position:absolute;z-index:-2;top:-32%;left:0;width:100%;height:132%;background:center/cover no-repeat;will-change:transform}
     .hero:not(.has-media) .hero-background{display:none}
     .hero-inner{display:flex;width:min(680px,88vw);align-items:center;flex-direction:column;gap:5.5vh;text-align:center;will-change:transform,opacity}
@@ -1336,6 +1347,12 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         Some("end") => " topnav-align-end",
         _ => "",
     };
+    // hero-enter style 旋钮：白雾（默认）/ 波浪 / 无背景
+    let enter_class = match crate::content::parts::part_text(&settings.theme.parts, "hero-enter", "style") {
+        Some("wave") => " enter-wave",
+        Some("none") => " enter-none",
+        _ => "",
+    };
     let page_width_class = match settings.shell_layout.max_width {
         ShellWidth::Content => "width-content",
         ShellWidth::Wide => "width-wide",
@@ -1397,6 +1414,7 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
         navigation_class,
         navigation_options,
         nav_corners_class,
+        enter_class,
         page_width_class,
         show_search: settings.shell_layout.show_search,
         mail_enabled: crate::ops::subscriptions::mail_enabled(),
@@ -1874,6 +1892,7 @@ mod tests {
             navigation_class: "topbar",
             navigation_options: String::new(),
             nav_corners_class: "",
+            enter_class: "",
             page_width_class: "width-wide",
             show_search: true,
             mail_enabled: false,

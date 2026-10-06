@@ -126,6 +126,19 @@ pub const PARTS: &[PartSpec] = &[
         ],
     },
     PartSpec {
+        id: "hero-enter",
+        label: "ENTER 块",
+        description: "首屏底部的进入引导区（整块可点）。",
+        knobs: &[KnobSpec {
+            key: "style",
+            label: "底部背景",
+            kind: KnobKind::Select {
+                options: &["mist", "wave", "none"],
+            },
+            hint: "白雾渐变 / 三层叠加波浪 / 无背景（留空 = 白雾）。",
+        }],
+    },
+    PartSpec {
         id: "identity-band",
         label: "个人信息带",
         description: "首屏下方的头像与个人说明区。",

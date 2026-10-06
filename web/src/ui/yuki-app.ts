@@ -3864,6 +3864,68 @@ export class YukiApp extends LitElement {
       background: linear-gradient(180deg, transparent, rgb(247 248 247 / 68%));
     }
 
+    /* hero-enter style 旋钮：wave/none 关掉白雾 */
+    .hero.enter-none::after,
+    .hero.enter-wave::after {
+      display: none;
+    }
+
+    /* 三层叠加波浪：各自周期/速度/方向不同，叠加后读不出正弦
+       （借 qsl rail 的思路；纯 CSS 动画，无 JS 开销） */
+    .hero-waves {
+      position: absolute;
+      z-index: -1;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      height: 96px;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .hero-waves .wave {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 200%;
+      height: 100%;
+      animation: hero-wave-slide linear infinite;
+    }
+
+    .hero-waves .wave-back {
+      fill: rgb(255 255 255 / 28%);
+      animation-duration: 26s;
+      animation-direction: reverse;
+    }
+
+    .hero-waves .wave-mid {
+      fill: rgb(255 255 255 / 45%);
+      animation-duration: 17s;
+    }
+
+    .hero-waves .wave-front {
+      fill: var(--page);
+      animation-duration: 11s;
+    }
+
+    @keyframes hero-wave-slide {
+      to {
+        transform: translateX(-50%);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .hero-waves .wave {
+        animation: none;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .hero-waves {
+        height: 60px;
+      }
+    }
+
     .hero-background {
       position: absolute;
       z-index: -2;
@@ -6351,9 +6413,11 @@ export class YukiApp extends LitElement {
           : nothing}
       </div>
     `;
+    const enterStyle = this.partText('hero-enter', 'style') ?? 'mist';
+    const enterClass = enterStyle === 'mist' ? '' : ` enter-${enterStyle}`;
     return html`
       <section
-        class="node node-hero hero hero-${variant} overlay-${overlay}${hasMedia ? ' has-media' : ''}"
+        class="node node-hero hero hero-${variant} overlay-${overlay}${hasMedia ? ' has-media' : ''}${enterClass}"
         data-part="hero"
       >
         ${hasMedia
@@ -6415,6 +6479,25 @@ export class YukiApp extends LitElement {
           </h1>
           ${variant === 'cinematic' ? html`<div class="hero-info">${details}</div>` : details}
         </div>
+        ${enterStyle === 'wave'
+          ? html`<div class="hero-waves" aria-hidden="true">
+              <svg class="wave wave-back" viewBox="0 0 1400 90" preserveAspectRatio="none">
+                <path
+                  d="M0 52 C 70 32, 130 66, 210 50 S 350 30, 430 52 S 590 72, 700 52 C 770 32, 830 66, 910 50 S 1050 30, 1130 52 S 1290 72, 1400 52 L1400 90 L0 90 Z"
+                />
+              </svg>
+              <svg class="wave wave-mid" viewBox="0 0 1200 90" preserveAspectRatio="none">
+                <path
+                  d="M0 60 C 60 44, 120 74, 200 58 S 340 38, 440 62 S 560 48, 600 60 C 660 44, 720 74, 800 58 S 940 38, 1040 62 S 1160 48, 1200 60 L1200 90 L0 90 Z"
+                />
+              </svg>
+              <svg class="wave wave-front" viewBox="0 0 1600 90" preserveAspectRatio="none">
+                <path
+                  d="M0 64 C 90 46, 170 76, 280 60 S 460 40, 580 64 S 730 52, 800 64 C 890 46, 970 76, 1080 60 S 1260 40, 1380 64 S 1530 52, 1600 64 L1600 90 L0 90 Z"
+                />
+              </svg>
+            </div>`
+          : nothing}
         ${node.props.showEnter
           ? html`<button
               class="enter-button"

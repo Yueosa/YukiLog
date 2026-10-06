@@ -265,6 +265,12 @@ fn render_hero(context: &RenderContext<'_>) -> String {
         r##"<a class="enter-button" data-part="hero-enter" href="#{}" aria-label="进入文章区域"><span class="enter-guide"><span>ENTER</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 9 7 7 7-7"/></svg></span></a>"##,
         HOME_CONTENT_ID
     );
+    // hero-enter style=wave：三层叠加波浪（层间周期/速度/方向不同，叠加后读不出正弦）
+    let waves = if context.site.enter_class == " enter-wave" {
+        r#"<div class="hero-waves" aria-hidden="true"><svg class="wave wave-back" viewBox="0 0 1400 90" preserveAspectRatio="none"><path d="M0 52 C 70 32, 130 66, 210 50 S 350 30, 430 52 S 590 72, 700 52 C 770 32, 830 66, 910 50 S 1050 30, 1130 52 S 1290 72, 1400 52 L1400 90 L0 90 Z"/></svg><svg class="wave wave-mid" viewBox="0 0 1200 90" preserveAspectRatio="none"><path d="M0 60 C 60 44, 120 74, 200 58 S 340 38, 440 62 S 560 48, 600 60 C 660 44, 720 74, 800 58 S 940 38, 1040 62 S 1160 48, 1200 60 L1200 90 L0 90 Z"/></svg><svg class="wave wave-front" viewBox="0 0 1600 90" preserveAspectRatio="none"><path d="M0 64 C 90 46, 170 76, 280 60 S 460 40, 580 64 S 730 52, 800 64 C 890 46, 970 76, 1080 60 S 1260 40, 1380 64 S 1530 52, 1600 64 L1600 90 L0 90 Z"/></svg></div>"#
+    } else {
+        ""
+    };
     let media_class = if background_url.is_empty() {
         ""
     } else {
@@ -279,8 +285,9 @@ fn render_hero(context: &RenderContext<'_>) -> String {
         HERO_LEAD
     };
     format!(
-        r#"<section id="nf-hero" class="hero hero-cinematic overlay-medium{}" data-part="hero">{background}<div class="hero-inner"><h1 data-part="hero-title">{title_characters}</h1><div class="hero-info"><div class="welcome-quote" data-part="hero-quote-card"><span class="quote-text">{}</span>{socials}</div></div></div>{enter}</section>"#,
+        r#"<section id="nf-hero" class="hero hero-cinematic overlay-medium{}{}" data-part="hero">{background}<div class="hero-inner"><h1 data-part="hero-title">{title_characters}</h1><div class="hero-info"><div class="welcome-quote" data-part="hero-quote-card"><span class="quote-text">{}</span>{socials}</div></div></div>{waves}{enter}</section>"#,
         media_class,
+        context.site.enter_class,
         escape_html(quote),
     )
 }
@@ -352,6 +359,7 @@ mod tests {
             navigation_class: "topbar",
             navigation_options: String::new(),
             nav_corners_class: "",
+            enter_class: "",
             page_width_class: "width-wide",
             show_search: true,
             mail_enabled: false,

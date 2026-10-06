@@ -19,6 +19,9 @@ const OPTION_LABELS: Record<string, string> = {
   featured: '精选',
   popular: '最热',
   recent: '最近',
+  mist: '白雾',
+  wave: '波浪',
+  none: '无',
 };
 
 /** 外观：按部件调旋钮。左部件列表、右旋钮表单、底部 iframe 实时预览
