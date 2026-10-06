@@ -3,11 +3,17 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{Json, extract::State};
+use axum::{Json, extract::State, extract::Query};
 use rand::{RngCore, rngs::OsRng};
 use sea_orm::EntityTrait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
+
+#[derive(Debug, Deserialize)]
+pub struct HitokotoQuery {
+    /// fresh=1：前台"换一句"按钮，跳过 60 秒内存缓存直接取新句
+    fresh: Option<String>,
+}
 
 const REMOTE_URL: &str = "https://v1.hitokoto.cn";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
@@ -44,8 +50,11 @@ static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
 });
 static CACHE: LazyLock<Mutex<Option<(Instant, Hitokoto)>>> = LazyLock::new(|| Mutex::new(None));
 
-pub async fn hitokoto(State(state): State<crate::AppState>) -> Json<Hitokoto> {
-    Json(current(&state).await)
+pub async fn hitokoto(
+    State(state): State<crate::AppState>,
+    Query(query): Query<HitokotoQuery>,
+) -> Json<Hitokoto> {
+    Json(current(&state, query.fresh.as_deref() == Some("1")).await)
 }
 
 /// free-panel source-url 旋钮：自定义句子源（http/https，返回
@@ -70,8 +79,8 @@ async fn source_url(state: &crate::AppState) -> Option<String> {
     }
 }
 
-async fn current(state: &crate::AppState) -> Hitokoto {
-    {
+async fn current(state: &crate::AppState, fresh: bool) -> Hitokoto {
+    if !fresh {
         let cache = CACHE.lock().await;
         if let Some((seen, value)) = &*cache {
             if seen.elapsed() < CACHE_TTL {

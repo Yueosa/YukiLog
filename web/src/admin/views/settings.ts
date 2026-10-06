@@ -51,6 +51,40 @@ export class AdmSettings extends AdmView {
         gap: 18px;
       }
 
+      /* 折叠的高级区块（外观主题/导航布局，将迁入外观页） */
+      details.advanced summary {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        cursor: pointer;
+        list-style: none;
+      }
+
+      details.advanced summary::-webkit-details-marker {
+        display: none;
+      }
+
+      details.advanced summary::after {
+        margin-left: auto;
+        color: var(--adm-muted, #667085);
+        font-size: 11px;
+        content: '展开 ▾';
+      }
+
+      details.advanced[open] summary::after {
+        content: '收起 ▴';
+      }
+
+      details.advanced summary .adv-hint {
+        color: var(--adm-muted, #667085);
+        font-size: 11.5px;
+        font-weight: 400;
+      }
+
+      details.advanced[open] summary {
+        margin-bottom: 14px;
+      }
+
       .grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -741,8 +775,8 @@ export class AdmSettings extends AdmView {
   private renderTheme(draft: SiteSettings) {
     const theme = draft.theme;
     return html`
-      <section class="panel">
-        <h2 class="panel-title">外观主题</h2>
+      <details class="panel advanced">
+        <summary class="panel-title">外观主题<span class="adv-hint">（将迁入外观页，点击展开）</span></summary>
         <div class="colors">
           ${colorFields.map(
             ({ key, label }) => html`
@@ -843,15 +877,15 @@ export class AdmSettings extends AdmView {
             </div>
           </div>
         </div>
-      </section>
+      </details>
     `;
   }
 
   private renderLayout(draft: SiteSettings) {
     const shell = draft.shellLayout;
     return html`
-      <section class="panel">
-        <h2 class="panel-title">导航布局</h2>
+      <details class="panel advanced">
+        <summary class="panel-title">导航布局<span class="adv-hint">（将迁入外观页，点击展开）</span></summary>
         <div class="grid">
           <label class="field">
             <span>导航形式</span>
@@ -914,7 +948,7 @@ export class AdmSettings extends AdmView {
             }}
           ></adm-toggle>
         </div>
-      </section>
+      </details>
     `;
   }
 

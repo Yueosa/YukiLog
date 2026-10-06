@@ -658,10 +658,9 @@ struct HomeStats {
     .social-icon:hover{filter:brightness(1.35);transform:translateY(-2px)}
     .social-icon:hover svg{transform:scale(1.12)}
     .enter-button{position:absolute;inset:auto 0 0 0;height:24vh;display:flex;align-items:flex-end;justify-content:center;padding:0 0 32px;border:0;background:none;color:rgb(238 243 248/92%)}
-    .enter-guide{display:flex;align-items:center;flex-direction:column;gap:8px;padding:12px 26px;border:1px solid rgb(238 243 248/16%);border-radius:999px;background:rgb(6 12 22/32%);backdrop-filter:blur(8px);pointer-events:none;filter:drop-shadow(0 2px 12px rgb(9 17 30/65%));transition:background 300ms ease,border-color 300ms ease}
-    .enter-button:hover .enter-guide{border-color:rgb(238 243 248/30%);background:rgb(6 12 22/48%)}
-    .enter-guide span{font-size:11px;font-weight:600;letter-spacing:.34em;text-indent:.34em}
-    .enter-guide svg{width:30px;height:30px;animation:enter-bob 2.4s ease-in-out infinite}
+    .enter-guide{display:flex;align-items:center;flex-direction:column;gap:8px;color:rgb(238 243 248/92%);pointer-events:none;filter:drop-shadow(0 2px 12px rgb(9 17 30/65%))}
+    .enter-guide span{font-size:11px;letter-spacing:.3em;text-indent:.3em}
+    .enter-guide svg{width:40px;height:40px;animation:enter-bob 2.4s ease-in-out infinite}
     @keyframes enter-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
     .hero-compact .hero-inner,.hero-split .hero-inner{gap:18px}
     .masthead-minimal{display:flex;align-items:baseline;gap:20px;margin-bottom:44px}
@@ -729,7 +728,7 @@ struct HomeStats {
     .dynamic-item:hover{color:var(--ink);translate:4px 0}
     .dynamic-item time{display:block;margin-bottom:2px;color:var(--faint);font-family:var(--mono);font-size:10.5px}
     .pulse-panel{display:grid;gap:2px}
-    .pulse-item{display:flex;align-items:baseline;gap:9px;padding:9px 0;border-bottom:1px dashed var(--line);color:var(--muted);font-size:13px;line-height:1.6;text-decoration:none;transition:color 250ms ease}
+    .pulse-item{display:flex;align-items:baseline;gap:9px;padding:13px 0;border-bottom:1px dashed var(--line);color:var(--muted);font-size:13.5px;line-height:1.75;text-decoration:none;transition:color 250ms ease}
     .pulse-item:last-child{border-bottom:0}
     .pulse-item:hover{color:var(--ink)}
     .pulse-dot{width:6px;height:6px;flex:none;border-radius:50%;translate:0 -1px}
@@ -737,7 +736,7 @@ struct HomeStats {
     .pulse-dot.pulse-friend{background:var(--secondary)}
     .pulse-text{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .pulse-text strong{color:var(--ink);font-weight:600}
-    .pulse-item time{flex:none;color:var(--faint);font-family:var(--mono);font-size:11px}
+    .pulse-item time{flex:none;color:var(--faint);font-family:var(--mono);font-size:10.5px}
     .dynamic-item span p{margin:0}
     .site-footer{display:flex;justify-content:space-between;gap:16px;padding:44px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;letter-spacing:.14em}
     .site-footer a:hover{color:var(--primary-d)}

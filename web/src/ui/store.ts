@@ -111,7 +111,7 @@ export class PublicStore {
       return;
     }
     // 一言失败不打扰阅读：静默回退本地句库
-    void this.run('hitokoto', this.hitokoto, () => api.fetchHitokoto()).then((data) => {
+    void this.run('hitokoto', this.hitokoto, () => api.fetchHitokoto(force)).then((data) => {
       if (data === null && this.hitokoto.status === 'error') {
         this.hitokoto.status = 'ready';
         this.hitokoto.error = null;

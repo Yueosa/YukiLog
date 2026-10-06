@@ -4085,34 +4085,20 @@ export class YukiApp extends LitElement {
       align-items: center;
       flex-direction: column;
       gap: 8px;
-      padding: 12px 26px;
-      border: 1px solid rgb(238 243 248 / 16%);
-      border-radius: 999px;
-      background: rgb(6 12 22 / 32%);
-      backdrop-filter: blur(8px);
       color: rgb(238 243 248 / 92%);
       pointer-events: none;
       filter: drop-shadow(0 2px 12px rgb(9 17 30 / 65%));
-      transition:
-        background 300ms ease,
-        border-color 300ms ease;
-    }
-
-    .enter-button:hover .enter-guide {
-      border-color: rgb(238 243 248 / 30%);
-      background: rgb(6 12 22 / 48%);
     }
 
     .enter-guide span {
       font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.34em;
-      text-indent: 0.34em;
+      letter-spacing: 0.3em;
+      text-indent: 0.3em;
     }
 
     .enter-guide svg {
-      width: 30px;
-      height: 30px;
+      width: 40px;
+      height: 40px;
       animation: enter-bob 2.4s ease-in-out infinite;
     }
 
@@ -4595,11 +4581,11 @@ export class YukiApp extends LitElement {
       display: flex;
       align-items: baseline;
       gap: 9px;
-      padding: 9px 0;
+      padding: 13px 0;
       border-bottom: 1px dashed var(--line);
       color: var(--muted);
-      font-size: 13px;
-      line-height: 1.6;
+      font-size: 13.5px;
+      line-height: 1.75;
       text-decoration: none;
       transition: color 250ms ease;
     }
@@ -4645,7 +4631,7 @@ export class YukiApp extends LitElement {
       flex: none;
       color: var(--faint);
       font-family: var(--mono);
-      font-size: 11px;
+      font-size: 10.5px;
     }
     /* Layout studio */
     @keyframes hero-reveal {

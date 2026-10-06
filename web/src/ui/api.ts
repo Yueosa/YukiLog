@@ -332,8 +332,9 @@ export function fetchSearch(q: string, page = 1): Promise<SearchResults> {
   }));
 }
 
-export function fetchHitokoto(): Promise<Hitokoto> {
-  return get('/api/hitokoto');
+export function fetchHitokoto(fresh = false): Promise<Hitokoto> {
+  // fresh=true：前台"换一句"按钮，绕过服务端 60 秒缓存
+  return get(fresh ? '/api/hitokoto?fresh=1' : '/api/hitokoto');
 }
 
 /** 站点脉搏条目：新评论 / 新友链的混合时间线。 */
