@@ -4442,7 +4442,8 @@ export class YukiApp extends LitElement {
     /* ---------- 侧栏区块 ---------- */
     .stats-card,
     .quote-card,
-    .dynamic-strip {
+    .dynamic-strip,
+    .pulse-panel {
       display: block;
       margin: 0;
       padding: 18px 0 0;

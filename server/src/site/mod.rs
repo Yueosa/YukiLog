@@ -713,7 +713,7 @@ struct HomeStats {
     .article-copy .foot .tags{display:flex;gap:10px;margin-right:auto}
     .article-copy .foot .tags a:hover{color:var(--primary-d)}
     .feed-editorial,.feed-cover-overlay,.feed-compact{display:grid;gap:24px}
-    .stats-card,.quote-card,.dynamic-strip{display:block;margin:0;padding:18px 0 0;border-top:2px solid var(--ink);background:none}
+    .stats-card,.quote-card,.dynamic-strip,.pulse-panel{display:block;margin:0;padding:18px 0 0;border-top:2px solid var(--ink);background:none}
     .stats-card>.component-kicker{display:block;margin-bottom:18px;color:var(--ink);font-size:12px;font-weight:700;letter-spacing:.22em}
     .dynamic-strip>.component-kicker{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;color:var(--ink);font-size:12px;font-weight:700;letter-spacing:.22em}
     .strip-more{display:grid;width:22px;height:22px;flex:0 0 22px;place-items:center;border:1px solid var(--line);border-radius:50%;color:var(--faint);font-size:15px;line-height:1;transition:color 250ms ease,border-color 250ms ease}
