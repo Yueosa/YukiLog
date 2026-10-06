@@ -207,6 +207,10 @@ export class AdmFocalPicker extends LitElement {
     this.dispatchEvent(new CustomEvent('adm-close', { bubbles: true, composed: true }));
   }
 
+  private clear() {
+    this.dispatchEvent(new CustomEvent('adm-focal-clear', { bubbles: true, composed: true }));
+  }
+
   protected render() {
     if (!this.open || !this.src) return nothing;
     return html`
@@ -227,6 +231,9 @@ export class AdmFocalPicker extends LitElement {
           </div>
           <p class="note">拖动高亮窗口选择首屏要展示的画面区域，滚轮缩放窗口可局部放大；窗口比例与你当前的浏览器视口一致。</p>
           <div class="actions">
+            ${this.position
+              ? html`<button class="btn secondary" type="button" style="margin-right: auto" @click=${this.clear}>清除焦点</button>`
+              : nothing}
             <button class="btn secondary" type="button" @click=${this.close}>取消</button>
             <button class="btn primary" type="button" @click=${this.save}>保存焦点</button>
           </div>

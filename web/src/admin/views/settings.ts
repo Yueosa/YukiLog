@@ -587,6 +587,18 @@ export class AdmSettings extends AdmView {
     this.setField('heroBackgroundMediaIds', ids);
   }
 
+  private onFocalClear() {
+    const target = this.focalTarget;
+    this.focalTarget = null;
+    if (!target || !this.draft) return;
+    const ids = [...(this.draft.heroBackgroundMediaIds ?? [])];
+    const item = ids[target.index];
+    if (!item) return;
+    // 清除焦点回到纯 id：按全局适应方式（缺省 contain 模糊填充）渲染
+    ids[target.index] = this.heroItemId(item);
+    this.setField('heroBackgroundMediaIds', ids);
+  }
+
   private pickerSelectedId(): string | null {
     if (this.pickerTarget === 'avatar') return this.draft?.avatarMediaId ?? null;
     if (this.pickerTarget === 'masthead') return this.draft?.mastheadMediaId ?? null;
@@ -986,6 +998,7 @@ export class AdmSettings extends AdmView {
         .position=${this.focalTarget?.position ?? null}
         .size=${this.focalTarget?.size ?? null}
         @adm-focal-save=${this.onFocalSave}
+        @adm-focal-clear=${this.onFocalClear}
         @adm-close=${() => (this.focalTarget = null)}
       ></adm-focal-picker>
     `;
