@@ -29,7 +29,7 @@ use crate::{
     markup,
 };
 
-const ARTICLE_LIMIT: u64 = 48;
+const SEARCH_ARTICLE_LIMIT: u64 = 48;
 const ARTICLE_PAGE_SIZE: u64 = 12;
 const HOME_ARTICLE_LIMIT: u64 = 12;
 const HOME_DYNAMIC_LIMIT: u64 = 8;

@@ -247,7 +247,7 @@ fn render_hero(context: &RenderContext<'_>) -> String {
             "var(--hero-pos, center)".to_owned(),
             "var(--hero-fit, cover)".to_owned(),
         ));
-    let mut background = if background_url.is_empty() {
+    let background = if background_url.is_empty() {
         String::new()
     } else {
         format!(

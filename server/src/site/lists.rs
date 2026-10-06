@@ -14,7 +14,7 @@ use crate::{
 };
 
 use super::{
-    ARTICLE_LIMIT, ARTICLE_PAGE_SIZE, ArticleFilter, ArticleSort, DynamicCard, PageMeta,
+    ARTICLE_PAGE_SIZE, ArticleFilter, ArticleSort, DynamicCard, PageMeta, SEARCH_ARTICLE_LIMIT,
     avatar_fallback, cover_class, escape_html, host_of, load_articles, load_dynamics,
     load_moment_comments, load_site, media_url, moment_comment_count, moment_comments_html, page,
     page_head,
@@ -273,7 +273,7 @@ pub async fn search(
     } else {
         load_articles(
             &state,
-            ARTICLE_LIMIT,
+            SEARCH_ARTICLE_LIMIT,
             0,
             Some(term),
             &ArticleFilter::default(),
