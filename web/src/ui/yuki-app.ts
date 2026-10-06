@@ -282,8 +282,11 @@ export class YukiApp extends LitElement {
   private heroBgTimer: number | null = null;
   private heroReady = false;
   private splashAwaitingHero = false;
+  private splashHardCap: number | null = null;
   /** 会话级驻留的首屏/刊头图：挂在组件上防内存缓存被逐出，SPA 换页回来不再重载。 */
   private readonly retainedImages: HTMLImageElement[] = [];
+  /** 已完成驻留预载的图片 URL：轮换层只渲染当前图与已就绪图，避免冷启动全池抢带宽。 */
+  private readonly heroBgRetained = new Set<string>();
   private splashActive = false;
   private splashDone = false;
   private splashStarted = false;
@@ -355,6 +358,8 @@ export class YukiApp extends LitElement {
     this.splashStarted = true;
     if (this.reducedMotion || window.location.pathname.startsWith('/admin')) return;
     this.splashActive = true;
+    // 硬兜底：无论资源是否就绪，8s 后必须进场，不把访客困在开屏
+    this.splashHardCap = window.setTimeout(() => this.leaveSplash(true), 8000);
     // 首帧前就把 is-intro 挂上，避免首屏入场动画抢跑
     this.classList.add('is-intro');
     document.body.style.overflow = 'hidden';
@@ -422,6 +427,10 @@ export class YukiApp extends LitElement {
     }
     this.splashAwaitingHero = false;
     this.splashDone = true;
+    if (this.splashHardCap !== null) {
+      window.clearTimeout(this.splashHardCap);
+      this.splashHardCap = null;
+    }
     this.splashTimers.forEach((timer) => window.clearTimeout(timer));
     this.splashTimers = [];
     window.removeEventListener('keydown', this.handleSplashSkip);
@@ -7090,23 +7099,22 @@ export class YukiApp extends LitElement {
                     const fit = this.store.site.data?.theme?.heroBackgroundFit;
                     const contain = fit !== 'cover' && fit !== 'stretch';
                     const focal = item.position ?? backgroundPosition;
+                    // 冷启动只渲染当前层与已驻留就绪的层，其余层等轮到/预载完成再挂图，
+                    // 避免全池图片同时下载抢占首图带宽
+                    const showImage = index === this.heroBgIndex || this.heroBgRetained.has(item.url);
+                    const layerStyle: Record<string, string> = { backgroundPosition: focal };
+                    if (showImage) layerStyle.backgroundImage = `url("${item.url}")`;
                     return html`
                       ${contain
                         ? html`<div
                             class="hero-bg-layer blur${index === this.heroBgIndex ? ' active' : ''}"
-                            style=${styleMap({
-                              backgroundImage: `url("${item.url}")`,
-                              backgroundPosition: focal,
-                            })}
+                            style=${styleMap(layerStyle)}
                             aria-hidden="true"
                           ></div>`
                         : nothing}
                       <div
                         class="hero-bg-layer${index === this.heroBgIndex ? ' active' : ''}"
-                        style=${styleMap({
-                          backgroundImage: `url("${item.url}")`,
-                          backgroundPosition: focal,
-                        })}
+                        style=${styleMap(layerStyle)}
                       ></div>
                     `;
                   })}
@@ -7154,7 +7162,10 @@ export class YukiApp extends LitElement {
     return new Promise((resolve) => {
       const image = new Image();
       this.retainedImages.push(image);
-      image.onload = () => resolve();
+      image.onload = () => {
+        this.heroBgRetained.add(url);
+        resolve();
+      };
       image.onerror = () => resolve();
       image.src = url;
     });
