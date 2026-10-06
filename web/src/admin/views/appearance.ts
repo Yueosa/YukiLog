@@ -4,9 +4,13 @@ import { AdmView } from '../components/base-view.js';
 import { adminTheme } from '../theme.js';
 import { api } from '../api.js';
 import type { PartsRegistry } from '../types.js';
+import './settings.js';
 
 type PartValues = Record<string, string | number | boolean>;
 type PartsDraft = Record<string, PartValues>;
+
+/** 设置页嵌入 tab 的伪部件 id。 */
+const SETTINGS_TAB = '__settings';
 
 /** 枚举旋钮值的中文标签（注册表只下发值，展示文案归管理端）。 */
 const OPTION_LABELS: Record<string, string> = {
@@ -101,6 +105,26 @@ export class AdmAppearance extends AdmView {
         border-color: var(--adm-primary, #4a93c2);
         background: var(--adm-primary, #4a93c2);
         color: #fff;
+      }
+
+      .tabs .divider {
+        flex: none;
+        width: 1px;
+        align-self: stretch;
+        margin: 4px 4px;
+        background: var(--adm-line, #e2e8f0);
+      }
+
+      /* 嵌入的站点设置视图（占满预览区，内部滚动） */
+      .stage.settings {
+        display: block;
+        overflow-y: auto;
+        padding: 18px 20px 40px;
+        background: var(--adm-surface, #fff);
+      }
+
+      .stage.settings::-webkit-scrollbar {
+        width: 6px;
       }
 
       .tab .tuned {
@@ -510,6 +534,7 @@ export class AdmAppearance extends AdmView {
       return html`<p class="empty">部件注册表加载中…</p>`;
     }
     const selected = this.registry.parts.find((part) => part.id === this.selected);
+    const settingsMode = this.selected === SETTINGS_TAB;
     return html`
       <div class="topbar">
         <div class="tabs">
@@ -527,78 +552,96 @@ export class AdmAppearance extends AdmView {
               </button>
             `;
           })}
-        </div>
-        <div class="actions">
-          <span class="state">${this.dirty ? '有未保存的修改' : '与线上一致'}</span>
-          <button class="btn secondary small" type="button" ?disabled=${!this.dirty} @click=${() => this.revert()}>
-            放弃
-          </button>
+          <span class="divider" aria-hidden="true"></span>
           <button
-            class="btn secondary small"
             type="button"
-            ?disabled=${!selected || !this.draft[selected.id]}
-            @click=${() => selected && this.resetPart(selected.id)}
-          >
-            重置此部件
-          </button>
-          <button class="btn primary small" type="button" ?disabled=${!this.dirty} @click=${() => void this.save()}>
-            保存外观
-          </button>
-        </div>
-      </div>
-      <div class="stage">
-        <div class="sizes">
-          ${AdmAppearance.VIEWPORTS.map(
-            (viewport) => html`
-              <button
-                type="button"
-                class=${this.customWidth === null && this.previewWidth === viewport.width ? 'on' : ''}
-                title=${viewport.width ? `${viewport.width}px 视口` : '全宽'}
-                @click=${() => {
-                  this.previewWidth = viewport.width;
-                  this.customWidth = null;
-                }}
-              >
-                ${viewport.label}
-              </button>
-            `,
-          )}
-          <input
-            type="number"
-            min="240"
-            max="3840"
-            step="10"
-            placeholder="自定义"
-            title="自定义视口宽度（240–3840px，回车生效）"
-            class=${this.customWidth !== null ? 'on' : ''}
-            .value=${this.customWidth !== null ? String(this.customWidth) : ''}
-            @change=${(e: Event) => {
-              const value = Math.round(Number((e.currentTarget as HTMLInputElement).value));
-              if (Number.isFinite(value) && value >= 240 && value <= 3840) {
-                this.customWidth = value;
-                this.previewWidth = value;
-              } else {
-                this.customWidth = null;
-                (e.currentTarget as HTMLInputElement).value = '';
-              }
+            class="tab${settingsMode ? ' active' : ''}"
+            @click=${() => {
+              this.selected = SETTINGS_TAB;
             }}
-          />
+          >
+            站点设置
+          </button>
         </div>
-        <iframe
-          src="/"
-          title="站点预览"
-          style=${this.previewWidth ? `width:${this.previewWidth}px` : ''}
-          @load=${() => this.postPreview()}
-        ></iframe>
+        ${settingsMode
+          ? nothing
+          : html`
+              <div class="actions">
+                <span class="state">${this.dirty ? '有未保存的修改' : '与线上一致'}</span>
+                <button class="btn secondary small" type="button" ?disabled=${!this.dirty} @click=${() => this.revert()}>
+                  放弃
+                </button>
+                <button
+                  class="btn secondary small"
+                  type="button"
+                  ?disabled=${!selected || !this.draft[selected.id]}
+                  @click=${() => selected && this.resetPart(selected.id)}
+                >
+                  重置此部件
+                </button>
+                <button class="btn primary small" type="button" ?disabled=${!this.dirty} @click=${() => void this.save()}>
+                  保存外观
+                </button>
+              </div>
+            `}
       </div>
-      <div class="knobs">
-        ${selected
-          ? html`
-              <p class="part-desc">${selected.description}（修改即时注入预览，保存后上线）</p>
-              ${selected.knobs.map((knob) => this.renderKnob(selected.id, knob))}
-            `
-          : html`<p class="empty">注册表里没有部件。</p>`}
-      </div>
+      ${settingsMode
+        ? html`<div class="stage settings"><adm-settings .store=${this.store}></adm-settings></div>`
+        : html`
+            <div class="stage">
+              <div class="sizes">
+                ${AdmAppearance.VIEWPORTS.map(
+                  (viewport) => html`
+                    <button
+                      type="button"
+                      class=${this.customWidth === null && this.previewWidth === viewport.width ? 'on' : ''}
+                      title=${viewport.width ? `${viewport.width}px 视口` : '全宽'}
+                      @click=${() => {
+                        this.previewWidth = viewport.width;
+                        this.customWidth = null;
+                      }}
+                    >
+                      ${viewport.label}
+                    </button>
+                  `,
+                )}
+                <input
+                  type="number"
+                  min="240"
+                  max="3840"
+                  step="10"
+                  placeholder="自定义"
+                  title="自定义视口宽度（240–3840px，回车生效）"
+                  class=${this.customWidth !== null ? 'on' : ''}
+                  .value=${this.customWidth !== null ? String(this.customWidth) : ''}
+                  @change=${(e: Event) => {
+                    const value = Math.round(Number((e.currentTarget as HTMLInputElement).value));
+                    if (Number.isFinite(value) && value >= 240 && value <= 3840) {
+                      this.customWidth = value;
+                      this.previewWidth = value;
+                    } else {
+                      this.customWidth = null;
+                      (e.currentTarget as HTMLInputElement).value = '';
+                    }
+                  }}
+                />
+              </div>
+              <iframe
+                src="/"
+                title="站点预览"
+                style=${this.previewWidth ? `width:${this.previewWidth}px` : ''}
+                @load=${() => this.postPreview()}
+              ></iframe>
+            </div>
+            <div class="knobs">
+              ${selected
+                ? html`
+                    <p class="part-desc">${selected.description}（修改即时注入预览，保存后上线）</p>
+                    ${selected.knobs.map((knob) => this.renderKnob(selected.id, knob))}
+                  `
+                : html`<p class="empty">注册表里没有部件。</p>`}
+            </div>
+          `}
     `;
   }
 }

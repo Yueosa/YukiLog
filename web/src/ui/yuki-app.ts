@@ -5215,8 +5215,8 @@ export class YukiApp extends LitElement {
 
     .archive-cover {
       display: block;
-      width: 148px;
-      flex: 0 0 148px;
+      width: 120px;
+      flex: 0 0 120px;
       border-radius: 10px;
     }
 
@@ -7164,7 +7164,8 @@ export class YukiApp extends LitElement {
                       src=${article.coverUrl}
                       alt=${`${article.title}的封面`}
                       seed=${article.slug}
-                      adaptive-ratio
+                      ratio="16 / 10"
+                      fit="cover"
                     ></yuki-cover>
                     <p class="archive-summary">${article.summary}</p>
                   </div>
