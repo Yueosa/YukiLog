@@ -2,7 +2,7 @@ use std::path::Path;
 
 use axum::{
     extract::{Path as AxumPath, Query, State},
-    http::{HeaderMap, Uri, header::USER_AGENT},
+    http::{HeaderMap, HeaderValue, Uri, header::USER_AGENT},
     response::{Html, IntoResponse, Response},
 };
 
@@ -61,7 +61,10 @@ pub async fn home_page(
     }
     let query = Query::<home::HomeQuery>::try_from_uri(&uri)
         .map_err(|_| AppError::InvalidRequest("查询参数无效"))?;
-    Ok(home::home(State(state), query).await?.into_response())
+    Ok(render_cookie_layer(
+        home::home(State(state), query).await?.into_response(),
+        uri.query(),
+    ))
 }
 
 pub async fn article_list_page(
@@ -76,9 +79,10 @@ pub async fn article_list_page(
     }
     let query = Query::<lists::ArticleListQuery>::try_from_uri(&uri)
         .map_err(|_| AppError::InvalidRequest("查询参数无效"))?;
-    Ok(lists::article_list(State(state), query)
-        .await?
-        .into_response())
+    Ok(render_cookie_layer(
+        lists::article_list(State(state), query).await?.into_response(),
+        uri.query(),
+    ))
 }
 
 pub async fn article_detail_page(
@@ -96,13 +100,16 @@ pub async fn article_detail_page(
         .strip_prefix("/articles/")
         .unwrap_or_default()
         .to_owned();
-    Ok(article::article_detail(
-        State(state),
-        AxumPath(slug),
-        axum::extract::RawQuery(uri.query().map(str::to_owned)),
-    )
-    .await?
-    .into_response())
+    Ok(render_cookie_layer(
+        article::article_detail(
+            State(state),
+            AxumPath(slug),
+            axum::extract::RawQuery(uri.query().map(str::to_owned)),
+        )
+        .await?
+        .into_response(),
+        uri.query(),
+    ))
 }
 
 pub async fn dynamic_list_page(
@@ -115,7 +122,10 @@ pub async fn dynamic_list_page(
             return Ok(shell.into_response());
         }
     }
-    Ok(lists::dynamic_list(State(state)).await?.into_response())
+    Ok(render_cookie_layer(
+        lists::dynamic_list(State(state)).await?.into_response(),
+        uri.query(),
+    ))
 }
 
 pub async fn friend_list_page(
@@ -128,11 +138,12 @@ pub async fn friend_list_page(
             return Ok(shell.into_response());
         }
     }
-    Ok(
+    Ok(render_cookie_layer(
         lists::friend_list(State(state), axum::extract::RawQuery(uri.query().map(str::to_owned)))
             .await?
             .into_response(),
-    )
+        uri.query(),
+    ))
 }
 
 pub async fn search_page(
@@ -147,18 +158,63 @@ pub async fn search_page(
     }
     let query = Query::<lists::SearchQuery>::try_from_uri(&uri)
         .map_err(|_| AppError::InvalidRequest("查询参数无效"))?;
-    Ok(lists::search(State(state), query).await?.into_response())
+    Ok(render_cookie_layer(
+        lists::search(State(state), query).await?.into_response(),
+        uri.query(),
+    ))
 }
 
+/// 渲染版本选择：?ssr=1/0 参数 > yukilog_render cookie > 爬虫 UA。
+/// 显式参数会写入 cookie，站内后续跳转（无参链接）保持同一版本。
 fn wants_ssr(headers: &HeaderMap, query: Option<&str>) -> bool {
-    if query.is_some_and(|query| query.split('&').any(|pair| pair == "ssr=1")) {
-        return true;
+    if let Some(query) = query {
+        for pair in query.split('&') {
+            if pair == "ssr=1" {
+                return true;
+            }
+            if pair == "ssr=0" {
+                return false;
+            }
+        }
+    }
+    if let Some(cookie) = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+    {
+        for part in cookie.split(';') {
+            if let Some(value) = part.trim().strip_prefix("yukilog_render=") {
+                return value == "ssr";
+            }
+        }
     }
     let user_agent = headers
         .get(USER_AGENT)
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default();
     is_bot_user_agent(user_agent)
+}
+
+/// 显式 ?ssr=1/0 时把版本选择写进 cookie（30 天；ssr=0 立即清除）。
+fn render_cookie_layer(response: Response, query: Option<&str>) -> Response {
+    let Some(query) = query else {
+        return response;
+    };
+    let value = if query.split('&').any(|pair| pair == "ssr=1") {
+        Some("yukilog_render=ssr; Path=/; Max-Age=2592000; SameSite=Lax")
+    } else if query.split('&').any(|pair| pair == "ssr=0") {
+        Some("yukilog_render=; Path=/; Max-Age=0; SameSite=Lax")
+    } else {
+        None
+    };
+    if let Some(value) = value {
+        let mut response = response;
+        response
+            .headers_mut()
+            .insert(axum::http::header::SET_COOKIE, HeaderValue::from_static(value));
+        response
+    } else {
+        response
+    }
 }
 
 fn is_bot_user_agent(user_agent: &str) -> bool {
@@ -349,6 +405,47 @@ mod tests {
             masthead_position: "center".to_owned(),
             masthead_fit: "cover".to_owned(),
         }
+    }
+
+    #[test]
+    fn render_version_prefers_query_then_cookie_then_ua() {
+        // 查询参数优先
+        assert!(wants_ssr(&headers("Mozilla/5.0"), Some("ssr=1")));
+        assert!(!wants_ssr(&headers("Mozilla/5.0"), Some("ssr=0")));
+        // cookie 次之：ssr cookie 让普通浏览器保持阅读版
+        let mut jar_headers = headers("Mozilla/5.0");
+        jar_headers.insert(
+            axum::http::header::COOKIE,
+            "yukilog_render=ssr".parse().unwrap(),
+        );
+        assert!(wants_ssr(&jar_headers, None));
+        // 显式 ssr=0 覆盖 cookie
+        assert!(!wants_ssr(&jar_headers, Some("ssr=0")));
+        // 无 cookie 无参数回退 UA（普通浏览器走 Lit）
+        assert!(!wants_ssr(&headers("Mozilla/5.0"), None));
+    }
+
+    #[test]
+    fn render_cookie_written_on_explicit_choice() {
+        let set = render_cookie_layer(Response::new(axum::body::Body::empty()), Some("ssr=1"));
+        let cookie = set
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(cookie.contains("yukilog_render=ssr"));
+        let clear = render_cookie_layer(Response::new(axum::body::Body::empty()), Some("ssr=0"));
+        let cookie = clear
+            .headers()
+            .get(axum::http::header::SET_COOKIE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(cookie.contains("Max-Age=0"));
+        // 无参数不动 cookie
+        let none = render_cookie_layer(Response::new(axum::body::Body::empty()), None);
+        assert!(none.headers().get(axum::http::header::SET_COOKIE).is_none());
     }
 
     #[test]

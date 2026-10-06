@@ -480,10 +480,9 @@ struct HomeStats {
     .archive-row .cat{font-weight:600}
     .cat-b{color:var(--blue)}
     .cat-p{color:var(--red)}
-    .archive-more{display:grid;grid-column:1/-1;grid-template-rows:0fr;transition:grid-template-rows .35s ease}
-    .archive-row:hover .archive-more{grid-template-rows:1fr}
-    .archive-more-in{display:flex;min-height:0;align-items:center;gap:16px;overflow:hidden;opacity:0;transition:opacity .25s ease}
-    .archive-row:hover .archive-more-in{opacity:1}
+    /* 书简版归档行不做悬停动画：封面与摘要直接静态呈现 */
+    .archive-more{display:grid;grid-column:1/-1}
+    .archive-more-in{display:flex;min-height:0;align-items:center;gap:16px;overflow:hidden}
     .archive-cover{display:block;width:120px;flex:0 0 120px;border-radius:8px;background:var(--soft) center/cover no-repeat;aspect-ratio:16/10}
     .archive-summary{margin:10px 0 4px;color:var(--muted);font-size:13px;line-height:1.8}
     /* ---------- 动态 ---------- */
@@ -500,11 +499,11 @@ struct HomeStats {
     .moment-text{font-size:15px}
     .moment-text p{margin:0 0 .9em}
     .m-single{margin:12px 0;border-radius:8px;overflow:hidden}
-    .m-single img{border-radius:8px}
+    .m-single img{width:auto;height:auto;border-radius:8px}
     .m-grid{display:grid;gap:8px;margin:12px 0}
     .m-grid.count-2,.m-grid.count-4{grid-template-columns:1fr 1fr}
     .m-grid.count-3{grid-template-columns:1fr 1fr 1fr}
-    .m-grid img{width:100%;border-radius:8px;object-fit:cover}
+    .m-grid img{width:100%;height:auto;border-radius:8px;object-fit:cover}
     .mfoot{display:flex;align-items:center;gap:16px;margin-top:10px}
     .m-like{margin:0;padding:0}
     .heart-button{display:inline-flex;align-items:center;gap:6px;padding:2px 12px 2px 6px;border:1px solid var(--line);border-radius:999px;background:none;color:var(--faint);font-size:12px;cursor:pointer}
