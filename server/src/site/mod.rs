@@ -571,7 +571,7 @@ struct HomeStats {
     html.is-intro .hero-character{animation-play-state:paused}
     html.is-intro .hero-info,html.is-intro .enter-button{opacity:0}
     html.is-intro .hero-info{translate:0 22px}
-    html.is-intro .enter-button{translate:-50% 22px}
+    html.is-intro .enter-button{translate:0 22px}
     .welcome-quote{display:flex;width:100%;align-items:center;flex-direction:column;gap:18px;padding:24px 36px 20px;border:1px solid rgb(255 255 255/8%);border-radius:24px;background:rgb(6 12 22/55%)}
     .quote-mark{display:none}
     .quote-text{font-family:var(--serif);font-size:17px;line-height:1.9;color:rgb(255 255 255/88%);text-align:center}
@@ -579,9 +579,10 @@ struct HomeStats {
     .social-icon{display:grid;width:34px;height:34px;place-items:center;border-radius:50%;transition:filter 300ms cubic-bezier(.22,.61,.36,1),transform 300ms cubic-bezier(.22,.61,.36,1)}
     .social-icon:hover{filter:brightness(1.35);transform:translateY(-2px)}
     .social-icon:hover svg{transform:scale(1.12)}
-    .enter-button{position:absolute;bottom:32px;left:50%;display:flex;align-items:center;flex-direction:column;gap:8px;padding:0;border:0;background:none;color:rgb(238 243 248/66%);translate:-50%;filter:drop-shadow(0 2px 10px rgb(9 17 30/55%))}
-    .enter-button span{font-size:10px;letter-spacing:.3em}
-    .enter-button svg{width:30px;height:30px;animation:enter-bob 2.4s ease-in-out infinite}
+    .enter-button{position:absolute;inset:auto 0 0 0;height:24vh;display:flex;align-items:flex-end;justify-content:center;padding:0 0 32px;border:0;background:none;color:rgb(238 243 248/66%)}
+    .enter-guide{display:flex;align-items:center;flex-direction:column;gap:8px;pointer-events:none;filter:drop-shadow(0 2px 10px rgb(9 17 30/55%))}
+    .enter-guide span{font-size:10px;letter-spacing:.3em}
+    .enter-guide svg{width:30px;height:30px;animation:enter-bob 2.4s ease-in-out infinite}
     @keyframes enter-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(7px)}}
     .hero-compact .hero-inner,.hero-split .hero-inner{gap:18px}
     .masthead-minimal{display:flex;align-items:baseline;gap:20px;margin-bottom:44px}

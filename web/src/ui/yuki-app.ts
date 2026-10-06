@@ -3818,28 +3818,36 @@ export class YukiApp extends LitElement {
       transform: scale(1.12);
     }
 
+    /* ENTER 块：底部整区可点，文字与箭头仅作引导（pointer-events:none） */
     .enter-button {
       position: absolute;
-      bottom: 32px;
-      left: 50%;
+      inset: auto 0 0 0;
+      height: 24vh;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 0 0 32px;
+      border: 0;
+      background: none;
+      color: rgb(238 243 248 / 66%);
+      cursor: pointer;
+    }
+
+    .enter-guide {
       display: flex;
       align-items: center;
       flex-direction: column;
       gap: 8px;
-      padding: 0;
-      border: 0;
-      background: none;
-      color: rgb(238 243 248 / 66%);
-      translate: -50%;
+      pointer-events: none;
       filter: drop-shadow(0 2px 10px rgb(9 17 30 / 55%));
     }
 
-    .enter-button span {
+    .enter-guide span {
       font-size: 10px;
       letter-spacing: 0.3em;
     }
 
-    .enter-button svg {
+    .enter-guide svg {
       width: 30px;
       height: 30px;
       animation: enter-bob 2.4s ease-in-out infinite;
@@ -5027,7 +5035,7 @@ export class YukiApp extends LitElement {
     }
 
     :host(.is-intro) .enter-button {
-      translate: -50% 22px;
+      translate: 0 22px;
     }
 
     .prelude {
