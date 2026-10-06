@@ -430,6 +430,19 @@ export class YukiApp extends LitElement {
         return;
       }
     }
+    // mermaid 图表点击进灯箱：序列化内联 SVG 为 data URL 交给现有灯箱
+    const svgNode = path.find(
+      (node): node is SVGSVGElement =>
+        node instanceof SVGSVGElement && node.closest('pre.lm-mermaid') !== null,
+    );
+    if (svgNode) {
+      const markup = new XMLSerializer().serializeToString(svgNode);
+      this.openLightbox(
+        [`data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`],
+        0,
+      );
+      return;
+    }
     const image = path.find((node): node is HTMLImageElement => node instanceof HTMLImageElement);
     if (!image) return;
     const prose = this.renderRoot.querySelector('.prose');
@@ -2844,6 +2857,12 @@ export class YukiApp extends LitElement {
     .prose .lm-verbatim,
     .prose .lm-mermaid {
       font-family: var(--mono);
+    }
+
+    .prose .lm-mermaid svg {
+      max-width: 100%;
+      height: auto;
+      cursor: zoom-in;
     }
 
     .prose .lm-ruby rt {
