@@ -113,6 +113,8 @@ pub struct ArticleDetailResponse {
     item: ArticleItem,
     html: String,
     headings: Vec<markup::Heading>,
+    /// 旁注（note-N 锚点与正文上标互链，文章页右栏/文末渲染）
+    notes: Vec<lianmarkup::Note>,
     updated_at: String,
     allow_comments: bool,
     prev: Option<ArticleLink>,
@@ -433,6 +435,7 @@ pub async fn article_detail(
         item,
         html: rendered.html,
         headings: rendered.headings,
+        notes: rendered.notes,
         updated_at,
         allow_comments,
         prev: prev.map(|article| ArticleLink {

@@ -13,6 +13,9 @@ pub struct Heading {
 pub struct Rendered {
     pub html: String,
     pub headings: Vec<Heading>,
+    /// 旁注（正文上标锚点 note-N 指向它们）。文章页渲染为右侧栏/文末区块；
+    /// 其他消费方（邮件、feed 摘要）直接忽略。
+    pub notes: Vec<lianmarkup::Note>,
 }
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
@@ -20,22 +23,22 @@ static CODE_THEME: LazyLock<Theme> =
     LazyLock::new(|| ThemeSet::load_defaults().themes["InspiredGitHub"].clone());
 
 /// 正文渲染入口：LianMarkup(.ly) 解析 → 代码块服务端高亮 → 消毒。
-/// 产物契约见 LianMarkup 仓库 docs/产物契约.md；调用方只依赖此接口。
+/// 产物契约见 lianmarkup/docs/产物契约.md；调用方只依赖此接口。
 pub fn render(source: &str) -> Rendered {
     let document = lianmarkup::parse(source);
-    let mut html = highlight_code_blocks(&document.html);
-    // 旁注暂以文末列表呈现（锚点与正文上标互链）；三栏重构时挪进右侧栏
-    if !document.notes.is_empty() {
-        html.push_str("<section class=\"lm-notes\"><hr><ol>");
-        for note in &document.notes {
-            html.push_str(&format!("<li id=\"{}\">{}</li>", note.anchor, note.html));
-        }
-        html.push_str("</ol></section>");
-    }
+    let html = highlight_code_blocks(&document.html);
     let html = sanitize(&html);
     Rendered {
         html,
         headings: flatten_toc(&document.toc),
+        notes: document
+            .notes
+            .into_iter()
+            .map(|note| lianmarkup::Note {
+                html: sanitize(&note.html),
+                ..note
+            })
+            .collect(),
     }
 }
 
@@ -172,12 +175,14 @@ mod tests {
     }
 
     #[test]
-    fn notes_render_as_end_section_with_anchors() {
+    fn notes_are_returned_for_rail_rendering() {
         let rendered = render("正文[^一条旁注]继续\n");
         assert!(rendered.html.contains("class=\"lm-noteref\""), "{}", rendered.html);
         assert!(rendered.html.contains("href=\"#note-1\""));
-        assert!(rendered.html.contains("<section class=\"lm-notes\""));
-        assert!(rendered.html.contains("id=\"note-1\""));
-        assert!(rendered.html.contains("一条旁注"));
+        // 旁注不再拼进正文 HTML，由文章页渲染为右栏/文末区块
+        assert!(!rendered.html.contains("lm-notes"));
+        assert_eq!(rendered.notes.len(), 1);
+        assert_eq!(rendered.notes[0].anchor, "note-1");
+        assert!(rendered.notes[0].html.contains("一条旁注"));
     }
 }

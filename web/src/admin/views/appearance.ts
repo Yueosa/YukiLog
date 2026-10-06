@@ -39,8 +39,12 @@ export class AdmAppearance extends AdmView {
     { width: 375, label: '375' },
     { width: 768, label: '768' },
     { width: 1280, label: '1280' },
+    { width: 1920, label: '1920' },
     { width: 0, label: '全宽' },
   ];
+
+  /** 自定义视口宽度（输入框），null = 未启用。 */
+  @state() private customWidth: number | null = null;
 
   static styles = [
     adminTheme,
@@ -167,6 +171,24 @@ export class AdmAppearance extends AdmView {
       .sizes button.on {
         background: var(--adm-primary, #4a93c2);
         color: #fff;
+      }
+
+      .sizes input {
+        width: 62px;
+        padding: 2px 6px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--adm-muted, #667085);
+        font-size: 11px;
+        text-align: center;
+      }
+
+      .sizes input:focus,
+      .sizes input.on {
+        border-color: var(--adm-primary, #4a93c2);
+        color: var(--ink, #20232a);
+        outline: none;
       }
 
       /* ---- 底部密集选项 ---- */
@@ -530,16 +552,37 @@ export class AdmAppearance extends AdmView {
             (viewport) => html`
               <button
                 type="button"
-                class=${this.previewWidth === viewport.width ? 'on' : ''}
+                class=${this.customWidth === null && this.previewWidth === viewport.width ? 'on' : ''}
                 title=${viewport.width ? `${viewport.width}px 视口` : '全宽'}
                 @click=${() => {
                   this.previewWidth = viewport.width;
+                  this.customWidth = null;
                 }}
               >
                 ${viewport.label}
               </button>
             `,
           )}
+          <input
+            type="number"
+            min="240"
+            max="3840"
+            step="10"
+            placeholder="自定义"
+            title="自定义视口宽度（240–3840px，回车生效）"
+            class=${this.customWidth !== null ? 'on' : ''}
+            .value=${this.customWidth !== null ? String(this.customWidth) : ''}
+            @change=${(e: Event) => {
+              const value = Math.round(Number((e.currentTarget as HTMLInputElement).value));
+              if (Number.isFinite(value) && value >= 240 && value <= 3840) {
+                this.customWidth = value;
+                this.previewWidth = value;
+              } else {
+                this.customWidth = null;
+                (e.currentTarget as HTMLInputElement).value = '';
+              }
+            }}
+          />
         </div>
         <iframe
           src="/"

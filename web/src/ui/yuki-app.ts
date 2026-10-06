@@ -406,9 +406,31 @@ export class YukiApp extends LitElement {
 
   // 正文图片点击进灯箱：以全文所有图片为一组，支持左右切换。
   private readonly handleProseClick = (event: Event) => {
-    const image = event
-      .composedPath()
-      .find((node): node is HTMLImageElement => node instanceof HTMLImageElement);
+    const path = event.composedPath();
+    // 旁注上标：点按弹出浮层（窄屏文末区块太远，浮层就地展开）
+    const noteLink = path.find(
+      (node): node is HTMLAnchorElement =>
+        node instanceof HTMLAnchorElement && node.closest('.lm-noteref') !== null,
+    );
+    if (noteLink) {
+      const anchor = noteLink.getAttribute('href')?.slice(1) ?? '';
+      const note = anchor
+        ? this.renderRoot.querySelector<HTMLElement>(`#${CSS.escape(anchor)}`)
+        : null;
+      if (note) {
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = noteLink.getBoundingClientRect();
+        this.notePopover = {
+          html: note.innerHTML,
+          x: Math.max(12, Math.min(rect.left, window.innerWidth - 340)),
+          y: rect.bottom + 8,
+        };
+        this.requestUpdate();
+        return;
+      }
+    }
+    const image = path.find((node): node is HTMLImageElement => node instanceof HTMLImageElement);
     if (!image) return;
     const prose = this.renderRoot.querySelector('.prose');
     const images = prose
@@ -420,6 +442,26 @@ export class YukiApp extends LitElement {
     const index = Math.max(0, images.indexOf(current));
     this.openLightbox(images.length > 0 ? images : [current], index);
   };
+
+  /** 旁注浮层（点按上标展开）；滚动/点别处即关。 */
+  private notePopover: { html: string; x: number; y: number } | null = null;
+
+  private renderNotePopover() {
+    if (!this.notePopover) return nothing;
+    return html`
+      <div class="note-pop-backdrop" @click=${() => {
+        this.notePopover = null;
+        this.requestUpdate();
+      }}></div>
+      <div
+        class="note-pop"
+        role="note"
+        style=${styleMap({ left: `${this.notePopover.x}px`, top: `${this.notePopover.y}px` })}
+      >
+        ${unsafeHTML(this.notePopover.html)}
+      </div>
+    `;
+  }
 
   private renderLightbox() {
     if (this.lightboxImages.length === 0) return nothing;
@@ -552,6 +594,10 @@ export class YukiApp extends LitElement {
 
   private readonly handleViewportScroll = () => {
     this.updateScrollRing();
+    if (this.notePopover) {
+      this.notePopover = null;
+      this.requestUpdate();
+    }
     const home = window.location.pathname === '/';
     if (!home) {
       if (!this.navPastHero) {
@@ -2804,6 +2850,87 @@ export class YukiApp extends LitElement {
     .prose .lm-task input {
       margin-right: 8px;
       accent-color: var(--primary-d);
+    }
+
+    /* 旁注：窄屏文末区块，宽屏（≥1280）升右侧栏（与 SSR 同结构） */
+    .post-notes {
+      display: block;
+      margin: 40px 0 0;
+      padding: 18px 0 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .post-notes-kicker {
+      margin: 0 0 12px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.26em;
+      text-transform: uppercase;
+    }
+
+    .post-note {
+      display: flex;
+      gap: 8px;
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .post-note:target {
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--primary) 8%, transparent);
+    }
+
+    .post-note-index {
+      flex: none;
+      color: var(--secondary-d);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    @media (min-width: 1280px) {
+      .post-notes {
+        position: absolute;
+        top: 0;
+        left: calc(100% + 56px);
+        width: 240px;
+        height: 100%;
+        margin: 0;
+        padding: 0 0 0 18px;
+        border-top: 0;
+        border-left: 1px solid var(--line);
+      }
+
+      .post-notes-sticky {
+        position: sticky;
+        top: 110px;
+        max-height: calc(100dvh - 140px);
+        overflow-y: auto;
+      }
+    }
+
+    /* 旁注点按浮层 */
+    .note-pop-backdrop {
+      position: fixed;
+      z-index: 79;
+      inset: 0;
+    }
+
+    .note-pop {
+      position: fixed;
+      z-index: 80;
+      width: max-content;
+      max-width: min(320px, 86vw);
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 12px 32px rgb(28 39 51 / 18%);
+      color: var(--ink);
+      font-size: 13.5px;
+      line-height: 1.8;
     }
 
     /* 文末 */
@@ -7255,6 +7382,21 @@ export class YukiApp extends LitElement {
               </details>`
             : nothing}
           <div class="prose" data-reveal @click=${this.handleProseClick}>${unsafeHTML(detail.html)}</div>
+          ${detail.notes && detail.notes.length > 0
+            ? html`<aside class="post-notes" aria-label="旁注" data-reveal>
+                <div class="post-notes-sticky">
+                  <p class="post-notes-kicker">旁注</p>
+                  ${detail.notes.map(
+                    (note) => html`
+                      <div class="post-note" id=${note.anchor}>
+                        <span class="post-note-index">${note.index}</span>
+                        <span class="post-note-body">${unsafeHTML(note.html)}</span>
+                      </div>
+                    `,
+                  )}
+                </div>
+              </aside>`
+            : nothing}
           <p class="post-end" data-reveal>完</p>
           <footer class="post-foot" data-reveal>
             <button
@@ -7853,6 +7995,7 @@ export class YukiApp extends LitElement {
       ${this.renderSite()}
       ${this.renderSplash()}
       ${this.renderLightbox()}
+      ${this.renderNotePopover()}
     `;
   }
 }

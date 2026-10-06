@@ -166,6 +166,8 @@ export interface ArticleHeading {
 export interface ArticleDetail extends ArticleSummary {
   html: string;
   headings: ArticleHeading[];
+  /** 旁注（note-N 锚点与正文上标互链，宽屏右栏 / 窄屏文末） */
+  notes: Array<{ index: number; html: string; anchor: string }>;
   updatedAt: string;
   allowComments: boolean;
   prev: { slug: string; title: string } | null;

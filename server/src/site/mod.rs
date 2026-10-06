@@ -539,6 +539,16 @@ struct HomeStats {
     .post-toc-item.level-2{padding-left:12px}
     .post-toc-item.level-3{padding-left:24px}
     .post-toc-item.is-active{color:var(--primary-d)}
+    /* 旁注：窄屏是文末区块，宽屏（≥1280）升右侧栏 */
+    .post-notes{display:block;margin:40px 0 0;padding:18px 0 0;border-top:1px solid var(--line)}
+    .post-notes-kicker{margin:0 0 12px;color:var(--faint);font-family:var(--mono);font-size:10px;letter-spacing:.26em;text-transform:uppercase}
+    .post-note{display:flex;gap:8px;margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.8}
+    .post-note:target{background:color-mix(in srgb,var(--primary) 8%,transparent);border-radius:8px}
+    .post-note-index{flex:none;color:var(--secondary-d);font-family:var(--mono);font-size:11px}
+    @media(min-width:1280px){
+      .post-notes{position:absolute;top:0;left:calc(100% + 56px);width:240px;height:100%;margin:0;padding:0 0 0 18px;border-top:0;border-left:1px solid var(--line)}
+      .post-notes-sticky{position:sticky;top:110px;max-height:calc(100dvh - 140px);overflow-y:auto}
+    }
     @media(min-width:1280px){
       .post-toc{position:absolute;top:0;right:calc(100% + 56px);display:block;width:220px;height:100%}
       .post-toc-sticky{position:sticky;top:110px;max-height:calc(100dvh - 140px);overflow-y:auto;padding-right:8px;padding-left:16px;border-left:1px solid var(--line);scrollbar-width:thin;scrollbar-color:transparent transparent}
