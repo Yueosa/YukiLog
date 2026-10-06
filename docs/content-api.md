@@ -115,9 +115,10 @@ GET 撞 429 会自动等待 0.9 秒重试一次）。错误响应
 - `GET /api/public/search?q=&page=N` → `{ articles: { items, total }, dynamics:
   { items, total } }`；关键词 trim 后最多 100 字符，文章匹配标题/摘要/正文、动态
   匹配正文，两组各自按发布时间倒序、每页 10 条；
-- `GET /api/hitokoto` → `{ text, from }`。服务器代理 `https://v1.hitokoto.cn`
-  （3 秒超时、内存缓存 10 分钟，源地址可用 free-panel `source-url` 旋钮覆盖，
-  自定义源需返回同款 `{"hitokoto","from"}` JSON）；超时、非 2xx、非法响应一律回退内置句库并返回
+- `GET /api/hitokoto[?fresh=1]` → `{ text, from }`。服务器代理 `https://v1.hitokoto.cn`
+  （3 秒超时、内存缓存 60 秒，`?fresh=1` 跳过缓存——前台"换一句"按钮走它；
+  源地址可用 free-panel `source-url` 旋钮覆盖，自定义源需返回同款
+  `{"hitokoto","from"}` JSON）；超时、非 2xx、非法响应一律回退内置句库并返回
   200，绝不向前端返回 5xx。
 
 页面壳契约：`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/friends`、
