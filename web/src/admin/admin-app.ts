@@ -282,6 +282,24 @@ export class YukiAdmin extends LitElement {
         padding: 26px 30px 60px;
       }
 
+      /* 外观工作区：整页一屏，内部区域各自滚动 */
+      main.is-workspace {
+        display: flex;
+        height: 100dvh;
+        flex-direction: column;
+        overflow: hidden;
+        padding-bottom: 16px;
+      }
+
+      main.is-workspace .topline {
+        flex: none;
+      }
+
+      main.is-workspace adm-appearance {
+        flex: 1;
+        min-height: 0;
+      }
+
       .topline {
         display: flex;
         align-items: center;
@@ -437,7 +455,7 @@ export class YukiAdmin extends LitElement {
             <button @click=${() => store.logout()}>退出</button>
           </div>
         </aside>
-        <main>
+        <main class=${this.route.name === 'appearance' ? 'is-workspace' : ''}>
           <div class="topline">
             <h1>${this.viewTitle()}</h1>
             <button class="btn secondary small" @click=${() => store.run(() => store.refreshAll(), '数据已刷新')}>

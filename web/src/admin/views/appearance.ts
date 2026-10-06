@@ -24,8 +24,8 @@ const OPTION_LABELS: Record<string, string> = {
   none: '无',
 };
 
-/** 外观：按部件调旋钮。左部件列表、右旋钮表单、底部 iframe 实时预览
- * （postMessage 注入覆盖，预览不落库；保存才写回站点设置的 theme.parts）。 */
+/** 外观工作区：顶栏部件 tabs / 中间实时预览 / 底部密集选项，整页一屏 100vh。
+ * 预览用 postMessage 注入未保存草稿（不落库）；保存才写回站点设置的 theme.parts。 */
 export class AdmAppearance extends AdmView {
   @state() private registry: PartsRegistry | null = null;
   @state() private registryError = '';
@@ -36,9 +36,9 @@ export class AdmAppearance extends AdmView {
   private source: PartsDraft = {};
 
   private static readonly VIEWPORTS: Array<{ width: number; label: string }> = [
-    { width: 375, label: '375 手机' },
-    { width: 768, label: '768 平板' },
-    { width: 1280, label: '1280 桌面' },
+    { width: 375, label: '375' },
+    { width: 768, label: '768' },
+    { width: 1280, label: '1280' },
     { width: 0, label: '全宽' },
   ];
 
@@ -46,118 +46,241 @@ export class AdmAppearance extends AdmView {
     adminTheme,
     css`
       :host {
-        display: grid;
-        gap: 16px;
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 10px;
+        min-height: 0;
       }
 
-      .layout {
-        display: grid;
-        grid-template-columns: 240px minmax(0, 1fr);
-        gap: 16px;
-        align-items: start;
+      /* ---- 顶栏：部件 tabs + 保存区 ---- */
+      .topbar {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
       }
 
-      .part-list {
-        display: grid;
+      .tabs {
+        display: flex;
+        flex: 1;
         gap: 6px;
+        min-width: 0;
+        overflow-x: auto;
+        padding: 2px;
+        scrollbar-width: thin;
       }
 
-      .part-item {
-        padding: 10px 12px;
+      .tab {
+        flex: none;
+        padding: 7px 14px;
         border: 1px solid var(--adm-line, #e2e8f0);
-        border-radius: 10px;
+        border-radius: 999px;
         background: var(--adm-surface, #fff);
-        text-align: left;
-        cursor: pointer;
-        transition: border-color 160ms ease;
-      }
-
-      .part-item:hover {
-        border-color: var(--adm-primary, #4a93c2);
-      }
-
-      .part-item.active {
-        border-color: var(--adm-primary, #4a93c2);
-        background: color-mix(in srgb, var(--adm-primary, #4a93c2) 8%, #fff);
-      }
-
-      .part-item strong {
-        display: block;
-        font-size: 13.5px;
-      }
-
-      .part-item span {
-        display: block;
-        margin-top: 2px;
-        color: var(--adm-muted, #667085);
-        font-size: 12px;
-      }
-
-      .part-item .tuned {
-        color: var(--adm-primary, #4a93c2);
-      }
-
-      .panel {
-        padding: 16px;
-        border: 1px solid var(--adm-line, #e2e8f0);
-        border-radius: 12px;
-        background: var(--adm-surface, #fff);
-      }
-
-      .panel > p {
-        margin: 0 0 14px;
         color: var(--adm-muted, #667085);
         font-size: 12.5px;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          border-color 160ms ease,
+          color 160ms ease,
+          background 160ms ease;
+      }
+
+      .tab:hover {
+        border-color: var(--adm-primary, #4a93c2);
+        color: var(--ink, #20232a);
+      }
+
+      .tab.active {
+        border-color: var(--adm-primary, #4a93c2);
+        background: var(--adm-primary, #4a93c2);
+        color: #fff;
+      }
+
+      .tab .tuned {
+        margin-left: 4px;
+        opacity: 0.75;
+        font-size: 11px;
+      }
+
+      .actions {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .state {
+        color: var(--adm-muted, #667085);
+        font-size: 12px;
+        white-space: nowrap;
+      }
+
+      /* ---- 预览区 ---- */
+      .stage {
+        position: relative;
+        display: flex;
+        flex: 1;
+        justify-content: center;
+        min-height: 0;
+        overflow: hidden;
+        border: 1px solid var(--adm-line, #e2e8f0);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--adm-line, #e2e8f0) 30%, #fff);
+      }
+
+      .stage iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+        transition: width 240ms ease;
+      }
+
+      .sizes {
+        position: absolute;
+        z-index: 2;
+        top: 10px;
+        right: 10px;
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+        border: 1px solid var(--adm-line, #e2e8f0);
+        border-radius: 999px;
+        background: rgb(255 255 255 / 88%);
+        backdrop-filter: blur(8px);
+      }
+
+      .sizes button {
+        padding: 3px 10px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--adm-muted, #667085);
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .sizes button.on {
+        background: var(--adm-primary, #4a93c2);
+        color: #fff;
+      }
+
+      /* ---- 底部密集选项 ---- */
+      .knobs {
+        display: grid;
+        flex: none;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 8px 14px;
+        max-height: 34vh;
+        overflow-y: auto;
+        padding: 12px 14px;
+        border: 1px solid var(--adm-line, #e2e8f0);
+        border-radius: 14px;
+        background: var(--adm-surface, #fff);
+        scrollbar-width: thin;
+      }
+
+      .knobs .part-desc {
+        grid-column: 1 / -1;
+        margin: 0;
+        color: var(--adm-muted, #667085);
+        font-size: 12px;
       }
 
       .knob {
         display: grid;
-        grid-template-columns: 120px minmax(0, 1fr) auto;
-        gap: 10px;
+        gap: 5px;
+        min-width: 0;
+        padding: 8px 10px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--adm-line, #e2e8f0) 22%, #fff);
+      }
+
+      .knob-head {
+        display: flex;
         align-items: center;
-        padding: 10px 0;
-        border-top: 1px dashed var(--adm-line, #e2e8f0);
+        justify-content: space-between;
+        gap: 8px;
       }
 
-      .knob:first-of-type {
-        border-top: 0;
+      .knob-head label {
+        font-size: 12.5px;
+        font-weight: 600;
       }
 
-      .knob > label {
-        font-size: 13px;
-        font-weight: 500;
+      .knob .clear {
+        flex: none;
+        padding: 1px 8px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: var(--adm-muted, #667085);
+        font-size: 11px;
+        cursor: pointer;
+      }
+
+      .knob .clear:hover:not(:disabled) {
+        color: var(--adm-danger, #d64545);
+      }
+
+      .knob .clear:disabled {
+        opacity: 0.35;
+        cursor: default;
       }
 
       .knob .hint {
-        grid-column: 2;
+        overflow: hidden;
         color: var(--adm-muted, #667085);
-        font-size: 12px;
+        font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .knob input[type='text'] {
         width: 100%;
-        padding: 7px 10px;
+        padding: 6px 9px;
         border: 1px solid var(--adm-line, #e2e8f0);
         border-radius: 8px;
-        font-size: 13px;
+        font-size: 12.5px;
+      }
+
+      .knob .number-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
 
       .knob input[type='range'] {
-        width: 100%;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .knob .number-value {
+        flex: none;
+        min-width: 42px;
+        color: var(--adm-muted, #667085);
+        font-family: ui-monospace, monospace;
+        font-size: 11.5px;
+        text-align: right;
       }
 
       .options {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 5px;
       }
 
       .options button {
-        padding: 6px 12px;
+        padding: 4px 11px;
         border: 1px solid var(--adm-line, #e2e8f0);
         border-radius: 999px;
         background: #fff;
-        font-size: 12.5px;
+        color: var(--adm-muted, #667085);
+        font-size: 12px;
         cursor: pointer;
       }
 
@@ -167,85 +290,30 @@ export class AdmAppearance extends AdmView {
         color: #fff;
       }
 
-      .clear {
-        padding: 4px 10px;
-        border: 0;
-        border-radius: 999px;
-        background: transparent;
-        color: var(--adm-muted, #667085);
-        font-size: 12px;
-        cursor: pointer;
-      }
-
-      .clear:hover {
-        color: var(--adm-danger, #d64545);
-      }
-
-      .bar {
+      .bool-row {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-top: 14px;
+        gap: 8px;
       }
 
-      .bar .state {
+      .bool-row input {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--adm-primary, #4a93c2);
+      }
+
+      .bool-row .bool-label {
+        color: var(--adm-muted, #667085);
+        font-size: 12px;
+      }
+
+      .empty {
+        grid-column: 1 / -1;
+        margin: 0;
+        padding: 18px 0;
         color: var(--adm-muted, #667085);
         font-size: 12.5px;
-      }
-
-      .preview {
-        overflow: hidden;
-        border: 1px solid var(--adm-line, #e2e8f0);
-        border-radius: 12px;
-        background: #fff;
-      }
-
-      .preview header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--adm-line, #e2e8f0);
-        color: var(--adm-muted, #667085);
-        font-size: 12px;
-      }
-
-      .preview .sizes {
-        display: flex;
-        gap: 4px;
-      }
-
-      .preview .sizes button {
-        padding: 3px 10px;
-        border: 1px solid var(--adm-line, #e2e8f0);
-        border-radius: 999px;
-        background: #fff;
-        color: var(--adm-muted, #667085);
-        font-size: 11.5px;
-        cursor: pointer;
-      }
-
-      .preview .sizes button.on {
-        border-color: var(--adm-primary, #4a93c2);
-        background: var(--adm-primary, #4a93c2);
-        color: #fff;
-      }
-
-      .preview .stage {
-        display: flex;
-        justify-content: center;
-        padding: 10px;
-        background: color-mix(in srgb, var(--adm-line, #e2e8f0) 35%, #fff);
-      }
-
-      .preview iframe {
-        display: block;
-        width: 100%;
-        height: 560px;
-        border: 0;
-        background: #fff;
-        box-shadow: 0 2px 12px rgb(15 23 42 / 8%);
+        text-align: center;
       }
     `,
   ];
@@ -269,7 +337,7 @@ export class AdmAppearance extends AdmView {
 
   /** 预览帧就绪 / 草稿变化时注入覆盖（与 yuki-app 的 handlePartsPreview 约定）。 */
   private postPreview() {
-    const frame = this.renderRoot.querySelector<HTMLIFrameElement>('.preview iframe');
+    const frame = this.renderRoot.querySelector<HTMLIFrameElement>('.stage iframe');
     frame?.contentWindow?.postMessage(
       { type: 'yukilog:parts-preview', parts: this.draft },
       window.location.origin,
@@ -346,9 +414,10 @@ export class AdmAppearance extends AdmView {
     >
       默认
     </button>`;
+    const head = html`<div class="knob-head"><label>${knob.label}</label>${clear}</div>`;
     if (knob.kind === 'text') {
-      return html`
-        <label>${knob.label}</label>
+      return html`<div class="knob">
+        ${head}
         <input
           type="text"
           maxlength=${knob.maxLen ?? 120}
@@ -356,30 +425,31 @@ export class AdmAppearance extends AdmView {
           .value=${typeof value === 'string' ? value : ''}
           @input=${(e: InputEvent) => this.setKnob(part, knob.key, (e.currentTarget as HTMLInputElement).value)}
         />
-        ${clear}
-        <span class="hint">${knob.hint}</span>
-      `;
+        <span class="hint" title=${knob.hint}>${knob.hint}</span>
+      </div>`;
     }
     if (knob.kind === 'number') {
       const current = typeof value === 'number' ? value : null;
-      return html`
-        <label>${knob.label}</label>
-        <input
-          type="range"
-          min=${knob.min ?? 0}
-          max=${knob.max ?? 1}
-          step="0.05"
-          .value=${String(current ?? 1)}
-          @input=${(e: InputEvent) =>
-            this.setKnob(part, knob.key, Number((e.currentTarget as HTMLInputElement).value))}
-        />
-        <span>${current === null ? '默认' : current.toFixed(2)} ${clear}</span>
-        <span class="hint">${knob.hint}</span>
-      `;
+      return html`<div class="knob">
+        ${head}
+        <div class="number-row">
+          <input
+            type="range"
+            min=${knob.min ?? 0}
+            max=${knob.max ?? 1}
+            step="0.05"
+            .value=${String(current ?? 1)}
+            @input=${(e: InputEvent) =>
+              this.setKnob(part, knob.key, Number((e.currentTarget as HTMLInputElement).value))}
+          />
+          <span class="number-value">${current === null ? '默认' : current.toFixed(2)}</span>
+        </div>
+        <span class="hint" title=${knob.hint}>${knob.hint}</span>
+      </div>`;
     }
     if (knob.kind === 'select') {
-      return html`
-        <label>${knob.label}</label>
+      return html`<div class="knob">
+        ${head}
         <div class="options">
           ${(knob.options ?? []).map(
             (option) => html`
@@ -393,105 +463,98 @@ export class AdmAppearance extends AdmView {
             `,
           )}
         </div>
-        ${clear}
-        <span class="hint">${knob.hint}</span>
-      `;
+        <span class="hint" title=${knob.hint}>${knob.hint}</span>
+      </div>`;
     }
-    return html`
-      <label>${knob.label}</label>
-      <input
-        type="checkbox"
-        .checked=${value === true}
-        @change=${(e: Event) => this.setKnob(part, knob.key, (e.currentTarget as HTMLInputElement).checked)}
-      />
-      ${clear}
-      <span class="hint">${knob.hint}</span>
-    `;
+    return html`<div class="knob">
+      ${head}
+      <div class="bool-row">
+        <input
+          type="checkbox"
+          .checked=${value !== false}
+          @change=${(e: Event) => this.setKnob(part, knob.key, (e.currentTarget as HTMLInputElement).checked)}
+        />
+        <span class="bool-label">${value === false ? '已关闭' : '显示中'}</span>
+      </div>
+      <span class="hint" title=${knob.hint}>${knob.hint}</span>
+    </div>`;
   }
 
   render() {
     if (this.registryError) {
-      return html`<div class="panel">部件注册表加载失败：${this.registryError}</div>`;
+      return html`<p class="empty">部件注册表加载失败：${this.registryError}</p>`;
     }
     if (!this.registry) {
-      return html`<div class="panel">部件注册表加载中…</div>`;
+      return html`<p class="empty">部件注册表加载中…</p>`;
     }
     const selected = this.registry.parts.find((part) => part.id === this.selected);
     return html`
-      <div class="layout">
-        <div class="part-list">
+      <div class="topbar">
+        <div class="tabs">
           ${this.registry.parts.map((part) => {
             const tuned = Object.keys(this.draft[part.id] ?? {}).length;
             return html`
               <button
                 type="button"
-                class="part-item${part.id === this.selected ? ' active' : ''}"
+                class="tab${part.id === this.selected ? ' active' : ''}"
                 @click=${() => {
                   this.selected = part.id;
                 }}
               >
-                <strong>${part.label}${tuned ? html`<span class="tuned"> · ${tuned} 项</span>` : nothing}</strong>
-                <span>${part.id}</span>
+                ${part.label}${tuned ? html`<span class="tuned">· ${tuned}</span>` : nothing}
               </button>
             `;
           })}
         </div>
-        <div class="panel">
-          ${selected
-            ? html`
-                <p>${selected.description}</p>
-                ${selected.knobs.map(
-                  (knob) => html`<div class="knob">${this.renderKnob(selected.id, knob)}</div>`,
-                )}
-                <div class="bar">
-                  <button class="btn primary" type="button" ?disabled=${!this.dirty} @click=${() => void this.save()}>
-                    保存外观
-                  </button>
-                  <button class="btn secondary" type="button" ?disabled=${!this.dirty} @click=${() => this.revert()}>
-                    放弃修改
-                  </button>
-                  <button
-                    class="btn secondary"
-                    type="button"
-                    ?disabled=${!this.draft[selected.id]}
-                    @click=${() => this.resetPart(selected.id)}
-                  >
-                    重置此部件
-                  </button>
-                  <span class="state">${this.dirty ? '有未保存的修改' : '与线上一致'}</span>
-                </div>
-              `
-            : html`<p>注册表里没有部件。</p>`}
+        <div class="actions">
+          <span class="state">${this.dirty ? '有未保存的修改' : '与线上一致'}</span>
+          <button class="btn secondary small" type="button" ?disabled=${!this.dirty} @click=${() => this.revert()}>
+            放弃
+          </button>
+          <button
+            class="btn secondary small"
+            type="button"
+            ?disabled=${!selected || !this.draft[selected.id]}
+            @click=${() => selected && this.resetPart(selected.id)}
+          >
+            重置此部件
+          </button>
+          <button class="btn primary small" type="button" ?disabled=${!this.dirty} @click=${() => void this.save()}>
+            保存外观
+          </button>
         </div>
       </div>
-      <div class="preview">
-        <header>
-          <span>实时预览（修改即时注入，不影响线上；保存后生效）</span>
-          <div class="sizes">
-            ${AdmAppearance.VIEWPORTS.map(
-              (viewport) => html`
-                <button
-                  type="button"
-                  class=${this.previewWidth === viewport.width ? 'on' : ''}
-                  @click=${() => {
-                    this.previewWidth = viewport.width;
-                  }}
-                >
-                  ${viewport.label}
-                </button>
-              `,
-            )}
-          </div>
-          <a href="/" target="_blank" rel="noopener">新窗口打开 ↗</a>
-        </header>
-        <div class="stage">
-          <iframe
-            src="/"
-            title="站点预览"
-            style=${this.previewWidth ? `width:${this.previewWidth}px` : ''}
-            @load=${() => this.postPreview()}
-          ></iframe>
+      <div class="stage">
+        <div class="sizes">
+          ${AdmAppearance.VIEWPORTS.map(
+            (viewport) => html`
+              <button
+                type="button"
+                class=${this.previewWidth === viewport.width ? 'on' : ''}
+                title=${viewport.width ? `${viewport.width}px 视口` : '全宽'}
+                @click=${() => {
+                  this.previewWidth = viewport.width;
+                }}
+              >
+                ${viewport.label}
+              </button>
+            `,
+          )}
         </div>
+        <iframe
+          src="/"
+          title="站点预览"
+          style=${this.previewWidth ? `width:${this.previewWidth}px` : ''}
+          @load=${() => this.postPreview()}
+        ></iframe>
+      </div>
+      <div class="knobs">
+        ${selected
+          ? html`
+              <p class="part-desc">${selected.description}（修改即时注入预览，保存后上线）</p>
+              ${selected.knobs.map((knob) => this.renderKnob(selected.id, knob))}
+            `
+          : html`<p class="empty">注册表里没有部件。</p>`}
       </div>
     `;
   }
