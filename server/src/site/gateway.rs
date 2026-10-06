@@ -122,8 +122,10 @@ pub async fn dynamic_list_page(
             return Ok(shell.into_response());
         }
     }
+    let query = Query::<lists::DynamicListQuery>::try_from_uri(&uri)
+        .map_err(|_| AppError::InvalidRequest("查询参数无效"))?;
     Ok(render_cookie_layer(
-        lists::dynamic_list(State(state)).await?.into_response(),
+        lists::dynamic_list(State(state), query).await?.into_response(),
         uri.query(),
     ))
 }

@@ -1135,10 +1135,11 @@ async fn load_pulse(state: &AppState, limit: usize) -> Result<Vec<PulseCard>, Ap
     Ok(dated.into_iter().take(limit).map(|(_, card)| card).collect())
 }
 
-async fn load_dynamics(state: &AppState, limit: u64) -> Result<Vec<DynamicCard>, AppError> {    let models = dynamics::Entity::find()
+async fn load_dynamics(state: &AppState, offset: u64, limit: u64) -> Result<Vec<DynamicCard>, AppError> {    let models = dynamics::Entity::find()
         .filter(dynamics::Column::Status.eq("published"))
         .filter(dynamics::Column::PublishedAt.lte(Utc::now().fixed_offset()))
         .order_by_desc(dynamics::Column::PublishedAt)
+        .offset(offset)
         .limit(limit)
         .all(&state.database)
         .await?;

@@ -139,9 +139,28 @@ pub async fn article_list(
     )
 }
 
-pub async fn dynamic_list(State(state): State<AppState>) -> Result<Html<String>, AppError> {
+const DYNAMIC_PAGE_SIZE: u64 = 20;
+
+#[derive(Debug, Default, Deserialize)]
+pub struct DynamicListQuery {
+    #[serde(default = "first_page")]
+    page: u64,
+}
+
+pub async fn dynamic_list(
+    State(state): State<AppState>,
+    Query(query): Query<DynamicListQuery>,
+) -> Result<Html<String>, AppError> {
+    let page_number = query.page.clamp(1, 10_000);
     let site = load_site(&state).await?;
-    let mut dynamics = load_dynamics(&state, ARTICLE_LIMIT).await?;
+    let mut dynamics = load_dynamics(
+        &state,
+        (page_number - 1) * DYNAMIC_PAGE_SIZE,
+        DYNAMIC_PAGE_SIZE + 1,
+    )
+    .await?;
+    let has_next = dynamics.len() as u64 > DYNAMIC_PAGE_SIZE;
+    dynamics.truncate(DYNAMIC_PAGE_SIZE as usize);
     let ids = dynamics.iter().map(|item| item.id).collect::<Vec<_>>();
     let mut comments = load_moment_comments(&state, &ids, &site.owner_name).await?;
     for item in &mut dynamics {
@@ -168,6 +187,24 @@ pub async fn dynamic_list(State(state): State<AppState>) -> Result<Html<String>,
         )
     );
     super::gateway::inject_enhance(&mut content);
+    if page_number > 1 || has_next {
+        content.push_str(r#"<nav class="pager" aria-label="分页">"#);
+        if page_number > 1 {
+            let href = if page_number == 2 {
+                "/dynamics".to_owned()
+            } else {
+                format!("/dynamics?page={}", page_number - 1)
+            };
+            content.push_str(&format!(r#"<a href="{href}">← 上一页</a>"#));
+        }
+        if has_next {
+            content.push_str(&format!(
+                r#"<a href="/dynamics?page={}">下一页 →</a>"#,
+                page_number + 1
+            ));
+        }
+        content.push_str("</nav>");
+    }
     page(&site, &PageMeta::new(&site, "动态", "/dynamics"), &content)
 }
 

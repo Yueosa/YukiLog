@@ -45,7 +45,7 @@ pub async fn home(
         sort,
     )
     .await?;
-    let dynamics = load_dynamics(&state, HOME_DYNAMIC_LIMIT).await?;
+    let dynamics = load_dynamics(&state, 0, HOME_DYNAMIC_LIMIT).await?;
     let stats = load_home_stats(&state).await?;
     let pulse = load_pulse(&state, 6).await?;
     let content = render_home(&RenderContext {
