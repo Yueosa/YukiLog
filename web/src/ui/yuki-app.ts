@@ -2678,6 +2678,133 @@ export class YukiApp extends LitElement {
       cursor: zoom-in;
     }
 
+    /* ---- LianMarkup 构造（lm-*，SSR 同套） ---- */
+    .prose .lm-callout {
+      margin: 1.8em 0;
+      padding: 14px 18px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--primary);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--primary) 5%, var(--surface));
+    }
+
+    .prose .lm-callout-title {
+      margin: 0 0 6px;
+      font-weight: 600;
+    }
+
+    .prose .lm-callout > :last-child {
+      margin-bottom: 0;
+    }
+
+    .prose .lm-callout[data-kind='!'] {
+      border-left-color: #e8a4b4;
+      background: color-mix(in srgb, #e8a4b4 7%, var(--surface));
+    }
+
+    .prose .lm-callout[data-kind='x'] {
+      border-left-color: #d64545;
+      background: color-mix(in srgb, #d64545 6%, var(--surface));
+    }
+
+    .prose .lm-callout[data-kind='+'] {
+      border-left-color: #5da85f;
+      background: color-mix(in srgb, #5da85f 7%, var(--surface));
+    }
+
+    .prose .lm-callout[data-kind='i'] {
+      border-left-color: var(--secondary);
+      background: color-mix(in srgb, var(--secondary) 7%, var(--surface));
+    }
+
+    .prose .lm-fold {
+      margin: 1.8em 0;
+      padding: 12px 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+
+    .prose .lm-fold > summary {
+      color: var(--muted);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .prose .lm-fold[open] > summary {
+      margin-bottom: 10px;
+    }
+
+    .prose .lm-spoiler {
+      padding: 0 4px;
+      border-radius: 4px;
+      background: var(--ink);
+      color: transparent;
+      cursor: help;
+      transition:
+        color 200ms ease,
+        background 200ms ease;
+    }
+
+    .prose .lm-spoiler:hover,
+    .prose .lm-spoiler:active {
+      background: color-mix(in srgb, var(--ink) 10%, transparent);
+      color: var(--ink);
+    }
+
+    .prose .lm-noteref a {
+      padding: 0 2px;
+      color: var(--secondary-d);
+      font-size: 0.78em;
+      text-decoration: none;
+    }
+
+    .prose .lm-notes {
+      color: var(--muted);
+      font-size: 13.5px;
+    }
+
+    .prose .lm-notes li {
+      margin: 0.3em 0;
+    }
+
+    .prose .lm-math {
+      margin: 1.5em 0;
+      padding: 14px 18px;
+      overflow-x: auto;
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--primary) 6%, var(--surface));
+      font-family: var(--mono);
+      font-size: 14px;
+      white-space: pre-wrap;
+    }
+
+    .prose span.lm-math {
+      padding: 2px 7px;
+      margin: 0;
+      white-space: nowrap;
+    }
+
+    .prose .lm-verbatim,
+    .prose .lm-mermaid {
+      font-family: var(--mono);
+    }
+
+    .prose .lm-ruby rt {
+      color: var(--muted);
+      font-size: 0.65em;
+    }
+
+    .prose .lm-task {
+      list-style: none;
+      padding-left: 0.2em;
+    }
+
+    .prose .lm-task input {
+      margin-right: 8px;
+      accent-color: var(--primary-d);
+    }
+
     /* 文末 */
     .post-end {
       display: flex;

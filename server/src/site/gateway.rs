@@ -8,7 +8,7 @@ use axum::{
 
 use crate::{AppState, error::AppError};
 
-use super::{ArticleSort, FeedFields, SiteView, article, escape_html, home, lists, load_site};
+use super::{SiteView, article, escape_html, home, lists, load_site};
 
 const BOT_MARKERS: &[&str] = &[
     "bot",
@@ -248,6 +248,7 @@ fn resolve_assets(manifest: &str) -> Option<ShellAssets> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::{ArticleSort, FeedFields};
 
     fn headers(user_agent: &str) -> HeaderMap {
         let mut headers = HeaderMap::new();

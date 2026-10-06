@@ -1,9 +1,6 @@
 use std::sync::LazyLock;
 
 use ammonia::Builder;
-use pulldown_cmark::{
-    CodeBlockKind, CowStr, Event, HeadingLevel, Options, Parser, Tag, TagEnd, html,
-};
 use syntect::{highlighting::Theme, highlighting::ThemeSet, parsing::SyntaxSet};
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -22,106 +19,78 @@ static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_
 static CODE_THEME: LazyLock<Theme> =
     LazyLock::new(|| ThemeSet::load_defaults().themes["InspiredGitHub"].clone());
 
-// 未来会替换为用户自研标记语言 LianMarkup（Markdown 超集）；调用方只依赖此接口。
-pub fn render(markdown: &str) -> Rendered {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    options.insert(Options::ENABLE_FOOTNOTES);
-    options.insert(Options::ENABLE_HEADING_ATTRIBUTES);
+/// 正文渲染入口：LianMarkup(.ly) 解析 → 代码块服务端高亮 → 消毒。
+/// 产物契约见 LianMarkup 仓库 docs/产物契约.md；调用方只依赖此接口。
+pub fn render(source: &str) -> Rendered {
+    let document = lianmarkup::parse(source);
+    let mut html = highlight_code_blocks(&document.html);
+    // 旁注暂以文末列表呈现（锚点与正文上标互链）；三栏重构时挪进右侧栏
+    if !document.notes.is_empty() {
+        html.push_str("<section class=\"lm-notes\"><hr><ol>");
+        for note in &document.notes {
+            html.push_str(&format!("<li id=\"{}\">{}</li>", note.anchor, note.html));
+        }
+        html.push_str("</ol></section>");
+    }
+    let html = sanitize(&html);
+    Rendered {
+        html,
+        headings: flatten_toc(&document.toc),
+    }
+}
 
-    let mut events = Vec::new();
+fn flatten_toc(items: &[lianmarkup::TocItem]) -> Vec<Heading> {
     let mut headings = Vec::new();
-    let mut parser = Parser::new_ext(markdown, options);
-    while let Some(event) = parser.next() {
-        match event {
-            Event::Start(Tag::CodeBlock(kind)) => {
-                let mut code = String::new();
-                for inner_event in parser.by_ref() {
-                    match inner_event {
-                        Event::End(TagEnd::CodeBlock) => break,
-                        Event::Text(fragment) => code.push_str(&fragment),
-                        _ => {}
-                    }
-                }
-                let language = match &kind {
-                    CodeBlockKind::Fenced(language) => language.trim(),
-                    CodeBlockKind::Indented => "",
-                };
-                let highlighted = if language.is_empty() || language == "mermaid" {
-                    None
-                } else {
-                    highlight_code_block(&code, language)
-                };
-                if let Some(block) = highlighted {
-                    events.push(Event::Html(CowStr::from(block)));
-                } else {
-                    events.push(Event::Start(Tag::CodeBlock(kind)));
-                    events.push(Event::Text(CowStr::from(code)));
-                    events.push(Event::End(TagEnd::CodeBlock));
-                }
-            }
-            Event::Start(Tag::Heading {
-                level,
-                id,
-                classes,
-                attrs,
-            }) => {
-                let mut inner = Vec::new();
-                let mut text = String::new();
-                for inner_event in parser.by_ref() {
-                    match &inner_event {
-                        Event::End(TagEnd::Heading(_)) => break,
-                        Event::Text(fragment) | Event::Code(fragment) => {
-                            text.push_str(fragment);
-                            inner.push(inner_event);
-                        }
-                        _ => inner.push(inner_event),
-                    }
-                }
-                let heading_id = if matches!(
-                    level,
-                    HeadingLevel::H1 | HeadingLevel::H2 | HeadingLevel::H3
-                ) {
-                    let heading_id = id
-                        .as_ref()
-                        .map(|custom| sanitize_heading_id(custom))
-                        .unwrap_or_else(|| format!("h-{}", headings.len() + 1));
-                    headings.push(Heading {
-                        level: level as u8,
-                        text: text.trim().to_owned(),
-                        id: heading_id.clone(),
-                    });
-                    Some(CowStr::from(heading_id))
-                } else {
-                    id
-                };
-                events.push(Event::Start(Tag::Heading {
-                    level,
-                    id: heading_id,
-                    classes,
-                    attrs,
-                }));
-                events.extend(inner);
-                events.push(Event::End(TagEnd::Heading(level)));
-            }
-            _ => events.push(event),
+    fn walk(items: &[lianmarkup::TocItem], headings: &mut Vec<Heading>) {
+        for item in items {
+            headings.push(Heading {
+                level: item.level,
+                text: item.text.clone(),
+                id: item.id.clone(),
+            });
+            walk(&item.children, headings);
         }
     }
+    walk(items, &mut headings);
+    headings
+}
 
-    let mut rendered = String::new();
-    html::push_html(&mut rendered, events.into_iter());
-    let html = Builder::default()
-        .link_rel(Some("noopener noreferrer"))
-        .add_tags(["input", "section", "span"])
-        .add_tag_attributes("input", ["type", "checked", "disabled"])
-        .add_tag_attributes("pre", ["style"])
-        .add_tag_attributes("span", ["style"])
-        .add_generic_attributes(["id", "class"])
-        .clean(&rendered)
-        .to_string();
-    Rendered { html, headings }
+/// LianMarkup 对代码块输出 `<pre><code class="language-X">…</code></pre>`
+/// （mermaid/原样块/数学块是别的类名，不受影响）。逐个替换为 syntect
+/// 服务端高亮（内联样式，RSS 里也能看）。
+fn highlight_code_blocks(html: &str) -> String {
+    const OPEN: &str = "<pre><code class=\"language-";
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        let after_open = &rest[start + OPEN.len()..];
+        let Some(lang_end) = after_open.find('"') else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let language = &after_open[..lang_end];
+        let Some(code_start) = after_open.find('>') else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let body = &after_open[code_start + 1..];
+        let Some(code_end) = body.find("</code></pre>") else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let code = unescape_html(&body[..code_end]);
+        match highlight_code_block(&code, language) {
+            Some(highlighted) => out.push_str(&highlighted),
+            None => {
+                out.push_str(&rest[start..start + OPEN.len()]);
+                out.push_str(&after_open[..code_start + 1 + code_end + "</code></pre>".len()]);
+            }
+        }
+        rest = &body[code_end + "</code></pre>".len()..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn highlight_code_block(code: &str, language: &str) -> Option<String> {
@@ -129,18 +98,27 @@ fn highlight_code_block(code: &str, language: &str) -> Option<String> {
     syntect::html::highlighted_html_for_string(code, &SYNTAX_SET, syntax, &CODE_THEME).ok()
 }
 
-fn sanitize_heading_id(custom: &str) -> String {
-    let filtered: String = custom
-        .chars()
-        .filter(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | ':')
-        })
-        .collect();
-    if filtered.is_empty() {
-        "h-x".to_owned()
-    } else {
-        filtered
-    }
+/// LianMarkup 的转义集（& < > "）的逆运算，用于还原代码块原文。
+fn unescape_html(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&amp;", "&")
+}
+
+/// 纵深防御：LianMarkup 禁止内嵌 HTML（源文本一律转义），但高亮与模板
+/// 都在服务端拼 HTML，白名单照跑。lm-* 构造的标签/属性在这里登记。
+fn sanitize(html: &str) -> String {
+    Builder::default()
+        .link_rel(Some("noopener noreferrer"))
+        .add_tags(["input", "section", "span", "details", "summary", "ruby", "rp", "rt"])
+        .add_tag_attributes("input", ["type", "checked", "disabled"])
+        .add_tag_attributes("pre", ["style"])
+        .add_tag_attributes("span", ["style"])
+        .add_tag_attributes("div", ["data-kind"])
+        .add_generic_attributes(["id", "class"])
+        .clean(html)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -148,76 +126,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renders_markdown_features() {
-        let rendered = render("# Title\n\n| A | B |\n| - | - |\n| 1 | 2 |");
-        assert!(rendered.html.contains("<h1 id=\"h-1\">Title</h1>"));
-        assert!(rendered.html.contains("<table>"));
-        assert_eq!(rendered.headings.len(), 1);
-        assert_eq!(rendered.headings[0].text, "Title");
-        assert_eq!(rendered.headings[0].id, "h-1");
-        assert_eq!(rendered.headings[0].level, 1);
+    fn renders_headings_with_ids_and_toc() {
+        let rendered = render("# Title\n\n## 第二节\n\n正文\n");
+        assert!(rendered.html.contains("<h1 id=\"h-1\">Title</h1>"), "{}", rendered.html);
+        assert!(rendered.html.contains("<h2 id=\"h-2\">第二节</h2>"));
+        assert_eq!(rendered.headings.len(), 2);
+        assert_eq!(rendered.headings[1].id, "h-2");
+        assert_eq!(rendered.headings[1].text, "第二节");
     }
 
     #[test]
-    fn collects_headings_with_stable_ids() {
-        let rendered = render("# 一级\n\n#### 跳过四级\n\n## 二级 {#custom-id}\n\n### 三级");
-        let ids: Vec<&str> = rendered
-            .headings
-            .iter()
-            .map(|heading| heading.id.as_str())
-            .collect();
-        assert_eq!(ids, ["h-1", "custom-id", "h-3"]);
-        assert!(rendered.html.contains("<h4>跳过四级</h4>"));
+    fn escapes_inline_html_in_source() {
+        let rendered = render("正文 <script>alert(1)</script>\n");
+        assert!(!rendered.html.contains("<script>"));
+        assert!(rendered.html.contains("&lt;script&gt;"));
     }
 
     #[test]
-    fn keeps_tasklists_footnotes_and_math_source() {
-        let rendered = render("- [x] done\n- [ ] todo\n\n脚注[^1]\n\n[^1]: 内容\n\n$E = mc^2$");
-        assert!(rendered.html.contains("checkbox"));
-        assert!(rendered.html.contains("footnote"));
-        assert!(rendered.html.contains("$E = mc^2$"));
+    fn highlights_known_language_code_block() {
+        let rendered = render("```rust\nfn main() {}\n```\n");
+        assert!(rendered.html.contains("style="), "{}", rendered.html);
     }
 
     #[test]
-    fn keeps_mermaid_as_plain_code_block() {
-        let rendered = render("```mermaid\ngraph LR\n    A --> B\n```");
-        assert!(rendered.html.contains("graph LR"));
-        assert!(rendered.html.contains("A --&gt; B"));
+    fn keeps_unknown_language_code_block_plain() {
+        let rendered = render("```notalanguage\nsome code\n```\n");
+        assert!(rendered.html.contains("<code class=\"language-notalanguage\">"));
     }
 
     #[test]
-    fn highlights_rust_code_block() {
-        let rendered = render("```rust\nfn main() { let x = 1; }\n```");
-        assert!(rendered.html.contains("<pre style="));
-        assert!(rendered.html.contains("<span style="));
-        assert!(rendered.html.contains("fn"));
-        assert!(!rendered.html.contains("language-rust"));
+    fn mermaid_block_passes_through_for_client_render() {
+        let rendered = render("```mermaid\ngraph TD; A-->B;\n```\n");
+        assert!(rendered.html.contains("<pre class=\"lm-mermaid\">"), "{}", rendered.html);
     }
 
     #[test]
-    fn unknown_language_falls_back_to_plain_code_block() {
-        let rendered = render("```notalanguage\nplain <code> & <>\n```");
-        assert!(rendered
-            .html
-            .contains("<code class=\"language-notalanguage\">"));
-        assert!(rendered.html.contains("plain &lt;code&gt; &amp; &lt;&gt;"));
-        assert!(!rendered.html.contains("<span style="));
+    fn callout_fold_spoiler_ruby_survive_sanitizer() {
+        let source = ">? 问题\n> 内容\n\n>>> 折叠标题\n折叠内容\n<<<\n\n||剧透|| 与 {汉字|かんじ}\n";
+        let rendered = render(source);
+        assert!(rendered.html.contains("class=\"lm-callout\""), "{}", rendered.html);
+        assert!(rendered.html.contains("data-kind="));
+        assert!(rendered.html.contains("<details class=\"lm-fold\""));
+        assert!(rendered.html.contains("class=\"lm-spoiler\""));
+        assert!(rendered.html.contains("<ruby class=\"lm-ruby\">"));
     }
 
     #[test]
-    fn unlabeled_code_block_stays_plain() {
-        let rendered = render("```\nfn main() {}\n```");
-        assert!(rendered.html.contains("<pre><code>"));
-        assert!(!rendered.html.contains("<span style="));
-    }
-
-    #[test]
-    fn removes_scripts_and_dangerous_links() {
-        let rendered = render(
-            "<script>alert(1)</script><img src=x onerror=alert(1)>\n\n[x](javascript:alert(1))",
-        );
-        assert!(!rendered.html.contains("<script"));
-        assert!(!rendered.html.contains("onerror"));
-        assert!(!rendered.html.contains("javascript:"));
+    fn notes_render_as_end_section_with_anchors() {
+        let rendered = render("正文[^一条旁注]继续\n");
+        assert!(rendered.html.contains("class=\"lm-noteref\""), "{}", rendered.html);
+        assert!(rendered.html.contains("href=\"#note-1\""));
+        assert!(rendered.html.contains("<section class=\"lm-notes\""));
+        assert!(rendered.html.contains("id=\"note-1\""));
+        assert!(rendered.html.contains("一条旁注"));
     }
 }

@@ -7,7 +7,7 @@ use askama::Template;
 
 use crate::error::AppError;
 
-use super::{ArticleCard, ArticleSort, DynamicCard, FeedFields, HomeStats, SiteView, escape_html};
+use super::{ArticleCard, ArticleSort, DynamicCard, HomeStats, SiteView, escape_html};
 
 /// 固定布局常量（与 Lit 端 home-layout.ts 保持一致）。
 const HOME_CONTENT_ID: &str = "nf-identity";
@@ -319,7 +319,7 @@ fn hero_social_icon(label: &str, index: usize) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::site::HomeStats;
+    use crate::site::{FeedFields, HomeStats};
 
     fn site_view() -> SiteView {
         SiteView {

@@ -744,6 +744,27 @@ struct HomeStats {
     .prose h2{margin:2.3em 0 1em;padding-bottom:12px;background:linear-gradient(var(--primary),var(--primary)) left bottom/30px 2px no-repeat;font-family:var(--serif);font-size:25px;font-weight:700;line-height:1.5}
     .prose h3{margin:2em 0 .8em;font-family:var(--serif);font-size:20px;font-weight:700;line-height:1.55}
     .prose img{max-width:100%;border-radius:14px}
+    .prose .lm-callout{margin:1.8em 0;padding:14px 18px;border:1px solid var(--line);border-left:3px solid var(--primary);border-radius:12px;background:color-mix(in srgb,var(--primary) 5%,var(--surface))}
+    .prose .lm-callout-title{margin:0 0 6px;font-weight:600}
+    .prose .lm-callout>:last-child{margin-bottom:0}
+    .prose .lm-callout[data-kind="!"]{border-left-color:#e8a4b4;background:color-mix(in srgb,#e8a4b4 7%,var(--surface))}
+    .prose .lm-callout[data-kind="x"]{border-left-color:#d64545;background:color-mix(in srgb,#d64545 6%,var(--surface))}
+    .prose .lm-callout[data-kind="+"]{border-left-color:#5da85f;background:color-mix(in srgb,#5da85f 7%,var(--surface))}
+    .prose .lm-callout[data-kind="i"]{border-left-color:var(--secondary);background:color-mix(in srgb,var(--secondary) 7%,var(--surface))}
+    .prose .lm-fold{margin:1.8em 0;padding:12px 18px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+    .prose .lm-fold>summary{color:var(--muted);font-weight:600;cursor:pointer}
+    .prose .lm-fold[open]>summary{margin-bottom:10px}
+    .prose .lm-spoiler{padding:0 4px;border-radius:4px;background:var(--ink);color:transparent;cursor:help;transition:color 200ms ease,background 200ms ease}
+    .prose .lm-spoiler:hover,.prose .lm-spoiler:active{background:color-mix(in srgb,var(--ink) 10%,transparent);color:var(--ink)}
+    .prose .lm-noteref a{padding:0 2px;color:var(--secondary-d);font-size:.78em;text-decoration:none}
+    .prose .lm-notes{color:var(--muted);font-size:13.5px}
+    .prose .lm-notes li{margin:.3em 0}
+    .prose .lm-math{margin:1.5em 0;padding:14px 18px;overflow-x:auto;border-radius:12px;background:color-mix(in srgb,var(--primary) 6%,var(--surface));font-family:var(--mono);font-size:14px;white-space:pre-wrap}
+    .prose span.lm-math{padding:2px 7px;margin:0;white-space:nowrap}
+    .prose .lm-verbatim,.prose .lm-mermaid{font-family:var(--mono)}
+    .prose .lm-ruby rt{color:var(--muted);font-size:.65em}
+    .prose .lm-task{list-style:none;padding-left:.2em}
+    .prose .lm-task input{margin-right:8px;accent-color:var(--primary-d)}
     .prose a{color:var(--primary-d);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--primary) 45%,transparent);text-underline-offset:3px;transition:text-decoration-color 250ms ease}
     .prose a:hover{text-decoration-color:var(--primary-d)}
     .prose blockquote{margin:2em 0;padding:2px 0 2px 20px;border-left:2px solid var(--primary);color:var(--muted);font-family:var(--serif);font-size:17px}
