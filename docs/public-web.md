@@ -135,15 +135,26 @@ RSS 使用配置中的公开 Origin 生成绝对链接和稳定 GUID，最多返
 ## 文章页
 
 `/articles/{slug}` 依次输出刊头（分类、标题、发布时间与摘要）、目录、封面、
-`prose` 正文和评论区。LianMarkup 渲染时收集标题并注入 `h-{序号}` 锚点 id
-（支持 `{#custom-id}`，仅保留 `[a-zA-Z0-9._:-]`）。目录多于一项时：宽屏
-（≥1280px）显示正文左侧 sticky 的 `nav.post-toc`（细滚动条悬停显现），窄屏
-显示正文前可折叠的 `details.post-toc-mobile`；宽屏下滚动监听
-（IntersectionObserver，`rootMargin: '-90px 0px -70% 0px'`）为当前小节链接加
-`is-active`。正文排版对齐 Lit 设计：h2 蓝色刻度线、serif 蓝边引用块、蓝色列表
-marker、任务清单复选框与脚注样式，标题带 `scroll-margin-top` 避免被导航遮挡。
-围栏代码块由 syntect 以 InspiredGitHub 浅色主题在服务端高亮（内联样式的
-`pre/span` 经 ammonia 放行）；`mermaid` 与未知语言保持原样输出为普通代码块。
+`prose` 正文和评论区。LianMarkup 渲染时收集**顶层**标题并注入 `h-{序号}` 锚点 id
+（支持 `{#custom-id}`，仅保留 `[a-zA-Z0-9._:-]`；容器块——分栏/折叠/callout/引用
+——内的标题不分配锚点也不进目录，D18）。目录多于一项时：宽屏（≥1340px）显示正文
+左侧 sticky 的 `nav.post-toc`（h2 带 01/02… 编号，轨道即阅读进度条，底部显示已读
+百分比，滚动监听为当前小节加 `is-active`），窄屏显示正文前可折叠的
+`details.post-toc-mobile`；正文首个 h1 隐藏（页头已有标题）。
+
+LianMarkup 构造的三端呈现：callout 按语义名 `data-kind`（info/question/tip/
+important/error）渲染官方五色与图标；折叠块 chevron 旋转，`>>>+` 经 ammonia 放行
+`open` 属性默认展开；`|||`+`===` 分栏块输出 `.lm-cols/.lm-col`（移动端竖排）；
+`___` 幕间转换线为整宽渐变直线；`---` 在 Lit 为三点装饰；原样块 `~~~` 为虚边
+「写法卡」（Lit 端附 hover 复制角标）；`diff` 围栏在服务端直接渲染增删行
+（`+` 绿 / `-` 红 / `@@` 蓝，非 syntect）；其余代码围栏由 syntect 以
+base16-ocean.dark 深色主题高亮并注入 `data-lang`（Lit 端包窗口卡：语言标签 +
+一键复制）；`[文字]{.class}` 行内容器由 CSS 提供特效（已实现 `.lm-shake` 抖动与
+`.lm-gradient` 渐变文字）。Lit 端增强（`article-fx.ts`）：同 `data-group` 多图
+（≥2）收编为 niri 式平铺带（中间放大、两侧半掩、宽高比自适应、`<`/`>` 滑动），
+灯箱支持滚轮缩放/拖拽平移/双击复位/组切换，旁注 ≥1340px 按上标位置 Tufte 对齐、
+窄屏落文末、移动端点按浮层。SSR 书简版渲染同一 HTML 的静态样式，无 JS 增强。
+围栏 mermaid 透传前端渲染，未知语言保持原样输出为普通代码块。
 
 评论区对齐 Lit 端设计：输入区在列表之前，收起态是一行 `.comment-compose` 引导条
 （头像 SVG + 提示 + chevron），增强脚本点击展开完整表单（含「先不写了」收回按钮；
