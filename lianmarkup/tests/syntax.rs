@@ -596,3 +596,23 @@ fn star_italic_at_line_start_is_not_a_list() {
     assert!(out.contains("<em>这是斜体</em>"));
     assert!(!out.contains("lm-star"));
 }
+
+#[test]
+fn escaped_slash_writes_literal_comment_marker() {
+    // `\` 本身是转义符, `//` 是注释: 行首 `\//` 写字面 // 段落
+    let out = html("\\// 这不是注释\n");
+    assert!(out.contains("<p>// 这不是注释</p>"), "{}", out);
+}
+
+#[test]
+fn comment_syntax_still_works_after_slash_escape() {
+    let out = html("// 真注释\n可见\n");
+    assert!(!out.contains("真注释"));
+    assert!(out.contains("可见"));
+}
+
+#[test]
+fn escaped_backslash_renders_single_backslash() {
+    let out = html("A \\\\ B\n");
+    assert!(out.contains("A \\ B"), "{}", out);
+}
