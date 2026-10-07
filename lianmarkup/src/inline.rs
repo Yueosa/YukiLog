@@ -71,7 +71,7 @@ impl Parser {
                         i += 1;
                     }
                 }
-                '[' if chars.get(i + 1) == Some(&'^') => {
+                '[' if !self.in_note && chars.get(i + 1) == Some(&'^') => {
                     if let Some(end) = self.note(&chars, i, &mut out) {
                         i = end;
                     } else {
@@ -226,7 +226,9 @@ impl Parser {
         self.note_count += 1;
         let n = self.note_count;
         let content = slice(chars, i + 2, close);
+        self.in_note = true;
         let html = self.parse_inline(&content);
+        self.in_note = false;
         self.notes.push(Note {
             index: n,
             html,

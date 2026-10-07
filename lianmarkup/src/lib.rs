@@ -75,6 +75,8 @@ pub(crate) struct Parser {
     pub toc_depth: Option<u8>,
     /// 示例块渲染栏: 其中的标题不进目录、@toc 不生效
     pub in_example: bool,
+    /// 旁注内容解析中: 内部 [^ 不再产生旁注 (规范: 不能嵌套)
+    pub in_note: bool,
 }
 
 impl Parser {

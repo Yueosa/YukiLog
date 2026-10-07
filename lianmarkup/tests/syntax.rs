@@ -516,3 +516,10 @@ fn heavy_break_inside_paragraph_splits() {
     assert!(out.contains("<p>第一段</p>"));
     assert!(out.contains("<p>第二段</p>"));
 }
+
+#[test]
+fn nested_note_is_not_collected() {
+    // 规范: 旁注不能嵌套 —— 内层 [^...] 应当只是外层内容的文本
+    let doc = parse("外层[^旁注里有 [^嵌套] 内容]收尾\n");
+    assert_eq!(doc.notes.len(), 1, "嵌套旁注不应产生第二条: {:?}", doc.notes);
+}
