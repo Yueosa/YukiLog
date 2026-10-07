@@ -108,6 +108,8 @@ pub mod media_assets {
         pub sha256: Vec<u8>,
         pub width: Option<i32>,
         pub height: Option<i32>,
+        pub origin: String,
+        pub source_url: Option<String>,
         pub created_at: DateTimeWithTimeZone,
     }
 

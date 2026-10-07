@@ -294,6 +294,9 @@ async fn store_upload(
         sha256: Set(sha256.to_vec()),
         width: Set(width),
         height: Set(height),
+        // 上传媒体：origin 走数据库默认值 'upload'，source_url 为 NULL
+        origin: NotSet,
+        source_url: NotSet,
         created_at: NotSet,
     }
     .insert(&state.database)

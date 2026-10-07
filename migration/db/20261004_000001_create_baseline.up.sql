@@ -105,6 +105,8 @@ CREATE TABLE media_assets (
     sha256 bytea NOT NULL UNIQUE,
     width integer,
     height integer,
+    origin text NOT NULL DEFAULT 'upload',
+    source_url text,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT media_assets_storage_key_format
         CHECK (storage_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_-]*\.[a-zA-Z0-9]+$'),
@@ -116,6 +118,10 @@ CREATE TABLE media_assets (
         CHECK (byte_size > 0),
     CONSTRAINT media_assets_sha256_length
         CHECK (octet_length(sha256) = 32),
+    CONSTRAINT media_assets_origin_allowed
+        CHECK (origin IN ('upload', 'fetched')),
+    CONSTRAINT media_assets_source_url_length
+        CHECK (source_url IS NULL OR char_length(source_url) <= 2048),
     CONSTRAINT media_assets_dimensions_valid
         CHECK (
             (width IS NULL AND height IS NULL)
@@ -518,6 +524,10 @@ CREATE TABLE site_settings (
     owner_name varchar(80) NOT NULL,
     owner_bio text NOT NULL DEFAULT '',
     avatar_media_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
+    avatar_external_url text,
+    masthead_media_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
+    hero_background_media_ids jsonb NOT NULL DEFAULT '[]'::jsonb,
+    hero_quote text,
     social_links jsonb NOT NULL DEFAULT '[]'::jsonb,
     theme jsonb NOT NULL DEFAULT '{}'::jsonb,
     shell_layout jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -534,7 +544,22 @@ CREATE TABLE site_settings (
     CONSTRAINT site_settings_theme_object
         CHECK (jsonb_typeof(theme) = 'object'),
     CONSTRAINT site_settings_shell_layout_object
-        CHECK (jsonb_typeof(shell_layout) = 'object')
+        CHECK (jsonb_typeof(shell_layout) = 'object'),
+    CONSTRAINT site_settings_avatar_external_url_format
+        CHECK (
+            avatar_external_url IS NULL
+            OR (
+                char_length(avatar_external_url) <= 512
+                AND avatar_external_url ~ '^https?://'
+            )
+        ),
+    CONSTRAINT site_settings_hero_background_media_ids_shape
+        CHECK (
+            jsonb_typeof(hero_background_media_ids) = 'array'
+            AND jsonb_array_length(hero_background_media_ids) <= 12
+        ),
+    CONSTRAINT site_settings_hero_quote_length
+        CHECK (hero_quote IS NULL OR char_length(hero_quote) <= 120)
 );
 
 CREATE TABLE subscribers (
@@ -573,10 +598,12 @@ CREATE INDEX subscribers_active_idx
 
 CREATE TABLE email_deliveries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    subscriber_id uuid NOT NULL REFERENCES subscribers(id) ON DELETE CASCADE,
+    subscriber_id uuid REFERENCES subscribers(id) ON DELETE CASCADE,
     kind text NOT NULL,
     article_id uuid REFERENCES articles(id) ON DELETE CASCADE,
     dynamic_id uuid REFERENCES dynamics(id) ON DELETE CASCADE,
+    recipient_email citext,
+    comment_id uuid REFERENCES comments(id) ON DELETE CASCADE,
     status text NOT NULL DEFAULT 'pending',
     attempt_count smallint NOT NULL DEFAULT 0,
     next_attempt_at timestamptz NOT NULL DEFAULT now(),
@@ -585,12 +612,39 @@ CREATE TABLE email_deliveries (
     created_at timestamptz NOT NULL DEFAULT now(),
     sent_at timestamptz,
     CONSTRAINT email_deliveries_kind_valid
-        CHECK (kind IN ('confirm_subscription', 'article_published', 'dynamic_published')),
+        CHECK (
+            kind IN (
+                'confirm_subscription',
+                'article_published',
+                'dynamic_published',
+                'comment_reply'
+            )
+        ),
     CONSTRAINT email_deliveries_target_valid
         CHECK (
-            (kind = 'confirm_subscription' AND article_id IS NULL AND dynamic_id IS NULL)
-            OR (kind = 'article_published' AND article_id IS NOT NULL AND dynamic_id IS NULL)
-            OR (kind = 'dynamic_published' AND article_id IS NULL AND dynamic_id IS NOT NULL)
+            (kind = 'confirm_subscription' AND article_id IS NULL AND dynamic_id IS NULL AND comment_id IS NULL)
+            OR (kind = 'article_published' AND article_id IS NOT NULL AND dynamic_id IS NULL AND comment_id IS NULL)
+            OR (kind = 'dynamic_published' AND article_id IS NULL AND dynamic_id IS NOT NULL AND comment_id IS NULL)
+            OR (
+                kind = 'comment_reply'
+                AND comment_id IS NOT NULL
+                AND (article_id IS NOT NULL) <> (dynamic_id IS NOT NULL)
+            )
+        ),
+    CONSTRAINT email_deliveries_recipient_valid
+        CHECK (
+            (
+                kind = 'comment_reply'
+                AND subscriber_id IS NULL
+                AND recipient_email IS NOT NULL
+                AND char_length(recipient_email::text) BETWEEN 3 AND 254
+                AND position('@' IN recipient_email::text) > 1
+            )
+            OR (
+                kind <> 'comment_reply'
+                AND subscriber_id IS NOT NULL
+                AND recipient_email IS NULL
+            )
         ),
     CONSTRAINT email_deliveries_status_valid
         CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'cancelled', 'uncertain')),
@@ -614,6 +668,9 @@ CREATE UNIQUE INDEX email_deliveries_subscriber_dynamic_uidx
 CREATE UNIQUE INDEX email_deliveries_subscriber_confirmation_uidx
     ON email_deliveries (subscriber_id)
     WHERE kind = 'confirm_subscription';
+CREATE UNIQUE INDEX email_deliveries_comment_reply_uidx
+    ON email_deliveries (comment_id)
+    WHERE kind = 'comment_reply';
 CREATE INDEX email_deliveries_ready_idx
     ON email_deliveries (next_attempt_at, created_at)
     WHERE status IN ('pending', 'failed');

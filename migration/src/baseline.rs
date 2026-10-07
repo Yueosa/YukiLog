@@ -60,4 +60,29 @@ mod tests {
         assert!(media_drop < dynamics_drop);
         assert!(media_drop < assets_drop);
     }
+
+    #[test]
+    fn up_sql_media_assets_have_origin_columns() {
+        assert!(UP_SQL.contains("origin text NOT NULL DEFAULT 'upload'"));
+        assert!(UP_SQL.contains("source_url text"));
+        assert!(UP_SQL.contains("CHECK (origin IN ('upload', 'fetched'))"));
+    }
+
+    #[test]
+    fn up_sql_site_settings_have_appearance_and_hero() {
+        assert!(UP_SQL.contains("avatar_external_url text"));
+        assert!(UP_SQL.contains("masthead_media_id uuid REFERENCES media_assets(id)"));
+        assert!(UP_SQL.contains("hero_background_media_ids jsonb NOT NULL DEFAULT '[]'::jsonb"));
+        assert!(UP_SQL.contains("hero_quote text"));
+    }
+
+    #[test]
+    fn up_sql_email_deliveries_support_comment_reply() {
+        assert!(UP_SQL.contains("recipient_email citext"));
+        assert!(UP_SQL.contains("comment_id uuid REFERENCES comments(id) ON DELETE CASCADE"));
+        assert!(UP_SQL.contains("'comment_reply'"));
+        assert!(UP_SQL.contains("email_deliveries_comment_reply_uidx"));
+        // subscriber 对评论回复类型可空
+        assert!(UP_SQL.contains("subscriber_id uuid REFERENCES subscribers(id) ON DELETE CASCADE"));
+    }
 }
