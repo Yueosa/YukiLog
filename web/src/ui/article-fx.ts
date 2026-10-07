@@ -51,10 +51,12 @@ export function enhanceArticlePage(root: ParentNode): ArticleFx | null {
   };
 }
 
-/** h2 序号 + 悬停锚点（h3 只要锚点）。 */
+/** h2 序号 + 悬停锚点（h3 只要锚点）。容器块（分栏/折叠/callout/引用）里的
+ * 标题不进服务端 TOC，客户端编号必须同样跳过，否则两边序号对不上。 */
 function numberHeadings(prose: HTMLElement) {
   let index = 0;
   prose.querySelectorAll<HTMLHeadingElement>('h2, h3').forEach((heading) => {
+    if (heading.closest('.lm-cols, .lm-fold, .lm-callout, blockquote')) return;
     if (heading.tagName === 'H2') {
       index += 1;
       const no = document.createElement('span');
