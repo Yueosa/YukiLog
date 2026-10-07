@@ -559,3 +559,17 @@ fn nested_note_is_not_collected() {
     let doc = parse("外层[^旁注里有 [^嵌套] 内容]收尾\n");
     assert_eq!(doc.notes.len(), 1, "嵌套旁注不应产生第二条: {:?}", doc.notes);
 }
+
+#[test]
+fn table_cell_with_pipe_inside_code_span() {
+    // `|||` 这样的 cell 内容不能把行切碎
+    let out = html("| 语法 | 用途 |\n|-|-|\n| `|||` + `===` | 分栏块 |\n");
+    assert!(out.contains("<code>|||</code> + <code>===</code>"));
+    assert!(out.contains("<td><code>|||</code> + <code>===</code></td><td>分栏块</td>"));
+}
+
+#[test]
+fn table_cell_with_escaped_pipe() {
+    let out = html("| a | b |\n|-|-|\n| x \\| y | z |\n");
+    assert!(out.contains("<td>x | y</td><td>z</td>"), "{}", out);
+}

@@ -374,7 +374,7 @@ impl Parser {
 
     fn parse_table(&mut self, lines: &[&str], start: usize, out: &mut String) -> usize {
         let headers = split_row(lines[start]);
-        let mut rows: Vec<Vec<&str>> = Vec::new();
+        let mut rows: Vec<Vec<String>> = Vec::new();
         let mut i = start + 2;
         while i < lines.len() && lines[i].starts_with('|') && !lines[i].trim().is_empty() {
             rows.push(split_row(lines[i]));
@@ -383,7 +383,7 @@ impl Parser {
         out.push_str("<table><thead><tr>");
         for h in headers {
             out.push_str("<th>");
-            out.push_str(&self.parse_inline(h));
+            out.push_str(&self.parse_inline(&h));
             out.push_str("</th>");
         }
         out.push_str("</tr></thead><tbody>");
@@ -391,7 +391,7 @@ impl Parser {
             out.push_str("<tr>");
             for cell in row {
                 out.push_str("<td>");
-                out.push_str(&self.parse_inline(cell));
+                out.push_str(&self.parse_inline(&cell));
                 out.push_str("</td>");
             }
             out.push_str("</tr>");
@@ -534,11 +534,38 @@ fn table_separator(line: &str) -> Option<usize> {
     }
 }
 
-fn split_row(line: &str) -> Vec<&str> {
+/// 表格行切分：行内代码 `` ` `` 里的 `|` 与转义的 `\|` 都不是分隔符
+fn split_row(line: &str) -> Vec<String> {
     let t = line.trim();
     let t = t.strip_prefix('|').unwrap_or(t);
     let t = t.strip_suffix('|').unwrap_or(t);
-    t.split('|').map(str::trim).collect()
+    let mut cells = Vec::new();
+    let mut current = String::new();
+    let mut in_code = false;
+    let mut chars = t.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => {
+                // 转义序列原样保留（交行内解析）；紧随的 | 不当分隔符
+                current.push('\\');
+                if let Some(&next) = chars.peek() {
+                    current.push(next);
+                    chars.next();
+                }
+            }
+            '`' => {
+                in_code = !in_code;
+                current.push('`');
+            }
+            '|' if !in_code => {
+                cells.push(current.trim().to_owned());
+                current = String::new();
+            }
+            _ => current.push(c),
+        }
+    }
+    cells.push(current.trim().to_owned());
+    cells
 }
 
 /// 判断一行是否是块级起点 (段落合并时用于断行)
