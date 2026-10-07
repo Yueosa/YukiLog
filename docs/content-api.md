@@ -22,7 +22,15 @@
   `parent_id`（楼中楼父评论）、`email`、`website`、`user_agent`（评论表不存
   IP，无从返回）；
 - `/api/admin/friend-links`、`/api/admin/friend-links/{id}`：友链 CRUD；
-- `GET /api/admin/media`：媒体选择列表；
+- `GET /api/admin/media`：媒体选择列表（含 `origin`（`upload`/`fetched`）与
+  `source_url` 字段）；
+- `POST /api/admin/media/fetch-url`：从外链 URL 拉取图片入库（body: `{url}`）。
+  SSRF 防护：仅 `http(s)`、禁止 URL 凭据、域名解析后逐 IP 拒绝内网/保留地址
+  （含 CGNAT 100.64/10 与组播）、手动跟随重定向（每跳重新校验，最多 3 跳）、
+  15MB 上限、文件魔数与上传同一探测；入库媒体 `origin='fetched'` 且记录
+  `source_url`，内容相同自动去重复用；
+- `GET /api/admin/media/external-refs`：实时扫描文章/动态正文的
+  `![alt](http...)` 外链图片，按 URL 归组返回 `usages`（kind/id/label）；
 - `DELETE /api/admin/media/{id}`：删除媒体记录并尝试删除磁盘文件。仍被引用时
   返回 `409` 与 `references` 引用清单（文章封面 `article_cover`、动态配图
   `dynamic_media`、站点头像 `site_avatar`、刊头背景 `site_masthead`、友链头像
