@@ -484,21 +484,57 @@ fn span_spec_without_dot_falls_back() {
     assert!(out.contains("[文字]{不是类名}"));
 }
 
-// ---------- 示例块 ----------
+// ---------- 分栏块 ----------
 
 #[test]
-fn example_block_shows_source_and_render() {
-    let out = html(":::\n**加粗**\n:::\n");
-    assert!(out.contains("<div class=\"lm-example\">"));
-    assert!(out.contains("<pre class=\"lm-example-source\">**加粗**</pre>"));
+fn cols_block_renders_segments_as_columns() {
+    let out = html("|||\n左栏 **加粗**\n\n===\n右栏 *斜体*\n|||\n");
+    assert!(out.contains("<div class=\"lm-cols\">"));
+    assert_eq!(out.matches("<div class=\"lm-col\">").count(), 2);
     assert!(out.contains("<strong>加粗</strong>"));
+    assert!(out.contains("<em>斜体</em>"));
 }
 
 #[test]
-fn example_headings_do_not_pollute_toc() {
-    let doc = parse("# 真标题\n\n:::\n## 示例标题\n:::\n");
+fn cols_block_supports_three_columns() {
+    let out = html("|||\n一\n===\n二\n===\n三\n|||\n");
+    assert_eq!(out.matches("<div class=\"lm-col\">").count(), 3);
+}
+
+#[test]
+fn cols_block_unclosed_runs_to_eof() {
+    let out = html("|||\n左\n===\n右\n");
+    assert!(out.contains("<div class=\"lm-cols\">"));
+}
+
+#[test]
+fn cols_separator_only_at_line_start() {
+    // 行中的 === 只是文本
+    let out = html("|||\n公式 a === b\n|||\n");
+    assert!(out.contains("公式 a === b"));
+    assert_eq!(out.matches("<div class=\"lm-col\">").count(), 1);
+}
+
+#[test]
+fn cols_headings_do_not_pollute_toc() {
+    let doc = parse("# 真标题\n\n|||\n## 栏内标题\n===\n正文\n|||\n\n## 顶层二\n");
     assert_eq!(doc.toc.len(), 1);
     assert_eq!(doc.toc[0].text, "真标题");
+    assert_eq!(doc.toc[0].children.len(), 1);
+    assert_eq!(doc.toc[0].children[0].text, "顶层二");
+    // 栏内标题不带锚点
+    assert!(doc.html.contains("<h2>栏内标题</h2>"));
+}
+
+#[test]
+fn headings_in_containers_get_no_id() {
+    // 折叠块/callout/引用里的标题同样只是嵌入内容
+    let doc = parse("# 顶层\n\n>>> 折叠\n## 折叠内标题\n<<<\n\n## 顶层二\n");
+    assert_eq!(doc.toc.len(), 1);
+    assert_eq!(doc.toc[0].children.len(), 1);
+    assert!(doc.html.contains("<h1 id=\"h-1\">顶层</h1>"));
+    assert!(doc.html.contains("<h2 id=\"h-2\">顶层二</h2>"));
+    assert!(doc.html.contains("<h2>折叠内标题</h2>"));
 }
 
 // ---------- 幕间转换线 ----------

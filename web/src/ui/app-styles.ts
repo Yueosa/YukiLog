@@ -1587,8 +1587,7 @@ export const appStyles = css`
       background: rgb(28 39 51 / 6%);
     }
 
-    .prose .lm-verbatim:hover .copy-chip,
-    .prose .lm-example-source:hover .copy-chip {
+    .prose .lm-verbatim:hover .copy-chip {
       opacity: 1;
     }
 
@@ -1674,10 +1673,11 @@ export const appStyles = css`
       cursor: zoom-in;
     }
 
-    /* ::: 示例块：原文 | 效果 */
-    .prose .lm-example {
+    /* ||| 分栏块：段数即栏数，布局归 CSS */
+    .prose .lm-cols {
       display: grid;
-      grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+      grid-auto-flow: column;
+      grid-auto-columns: 1fr;
       margin: 1.9em 0;
       overflow: hidden;
       border: 1px solid var(--line);
@@ -1685,54 +1685,22 @@ export const appStyles = css`
       background: var(--surface);
     }
 
-    .prose .lm-example-source {
-      position: relative;
-      margin: 0;
-      padding: 16px;
-      overflow-x: auto;
-      border-right: 1px dashed var(--line);
-      border-radius: 0;
-      background: var(--surface-soft);
-      color: var(--muted);
-      font-size: 12.5px;
-      line-height: 1.85;
-      box-shadow: none;
-    }
-
-    .prose .lm-example-source::after {
-      content: 'SRC';
-      position: absolute;
-      top: 8px;
-      right: 10px;
-      color: var(--faint);
-      font-size: 9px;
-      letter-spacing: 0.18em;
-    }
-
-    .prose .lm-example-render {
-      position: relative;
+    .prose .lm-col {
       min-width: 0;
       padding: 14px 18px;
       font-size: 15px;
       line-height: 1.9;
     }
 
-    .prose .lm-example-render::after {
-      content: '效果';
-      position: absolute;
-      top: 8px;
-      right: 12px;
-      color: var(--faint);
-      font-family: var(--mono);
-      font-size: 9px;
-      letter-spacing: 0.18em;
+    .prose .lm-col + .lm-col {
+      border-left: 1px dashed var(--line);
     }
 
-    .prose .lm-example-render > *:first-child {
+    .prose .lm-col > *:first-child {
       margin-top: 0;
     }
 
-    .prose .lm-example-render > *:last-child {
+    .prose .lm-col > *:last-child {
       margin-bottom: 0;
     }
 
@@ -2991,13 +2959,14 @@ export const appStyles = css`
         height: 235px;
       }
 
-      .prose .lm-example {
-        grid-template-columns: 1fr;
+      .prose .lm-cols {
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
       }
 
-      .prose .lm-example-source {
-        border-right: 0;
-        border-bottom: 1px dashed var(--line);
+      .prose .lm-col + .lm-col {
+        border-top: 1px dashed var(--line);
+        border-left: 0;
       }
 
       .lb-hint {

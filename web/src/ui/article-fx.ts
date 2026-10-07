@@ -100,7 +100,7 @@ function wrapCodeBlocks(prose: HTMLElement) {
 
 /** 原样块 / 示例块原文栏：悬停复制角标（写法就是要给人抄的）。 */
 function addCopyChips(prose: HTMLElement) {
-  prose.querySelectorAll<HTMLElement>('pre.lm-verbatim, pre.lm-example-source').forEach((pre) => {
+  prose.querySelectorAll<HTMLElement>('pre.lm-verbatim').forEach((pre) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy-chip';

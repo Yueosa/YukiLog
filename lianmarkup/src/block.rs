@@ -25,8 +25,8 @@ impl Parser {
                 i = self.parse_code_fence(&lines, i, &mut out);
             } else if line.starts_with("~~~") {
                 i = self.parse_verbatim(&lines, i, &mut out);
-            } else if line.trim() == ":::" {
-                i = self.parse_example(&lines, i, &mut out);
+            } else if line.trim() == "|||" {
+                i = self.parse_cols(&lines, i, &mut out);
             } else if line.trim() == "$$" {
                 i = self.parse_math_block(&lines, i, &mut out);
             } else if let Some((open, summary)) = fold_header(line) {
@@ -46,8 +46,8 @@ impl Parser {
                 out.push_str("<hr class=\"lm-break\">\n");
                 i += 1;
             } else if is_toc_directive(line) {
-                // 示例块里的 @toc 只是演示, 不影响真实目录
-                if !self.in_example {
+                // 容器块里的 @toc 只是嵌入内容, 不影响真实目录
+                if self.container_depth == 0 {
                     self.toc_depth = toc_directive_depth(line);
                 }
                 i += 1;
@@ -115,26 +115,36 @@ impl Parser {
         i
     }
 
-    /// 示例块 `:::`: 一份源码双份呈现 —— 原文栏 + 渲染栏, 布局归 CSS
-    fn parse_example(&mut self, lines: &[&str], start: usize, out: &mut String) -> usize {
-        let mut body: Vec<&str> = Vec::new();
+    /// 分栏块: `|||` 围栏, `===` 分栏, 栏数 = 段数, 布局归 CSS
+    fn parse_cols(&mut self, lines: &[&str], start: usize, out: &mut String) -> usize {
+        let mut segments: Vec<Vec<&str>> = vec![Vec::new()];
         let mut i = start + 1;
         while i < lines.len() {
-            if lines[i].trim() == ":::" {
+            let line = lines[i];
+            if line.trim() == "|||" {
                 i += 1;
                 break;
             }
-            body.push(lines[i]);
+            if line.trim() == "===" {
+                segments.push(Vec::new());
+                i += 1;
+                continue;
+            }
+            segments
+                .last_mut()
+                .expect("segments always non-empty")
+                .push(line);
             i += 1;
         }
-        let source = body.join("\n");
-        out.push_str("<div class=\"lm-example\"><pre class=\"lm-example-source\">");
-        out.push_str(&escape_html(&source));
-        out.push_str("</pre><div class=\"lm-example-render\">");
-        self.in_example = true;
-        out.push_str(&self.parse_blocks(&source));
-        self.in_example = false;
-        out.push_str("</div></div>\n");
+        out.push_str("<div class=\"lm-cols\">");
+        for segment in &segments {
+            out.push_str("<div class=\"lm-col\">");
+            self.container_depth += 1;
+            out.push_str(&self.parse_blocks(&segment.join("\n")));
+            self.container_depth -= 1;
+            out.push_str("</div>");
+        }
+        out.push_str("</div>\n");
         i
     }
 
@@ -197,7 +207,9 @@ impl Parser {
                 i += 1;
             }
         }
+        self.container_depth += 1;
         let inner = self.parse_blocks(&content.join("\n"));
+        self.container_depth -= 1;
         out.push_str("<details class=\"lm-fold\"");
         if open {
             out.push_str(" open");
@@ -240,7 +252,9 @@ impl Parser {
         out.push_str(&self.parse_inline(title));
         out.push_str("</p>");
         if !body.is_empty() {
+            self.container_depth += 1;
             out.push_str(&self.parse_blocks(&body.join("\n")));
+            self.container_depth -= 1;
         }
         out.push_str("</div>\n");
         i
@@ -262,25 +276,35 @@ impl Parser {
             }
         }
         out.push_str("<blockquote>");
+        self.container_depth += 1;
         out.push_str(&self.parse_blocks(&content.join("\n")));
+        self.container_depth -= 1;
         out.push_str("</blockquote>\n");
         i
     }
 
     fn emit_heading(&mut self, level: u8, text: &str, out: &mut String) {
         let (text, custom_id) = split_custom_id(text);
-        self.heading_count += 1;
-        let id = custom_id.unwrap_or_else(|| format!("h-{}", self.heading_count));
         let inner = self.parse_inline(text);
-        // 示例块里的标题只是演示, 不进目录
-        if !self.in_example {
+        // 只有顶层标题分配锚点并进目录; 容器块里的标题只是嵌入内容
+        if self.container_depth == 0 {
+            self.heading_count += 1;
+            let id = custom_id.unwrap_or_else(|| format!("h-{}", self.heading_count));
             self.headings.push((level, plain_text(&inner), id.clone()));
+            out.push_str("<h");
+            out.push(char::from(b'0' + level));
+            out.push_str(" id=\"");
+            out.push_str(&escape_html(&id));
+            out.push_str("\">");
+            out.push_str(&inner);
+            out.push_str("</h");
+            out.push(char::from(b'0' + level));
+            out.push_str(">\n");
+            return;
         }
         out.push_str("<h");
         out.push(char::from(b'0' + level));
-        out.push_str(" id=\"");
-        out.push_str(&escape_html(&id));
-        out.push_str("\">");
+        out.push('>');
         out.push_str(&inner);
         out.push_str("</h");
         out.push(char::from(b'0' + level));
@@ -522,7 +546,7 @@ fn is_block_start(lines: &[&str], i: usize) -> bool {
     let line = lines[i];
     line.starts_with("```")
         || line.starts_with("~~~")
-        || line.trim() == ":::"
+        || line.trim() == "|||"
         || line.trim() == "$$"
         || fold_header(line).is_some()
         || callout_header(line).is_some()

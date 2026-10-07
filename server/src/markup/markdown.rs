@@ -224,12 +224,11 @@ mod tests {
     }
 
     #[test]
-    fn example_block_and_inline_container_survive_sanitizer() {
-        let source = "::: \n**加粗**\n:::\n\n[抖动]{.shake} 和 [渐变]{.gradient from=#ff6b6b to=#4ecdc4}\n";
+    fn cols_block_and_inline_container_survive_sanitizer() {
+        let source = "|||\n左\n\n===\n右\n|||\n\n[抖动]{.shake} 和 [渐变]{.gradient from=#ff6b6b to=#4ecdc4}\n";
         let rendered = render(source);
-        assert!(rendered.html.contains("class=\"lm-example\""), "{}", rendered.html);
-        assert!(rendered.html.contains("lm-example-source"), "{}", rendered.html);
-        assert!(rendered.html.contains("lm-example-render"), "{}", rendered.html);
+        assert!(rendered.html.contains("class=\"lm-cols\""), "{}", rendered.html);
+        assert_eq!(rendered.html.matches("class=\"lm-col\"").count(), 2, "{}", rendered.html);
         assert!(rendered.html.contains("class=\"lm-shake\""), "{}", rendered.html);
         assert!(rendered.html.contains("--from:#ff6b6b"), "{}", rendered.html);
     }
