@@ -4561,8 +4561,33 @@ export const appStyles = css`
       font-size: 11px;
     }
 
-    /* 宽松预设 */
-    @media (min-width: 1340px) {
+    /* 布局切换动画：三栏宽度/位置平滑过渡 */
+    @media (min-width: 1340px) and (prefers-reduced-motion: no-preference) {
+      .inner-page {
+        transition:
+          width 380ms cubic-bezier(0.22, 0.75, 0.28, 1),
+          max-width 380ms cubic-bezier(0.22, 0.75, 0.28, 1);
+      }
+
+      .article-page {
+        transition: width 380ms cubic-bezier(0.22, 0.75, 0.28, 1);
+      }
+
+      .post-toc {
+        transition:
+          right 380ms cubic-bezier(0.22, 0.75, 0.28, 1),
+          width 380ms cubic-bezier(0.22, 0.75, 0.28, 1);
+      }
+
+      .post-notes {
+        transition:
+          left 380ms cubic-bezier(0.22, 0.75, 0.28, 1),
+          width 380ms cubic-bezier(0.22, 0.75, 0.28, 1);
+      }
+    }
+
+    /* 宽松预设（880 正文 + 双栏外扩需要 ~1472px，低于 1500px 视口回退紧凑几何） */
+    @media (min-width: 1500px) {
       .article-page[data-layout='wide'] {
         width: min(880px, 100%);
       }
@@ -4576,10 +4601,11 @@ export const appStyles = css`
         left: calc(100% + 46px);
         width: 270px;
       }
+    }
 
-      /* 全宽预设：inner-page 放开上限 */
-      .inner-page:has(.article-page[data-layout='full-compact']),
-      .inner-page:has(.article-page[data-layout='full-balance']) {
+    /* 全宽预设：inner-page 放开上限（18/60/18 等分, 居天然平衡） */
+    @media (min-width: 1340px) {
+      .inner-page:has(.article-page[data-layout='full-compact']) {
         width: calc(100% - 72px);
         max-width: none;
       }
@@ -4596,20 +4622,6 @@ export const appStyles = css`
       .article-page[data-layout='full-compact'] .post-notes {
         left: calc(100% + 3.4%);
         width: 30%;
-      }
-
-      .article-page[data-layout='full-balance'] {
-        width: 50%;
-      }
-
-      .article-page[data-layout='full-balance'] .post-toc {
-        right: calc(100% + 4%);
-        width: 56%;
-      }
-
-      .article-page[data-layout='full-balance'] .post-notes {
-        left: calc(100% + 4%);
-        width: 36%;
       }
     }
 

@@ -114,7 +114,7 @@ export class YukiApp extends LitElement {
   private previousPath: string | null = null;
 
   /** 文章页阅读布局预设（宽屏可切换，localStorage 持久化）。 */
-  private layoutChoice = localStorage.getItem('yukilog-article-layout') ?? 'default';
+  private layoutChoice = localStorage.getItem('yukilog-article-layout') ?? 'wide';
   private layoutMenuOpen = false;
   private revealInstant = false;
   private quoteRefreshBusy = false;
@@ -703,8 +703,9 @@ export class YukiApp extends LitElement {
     this.layoutMenuOpen = false;
     localStorage.setItem('yukilog-article-layout', key);
     this.requestUpdate();
-    // 布局变化后旁注需要重新对齐（等 DOM 应用后）
-    window.setTimeout(() => this.articleFx?.relayout(), 80);
+    // 布局变化后旁注需要重新对齐（过渡动画 380ms，中途一次+结束后一次）
+    window.setTimeout(() => this.articleFx?.relayout(), 120);
+    window.setTimeout(() => this.articleFx?.relayout(), 440);
   }
 
   /** 文章页阅读进度：写进左栏目录的进度轨与已读百分比（DOM 直写不重渲染）。
@@ -3300,10 +3301,9 @@ export class YukiApp extends LitElement {
               <div class="layout-menu" role="menu">
                 <p class="layout-menu-kicker">阅读布局</p>
                 ${[
-                  ['default', '默认', '紧凑三栏 · 720px 正文'],
-                  ['wide', '宽松', '880px 正文'],
-                  ['full-compact', '全宽 · 紧凑', '18 / 60 / 18'],
-                  ['full-balance', '全宽 · 均衡', '28 / 50 / 18'],
+                  ['default', '紧凑', '720px 正文'],
+                  ['wide', '宽松', '880px 正文（≥1500px 视口生效）'],
+                  ['full-compact', '全宽', '18 / 60 / 18 三栏'],
                 ].map(
                   ([key, name, desc]) => html`<button
                     class="layout-option${this.layoutChoice === key ? ' active' : ''}"
