@@ -116,6 +116,7 @@ fn sanitize(html: &str) -> String {
         .link_rel(Some("noopener noreferrer"))
         .add_tags(["input", "section", "span", "details", "summary", "ruby", "rp", "rt"])
         .add_tag_attributes("input", ["type", "checked", "disabled"])
+        .add_tag_attributes("details", ["open"])
         .add_tag_attributes("pre", ["style"])
         .add_tag_attributes("span", ["style"])
         .add_tag_attributes("div", ["data-kind"])
@@ -172,6 +173,13 @@ mod tests {
         assert!(rendered.html.contains("<details class=\"lm-fold\""));
         assert!(rendered.html.contains("class=\"lm-spoiler\""));
         assert!(rendered.html.contains("<ruby class=\"lm-ruby\">"));
+    }
+
+    #[test]
+    fn fold_open_marker_survives_sanitizer() {
+        let rendered = render(">>>+ 默认展开\n内容\n<<<\n");
+        // ammonia 把布尔属性序列化为 open=""，存在即展开
+        assert!(rendered.html.contains("<details class=\"lm-fold\" open=\"\">"), "{}", rendered.html);
     }
 
     #[test]
