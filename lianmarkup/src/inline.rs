@@ -83,6 +83,8 @@ impl Parser {
                     // 双方括号不是语法, 靠回退规则原样输出
                     if let Some(end) = self.link(&chars, i, &mut out) {
                         i = end;
+                    } else if let Some(end) = self.span(&chars, i, &mut out) {
+                        i = end;
                     } else {
                         push_escaped(&mut out, c);
                         i += 1;
@@ -256,6 +258,25 @@ impl Parser {
         Some(url_close + 1)
     }
 
+    /// `[文字]{.class k=v}`: 行内容器, 渲染为 lm- 类名的 span, 参数变 CSS 自定义属性
+    fn span(&mut self, chars: &[char], i: usize, out: &mut String) -> Option<usize> {
+        let text_close = find_close_bracket(chars, i + 1)?;
+        if text_close == i + 1 || chars.get(text_close + 1) != Some(&'{') {
+            return None;
+        }
+        let attr_close = find_close(chars, text_close + 2, &['}'])?;
+        let (class, style) = parse_span_spec(&slice(chars, text_close + 2, attr_close))?;
+        let inner = self.parse_inline(&slice(chars, i + 1, text_close));
+        out.push_str("<span class=\"lm-");
+        out.push_str(&class);
+        out.push('"');
+        out.push_str(&style);
+        out.push('>');
+        out.push_str(&inner);
+        out.push_str("</span>");
+        Some(attr_close + 1)
+    }
+
     /// `$...$` 行内公式: 原样保留 TeX。内容首尾是空格则不生效 (价格等场景靠这条兜底)
     fn math(&mut self, chars: &[char], i: usize, out: &mut String) -> Option<usize> {
         let close = find_close(chars, i + 1, &['$'])?;
@@ -369,4 +390,36 @@ fn parse_img_attrs(text: &str) -> String {
         }
     }
     out
+}
+
+/// 行内容器声明 `{.class k=v ...}` → (类名, style 属性串), 首 token 不以 `.` 开头则不是类
+fn parse_span_spec(spec: &str) -> Option<(String, String)> {
+    let is_key = |k: &str| {
+        !k.is_empty()
+            && k.chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    };
+    let mut tokens = spec.split_whitespace();
+    let class = tokens.next()?.strip_prefix('.')?;
+    if !is_key(class) {
+        return None;
+    }
+    let mut props = String::new();
+    for tok in tokens {
+        let (key, value) = tok.split_once('=')?;
+        if !is_key(key) {
+            return None;
+        }
+        props.push_str("--");
+        props.push_str(key);
+        props.push(':');
+        props.push_str(&escape_html(value));
+        props.push(';');
+    }
+    let style = if props.is_empty() {
+        String::new()
+    } else {
+        format!(" style=\"{}\"", props.trim_end_matches(';'))
+    };
+    Some((class.to_string(), style))
 }

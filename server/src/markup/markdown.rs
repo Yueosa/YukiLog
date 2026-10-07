@@ -183,6 +183,23 @@ mod tests {
     }
 
     #[test]
+    fn example_block_and_inline_container_survive_sanitizer() {
+        let source = "::: \n**加粗**\n:::\n\n[抖动]{.shake} 和 [渐变]{.gradient from=#ff6b6b to=#4ecdc4}\n";
+        let rendered = render(source);
+        assert!(rendered.html.contains("class=\"lm-example\""), "{}", rendered.html);
+        assert!(rendered.html.contains("lm-example-source"), "{}", rendered.html);
+        assert!(rendered.html.contains("lm-example-render"), "{}", rendered.html);
+        assert!(rendered.html.contains("class=\"lm-shake\""), "{}", rendered.html);
+        assert!(rendered.html.contains("--from:#ff6b6b"), "{}", rendered.html);
+    }
+
+    #[test]
+    fn heavy_break_survives_sanitizer() {
+        let rendered = render("上一幕\n\n___\n\n下一幕\n");
+        assert!(rendered.html.contains("<hr class=\"lm-break\">"), "{}", rendered.html);
+    }
+
+    #[test]
     fn notes_are_returned_for_rail_rendering() {
         let rendered = render("正文[^一条旁注]继续\n");
         assert!(rendered.html.contains("class=\"lm-noteref\""), "{}", rendered.html);

@@ -73,6 +73,8 @@ pub(crate) struct Parser {
     pub headings: Vec<(u8, String, String)>,
     /// `@toc depth=N` 指令, 默认收集全部六级
     pub toc_depth: Option<u8>,
+    /// 示例块渲染栏: 其中的标题不进目录、@toc 不生效
+    pub in_example: bool,
 }
 
 impl Parser {

@@ -25,6 +25,8 @@ impl Parser {
                 i = self.parse_code_fence(&lines, i, &mut out);
             } else if line.starts_with("~~~") {
                 i = self.parse_verbatim(&lines, i, &mut out);
+            } else if line.trim() == ":::" {
+                i = self.parse_example(&lines, i, &mut out);
             } else if line.trim() == "$$" {
                 i = self.parse_math_block(&lines, i, &mut out);
             } else if let Some((open, summary)) = fold_header(line) {
@@ -44,7 +46,10 @@ impl Parser {
                 out.push_str("<hr class=\"lm-break\">\n");
                 i += 1;
             } else if is_toc_directive(line) {
-                self.toc_depth = toc_directive_depth(line);
+                // 示例块里的 @toc 只是演示, 不影响真实目录
+                if !self.in_example {
+                    self.toc_depth = toc_directive_depth(line);
+                }
                 i += 1;
             } else if list_item(line).is_some() {
                 i = self.parse_list(&lines, i, &mut out);
@@ -107,6 +112,29 @@ impl Parser {
         out.push_str("<pre class=\"lm-verbatim\">");
         out.push_str(&escape_html(&body.join("\n")));
         out.push_str("</pre>\n");
+        i
+    }
+
+    /// 示例块 `:::`: 一份源码双份呈现 —— 原文栏 + 渲染栏, 布局归 CSS
+    fn parse_example(&mut self, lines: &[&str], start: usize, out: &mut String) -> usize {
+        let mut body: Vec<&str> = Vec::new();
+        let mut i = start + 1;
+        while i < lines.len() {
+            if lines[i].trim() == ":::" {
+                i += 1;
+                break;
+            }
+            body.push(lines[i]);
+            i += 1;
+        }
+        let source = body.join("\n");
+        out.push_str("<div class=\"lm-example\"><pre class=\"lm-example-source\">");
+        out.push_str(&escape_html(&source));
+        out.push_str("</pre><div class=\"lm-example-render\">");
+        self.in_example = true;
+        out.push_str(&self.parse_blocks(&source));
+        self.in_example = false;
+        out.push_str("</div></div>\n");
         i
     }
 
@@ -244,7 +272,10 @@ impl Parser {
         self.heading_count += 1;
         let id = custom_id.unwrap_or_else(|| format!("h-{}", self.heading_count));
         let inner = self.parse_inline(text);
-        self.headings.push((level, plain_text(&inner), id.clone()));
+        // 示例块里的标题只是演示, 不进目录
+        if !self.in_example {
+            self.headings.push((level, plain_text(&inner), id.clone()));
+        }
         out.push_str("<h");
         out.push(char::from(b'0' + level));
         out.push_str(" id=\"");
@@ -491,6 +522,7 @@ fn is_block_start(lines: &[&str], i: usize) -> bool {
     let line = lines[i];
     line.starts_with("```")
         || line.starts_with("~~~")
+        || line.trim() == ":::"
         || line.trim() == "$$"
         || fold_header(line).is_some()
         || callout_header(line).is_some()
