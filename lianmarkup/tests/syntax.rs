@@ -71,6 +71,12 @@ fn inline_basic_styles() {
 }
 
 #[test]
+fn inline_bold_italic() {
+    let out = html("***粗斜体***\n");
+    assert!(out.contains("<strong><em>粗斜体</em></strong>"));
+}
+
+#[test]
 fn unpaired_delimiter_falls_back() {
     // 规范 0x01: 不配对的 * 原样输出
     let out = html("2*3=6 不是斜体\n");
@@ -185,8 +191,8 @@ fn ruby_escaped_pipe() {
 }
 
 #[test]
-fn wiki_link_falls_back_v1() {
-    // [[slug]] v1 不实现, 原样输出
+fn double_bracket_falls_back() {
+    // 双方括号不是语法, 原样输出
     let out = html("参见 [[other-post]] 和 [[a|b]]\n");
     assert!(out.contains("[[other-post]]"));
     assert!(!out.contains("<a href"));
@@ -416,4 +422,61 @@ fn document_serializes_to_contract_shape() {
     assert_eq!(json["toc"][0]["level"], 1);
     assert_eq!(json["notes"][0]["anchor"], "note-1");
     assert_eq!(json["notes"][0]["index"], 1);
+}
+
+// ---------- 注释 ----------
+
+#[test]
+fn comment_line_is_not_rendered() {
+    let out = html("// 这行是注释\n可见文本\n");
+    assert!(!out.contains("这行是注释"));
+    assert!(out.contains("可见文本"));
+}
+
+#[test]
+fn comment_inside_paragraph_is_skipped() {
+    let out = html("第一段\n// 插入的注释\n第二行\n");
+    assert!(out.contains("<p>第一段\n第二行</p>"));
+}
+
+#[test]
+fn comment_inside_code_fence_is_preserved() {
+    let out = html("```\n// 代码里的注释要保留\n```\n");
+    assert!(out.contains("// 代码里的注释要保留"));
+}
+
+#[test]
+fn comment_inside_quote_is_skipped() {
+    let out = html("> // 引用里的悄悄话\n> 可见内容\n");
+    assert!(out.contains("可见内容"));
+    assert!(!out.contains("悄悄话"));
+}
+
+
+// ---------- 幕间转换线 ----------
+
+#[test]
+fn heavy_break_renders_lm_break() {
+    let out = html("上一幕\n\n___\n\n下一幕\n");
+    assert!(out.contains("<hr class=\"lm-break\">"));
+}
+
+#[test]
+fn heavy_break_inside_paragraph_splits() {
+    let out = html("第一段\n___\n第二段\n");
+    assert!(out.contains("<hr class=\"lm-break\">"));
+    assert!(out.contains("<p>第一段</p>"));
+    assert!(out.contains("<p>第二段</p>"));
+}
+
+
+#[test]
+fn note_with_nested_link_keeps_full_content() {
+    // first-post.ly 踩到的真 bug: 旁注里嵌链接, 闭合 ] 必须按深度配对
+    let doc = parse("正文[^备注里有 [GitHub](https://example.com) 链接]收尾\n");
+    assert_eq!(doc.notes.len(), 1);
+    assert!(doc.notes[0].html.contains("<a href=\"https://example.com\">GitHub</a>"));
+    assert!(doc.notes[0].html.contains("链接"));
+    assert!(doc.html.contains("收尾"));
+    assert!(!doc.html.contains("https://example.com)"));
 }

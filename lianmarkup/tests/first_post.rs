@@ -23,7 +23,7 @@ fn first_post_covers_core_constructs() {
     // front matter 被剥离
     assert!(!doc.html.contains("slug: hello-lianmarkup"));
     // 标题锚点 h-N 顺序分配
-    assert!(doc.html.contains("<h1 id=\"h-1\">LianMarkup 语法漫游</h1>"));
+    assert!(doc.html.contains("<h1 id=\"h-1\">LianMarkup 语法一览</h1>"));
     // 旁注引用点与收集
     assert!(doc.html.contains("href=\"#note-1\""));
     assert_eq!(doc.notes[0].anchor, "note-1");
@@ -36,4 +36,5 @@ fn first_post_covers_core_constructs() {
     assert!(doc.html.contains("lm-ruby"), "应有注音");
     assert!(doc.html.contains("<table>"), "应有表格");
     assert!(doc.html.contains("<hr>"), "应有分割线");
+    assert!(doc.html.contains("lm-mermaid"), "应有 mermaid 图");
 }

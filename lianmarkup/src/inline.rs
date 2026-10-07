@@ -28,7 +28,9 @@ impl Parser {
                     }
                 }
                 '*' => {
-                    if let Some(end) = self.paired(&chars, i, &['*', '*'], "strong", &mut out) {
+                    if let Some(end) = self.bold_italic(&chars, i, &mut out) {
+                        i = end;
+                    } else if let Some(end) = self.paired(&chars, i, &['*', '*'], "strong", &mut out) {
                         i = end;
                     } else if let Some(end) = self.paired(&chars, i, &['*'], "em", &mut out) {
                         i = end;
@@ -78,7 +80,7 @@ impl Parser {
                     }
                 }
                 '[' => {
-                    // `[[slug]]` 站内链接 v1 不实现, 靠回退规则原样输出
+                    // 双方括号不是语法, 靠回退规则原样输出
                     if let Some(end) = self.link(&chars, i, &mut out) {
                         i = end;
                     } else {
@@ -109,6 +111,22 @@ impl Parser {
             }
         }
         out
+    }
+
+    /// `***粗斜体***`: 渲染为 <strong><em> 嵌套, 先于 `**` 尝试
+    fn bold_italic(&mut self, chars: &[char], i: usize, out: &mut String) -> Option<usize> {
+        if chars[i..].len() < 3 || chars[i..i + 3] != ['*', '*', '*'] {
+            return None;
+        }
+        let close = find_close(chars, i + 3, &['*', '*', '*'])?;
+        if close == i + 3 {
+            return None;
+        }
+        let inner = self.parse_inline(&slice(chars, i + 3, close));
+        out.push_str("<strong><em>");
+        out.push_str(&inner);
+        out.push_str("</em></strong>");
+        Some(close + 3)
     }
 
     /// 行内代码: 内部不解析任何语法
@@ -198,7 +216,8 @@ impl Parser {
 
     /// `[^备注内容]` 旁注: 正文处输出上标引用点, 内容收进 Document.notes
     fn note(&mut self, chars: &[char], i: usize, out: &mut String) -> Option<usize> {
-        let close = find_close(chars, i + 2, &[']'])?;
+        // 内容里可能嵌套 [链接](url), 闭合括号要按方括号深度配对
+        let close = find_close_bracket(chars, i + 2)?;
         if close == i + 2 {
             return None;
         }
@@ -289,6 +308,30 @@ fn find_close(chars: &[char], from: usize, delim: &[char]) -> Option<usize> {
         }
         if chars[i..i + delim.len()] == *delim {
             return Some(i);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// 从 from 开始找与 `[` 配对的 `]`: 嵌套方括号计深度, 转义符跳过
+fn find_close_bracket(chars: &[char], from: usize) -> Option<usize> {
+    let mut depth = 1usize;
+    let mut i = from;
+    while i < chars.len() {
+        if chars[i] == '\\' {
+            i += 2;
+            continue;
+        }
+        match chars[i] {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
         }
         i += 1;
     }
