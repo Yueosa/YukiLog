@@ -635,7 +635,9 @@ struct HomeStats {
     .prose .lm-fold>summary::before{content:'';flex:none;width:13px;height:13px;background:var(--faint);-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5.5 15.5 12 9 18.5'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 5.5 15.5 12 9 18.5'/%3E%3C/svg%3E") center/contain no-repeat}
     .prose .lm-fold[open]>summary{margin-bottom:0;color:var(--ink);border-bottom:1px dashed var(--line)}
     .prose .lm-fold[open]>summary::before{background:var(--blue);transform:rotate(90deg)}
-    .prose .lm-fold>p{margin:10px 16px}
+    .prose .lm-fold>:not(summary){margin-right:16px;margin-left:16px}
+    .prose .lm-fold>summary+*{margin-top:12px}
+    .prose .lm-fold>*:last-child{margin-bottom:12px}
     .prose .lm-spoiler{padding:1px 5px;border-radius:4px;background:color-mix(in srgb,var(--ink) 85%,transparent);color:transparent;cursor:pointer;transition:color .3s ease,background .3s ease}
     .prose .lm-spoiler:hover,.prose .lm-spoiler:active{background:color-mix(in srgb,var(--ink) 12%,transparent);color:var(--ink)}
     .prose .lm-noteref a{display:inline-block;padding:0 1px;color:var(--red);font-family:var(--mono);font-size:.72em;font-weight:700;line-height:1.5;text-decoration:none}
@@ -649,7 +651,7 @@ struct HomeStats {
     .prose .lm-mermaid svg{max-width:100%;height:auto}
     .prose .lm-ruby rt{color:var(--faint);font-size:.65em}
     .prose .lm-task{list-style:none;padding-left:.2em}
-    .prose .lm-task input{margin-right:8px;accent-color:var(--blue)}
+    .prose .lm-task input{margin-right:8px;vertical-align:middle;translate:0 -1px;accent-color:var(--blue)}
     .prose .lm-cols{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;margin:1.8em 0;overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
     .prose .lm-col{min-width:0;padding:12px 16px;font-size:15px}
     .prose .lm-col+.lm-col{border-left:1px dashed var(--line)}

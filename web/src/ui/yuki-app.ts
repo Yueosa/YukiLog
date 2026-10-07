@@ -112,6 +112,10 @@ export class YukiApp extends LitElement {
   private spaNavigated = false;
   private currentPath = window.location.pathname;
   private previousPath: string | null = null;
+
+  /** 文章页阅读布局预设（宽屏可切换，localStorage 持久化）。 */
+  private layoutChoice = localStorage.getItem('yukilog-article-layout') ?? 'default';
+  private layoutMenuOpen = false;
   private revealInstant = false;
   private quoteRefreshBusy = false;
   private feedSort: api.FeedSort | null = null;
@@ -693,6 +697,14 @@ export class YukiApp extends LitElement {
     }
     this.updateHeroParallax();
   };
+
+  private setArticleLayout(key: string) {
+    this.layoutChoice = key;
+    this.layoutMenuOpen = false;
+    localStorage.setItem('yukilog-article-layout', key);
+    // 布局变化后旁注需要重新对齐（等 DOM 应用后）
+    window.setTimeout(() => this.articleFx?.relayout(), 80);
+  }
 
   /** 文章页阅读进度：写进左栏目录的进度轨与已读百分比（DOM 直写不重渲染）。
    * 对全页可滚动区间归一，保证到达底部时恰好 100%。 */
@@ -2596,7 +2608,7 @@ export class YukiApp extends LitElement {
     };
     return html`
       <main class="inner-page">
-        <article class="article-page">
+        <article class="article-page" data-layout=${this.layoutChoice}>
           ${this.tocItems.length > 1
             ? html`<nav class="post-toc" aria-label="目录">
                 <div class="post-toc-sticky">
@@ -3273,6 +3285,46 @@ export class YukiApp extends LitElement {
           </span>
           <span>© ${new Date().getFullYear()} LIAN / SAKURINE</span>
         </footer>
+        ${window.location.pathname.startsWith('/articles/')
+          ? html`<div class="layout-switch${this.layoutMenuOpen ? ' open' : ''}">
+              ${this.layoutMenuOpen
+                ? html`<div class="layout-backdrop" @click=${() => (this.layoutMenuOpen = false)}></div>`
+                : nothing}
+              <div class="layout-menu" role="menu">
+                <p class="layout-menu-kicker">阅读布局</p>
+                ${[
+                  ['default', '默认', '紧凑三栏 · 720px 正文'],
+                  ['wide', '宽松', '880px 正文'],
+                  ['full-compact', '全宽 · 紧凑', '18 / 60 / 18'],
+                  ['full-balance', '全宽 · 均衡', '28 / 50 / 18'],
+                ].map(
+                  ([key, name, desc]) => html`<button
+                    class="layout-option${this.layoutChoice === key ? ' active' : ''}"
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked=${this.layoutChoice === key}
+                    @click=${() => this.setArticleLayout(key)}
+                  >
+                    <span class="opt-name">${name}</span>
+                    <span class="opt-desc">${desc}</span>
+                  </button>`,
+                )}
+              </div>
+              <button
+                class="layout-fab${this.navPastHero ? ' show' : ''}"
+                type="button"
+                aria-label="阅读布局"
+                title="阅读布局"
+                @click=${() => (this.layoutMenuOpen = !this.layoutMenuOpen)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="3" y="4" width="4.5" height="16" rx="1.2" />
+                  <rect x="9.8" y="4" width="7" height="16" rx="1.2" />
+                  <rect x="19" y="4" width="3.4" height="16" rx="1.2" />
+                </svg>
+              </button>
+            </div>`
+          : nothing}
         <button
           class="to-top${this.navPastHero ? ' show' : ''}"
           type="button"
