@@ -702,6 +702,7 @@ export class YukiApp extends LitElement {
     this.layoutChoice = key;
     this.layoutMenuOpen = false;
     localStorage.setItem('yukilog-article-layout', key);
+    this.requestUpdate();
     // 布局变化后旁注需要重新对齐（等 DOM 应用后）
     window.setTimeout(() => this.articleFx?.relayout(), 80);
   }
@@ -3288,7 +3289,13 @@ export class YukiApp extends LitElement {
         ${window.location.pathname.startsWith('/articles/')
           ? html`<div class="layout-switch${this.layoutMenuOpen ? ' open' : ''}">
               ${this.layoutMenuOpen
-                ? html`<div class="layout-backdrop" @click=${() => (this.layoutMenuOpen = false)}></div>`
+                ? html`<div
+                    class="layout-backdrop"
+                    @click=${() => {
+                      this.layoutMenuOpen = false;
+                      this.requestUpdate();
+                    }}
+                  ></div>`
                 : nothing}
               <div class="layout-menu" role="menu">
                 <p class="layout-menu-kicker">阅读布局</p>
@@ -3315,7 +3322,10 @@ export class YukiApp extends LitElement {
                 type="button"
                 aria-label="阅读布局"
                 title="阅读布局"
-                @click=${() => (this.layoutMenuOpen = !this.layoutMenuOpen)}
+                @click=${() => {
+                  this.layoutMenuOpen = !this.layoutMenuOpen;
+                  this.requestUpdate();
+                }}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <rect x="3" y="4" width="4.5" height="16" rx="1.2" />
