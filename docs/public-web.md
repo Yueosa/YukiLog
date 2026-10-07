@@ -28,6 +28,8 @@ JavaScript 也能通过 SSR 版本阅读首页、文章、动态、评论、友�
 
 以下路由的 SSR 版本（爬虫与 `?ssr=1` 所见）行为如下；人类访客看到的 Lit SPA
 通过 `/api/public/*` 获取同一口径的数据（见 docs/content-api.md）。
+书简版刻意省略装饰性图片：站点设置的刊头背景（`masthead_media_id`）只对 Lit
+沉浸版生效，SSR 各列表页刊头始终渲染为纯文字纸面样式。
 
 - `/`：首页布局为代码固定结构（原布局工作室「夜航」已硬编码，见
   docs/layout-system.md 的部件清单）；支持 `?sort=featured|popular|recent`

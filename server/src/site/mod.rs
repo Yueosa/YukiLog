@@ -835,7 +835,8 @@ async fn load_site(state: &AppState) -> Result<SiteView, AppError> {
     } else {
         avatar_external_url
     };
-    let masthead_url = media_url(state, settings.masthead_media_id).await?;
+    // 书简版不渲染刊头背景图：装饰性背景只属于沉浸版（Lit）
+    let masthead_url = String::new();
     let navigation_class = match settings.shell_layout.navigation {
         NavigationVariant::Topbar => "topbar",
         NavigationVariant::Sidebar => "sidebar",
