@@ -19,8 +19,9 @@ pub struct Rendered {
 }
 
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+/// 深色主题：配合文章页深色代码卡，RSS 里也统一为暗底
 static CODE_THEME: LazyLock<Theme> =
-    LazyLock::new(|| ThemeSet::load_defaults().themes["InspiredGitHub"].clone());
+    LazyLock::new(|| ThemeSet::load_defaults().themes["base16-ocean.dark"].clone());
 
 /// 正文渲染入口：LianMarkup(.ly) 解析 → 代码块服务端高亮 → 消毒。
 /// 产物契约见 lianmarkup/docs/产物契约.md；调用方只依赖此接口。
@@ -83,17 +84,57 @@ fn highlight_code_blocks(html: &str) -> String {
             return out;
         };
         let code = unescape_html(&body[..code_end]);
-        match highlight_code_block(&code, language) {
-            Some(highlighted) => out.push_str(&highlighted),
-            None => {
-                out.push_str(&rest[start..start + OPEN.len()]);
-                out.push_str(&after_open[..code_start + 1 + code_end + "</code></pre>".len()]);
+        if language == "diff" {
+            // diff 走集成层增删视图（契约 0x0A），不做 syntect 高亮
+            out.push_str(&render_diff_block(&code));
+        } else {
+            match highlight_code_block(&code, language) {
+                Some(highlighted) => {
+                    // syntect 输出 <pre style="...">，注入 data-lang 供前端代码卡显示语言
+                    out.push_str(&highlighted.replacen("<pre ", &format!("<pre data-lang=\"{language}\" "), 1));
+                }
+                None => {
+                    out.push_str(&format!("<pre data-lang=\"{language}\"><code class=\"language-{language}\">"));
+                    out.push_str(&body[..code_end]);
+                    out.push_str("</code></pre>");
+                }
             }
         }
         rest = &body[code_end + "</code></pre>".len()..];
     }
     out.push_str(rest);
     out
+}
+
+/// `+` 新增(绿) / `-` 删除(红) / `@@` 块头 / 其余上下文，逐行包 span
+fn render_diff_block(code: &str) -> String {
+    let mut out = String::from("<pre class=\"lm-diff\" data-lang=\"diff\">");
+    for line in code.lines() {
+        let class = if line.starts_with("@@") {
+            "dl-h"
+        } else if line.starts_with('+') {
+            "dl-a"
+        } else if line.starts_with('-') {
+            "dl-d"
+        } else {
+            "dl-c"
+        };
+        out.push_str("<span class=\"dl ");
+        out.push_str(class);
+        out.push_str("\">");
+        out.push_str(&escape_html(line));
+        out.push_str("</span>");
+    }
+    out.push_str("</pre>");
+    out
+}
+
+/// 与 LianMarkup 相同的转义集（& < > "）
+fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn highlight_code_block(code: &str, language: &str) -> Option<String> {
@@ -117,7 +158,7 @@ fn sanitize(html: &str) -> String {
         .add_tags(["input", "section", "span", "details", "summary", "ruby", "rp", "rt"])
         .add_tag_attributes("input", ["type", "checked", "disabled"])
         .add_tag_attributes("details", ["open"])
-        .add_tag_attributes("pre", ["style"])
+        .add_tag_attributes("pre", ["style", "data-lang"])
         .add_tag_attributes("span", ["style"])
         .add_tag_attributes("div", ["data-kind"])
         .add_generic_attributes(["id", "class"])

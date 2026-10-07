@@ -5,7 +5,7 @@ pub mod database;
 pub mod entities;
 pub mod error;
 mod http;
-mod markup;
+pub mod markup;
 pub mod ops;
 pub mod site;
 
