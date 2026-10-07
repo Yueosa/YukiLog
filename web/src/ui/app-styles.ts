@@ -1395,11 +1395,71 @@ export const appStyles = css`
     }
 
     .prose h3 {
+      position: relative;
       margin: 2em 0 0.8em;
+      padding-left: 14px;
       font-family: var(--serif);
       font-size: 19.5px;
       font-weight: 700;
       line-height: 1.55;
+    }
+
+    .prose h3::before {
+      content: '';
+      position: absolute;
+      top: 7px;
+      bottom: 7px;
+      left: 0;
+      width: 4px;
+      border-radius: 2px;
+      background: linear-gradient(var(--primary), var(--secondary));
+    }
+
+    .prose h4 {
+      margin: 1.8em 0 0.7em;
+      color: color-mix(in srgb, var(--ink) 82%, var(--muted));
+      font-family: var(--serif);
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.55;
+    }
+
+    .prose h4::before {
+      content: '—';
+      margin-right: 8px;
+      color: color-mix(in srgb, var(--primary) 65%, transparent);
+    }
+
+    .prose h5 {
+      margin: 1.6em 0 0.6em;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      line-height: 1.55;
+    }
+
+    .prose h6 {
+      margin: 1.5em 0 0.5em;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      line-height: 1.5;
+      text-transform: uppercase;
+    }
+
+    .prose h4,
+    .prose h5,
+    .prose h6 {
+      scroll-margin-top: 100px;
+    }
+
+    .prose h4:hover .h-anchor,
+    .prose h5:hover .h-anchor,
+    .prose h6:hover .h-anchor {
+      opacity: 1;
     }
 
     .h-anchor {
@@ -1636,6 +1696,11 @@ export const appStyles = css`
       font-weight: 600;
     }
 
+    .prose li.lm-star::marker {
+      content: '✦ ';
+      color: var(--secondary-d);
+    }
+
     .prose ul ul {
       margin: 0.35em 0;
     }
@@ -1671,6 +1736,41 @@ export const appStyles = css`
       max-width: 100%;
       border-radius: var(--radius);
       cursor: zoom-in;
+    }
+
+    /* 表格：全边框 + 表头底色 + 斑马纹 */
+    .prose table {
+      width: 100%;
+      margin: 2em 0;
+      border-collapse: collapse;
+      border: 1.5px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 14.5px;
+    }
+
+    .prose th {
+      padding: 10px 16px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--primary) 13%, var(--surface));
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-align: left;
+    }
+
+    .prose td {
+      padding: 10px 16px;
+      border: 1px solid var(--line);
+    }
+
+    .prose tbody tr:nth-child(even) {
+      background: color-mix(in srgb, var(--surface-soft) 55%, transparent);
+    }
+
+    .prose tbody tr:hover {
+      background: color-mix(in srgb, var(--primary) 7%, transparent);
     }
 
     /* ||| 分栏块：段数即栏数，布局归 CSS */

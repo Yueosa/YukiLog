@@ -573,3 +573,26 @@ fn table_cell_with_escaped_pipe() {
     let out = html("| a | b |\n|-|-|\n| x \\| y | z |\n");
     assert!(out.contains("<td>x | y</td><td>z</td>"), "{}", out);
 }
+
+// ---------- 星号列表 ----------
+
+#[test]
+fn star_list_items_get_lm_star_class() {
+    let out = html("- 短横项\n* 星号项\n* [x] 星号任务\n");
+    assert!(out.contains("<li class=\"lm-star\">星号项</li>"));
+    assert!(out.contains("<li class=\"lm-task lm-star\"><input type=\"checkbox\" disabled checked> 星号任务</li>"), "{}", out);
+}
+
+#[test]
+fn star_list_supports_tab_nesting() {
+    let out = html("* 外层\n\t* 嵌套\n");
+    assert!(out.contains("<ul><li class=\"lm-star\">外层<ul><li class=\"lm-star\">嵌套</li>"), "{}", out);
+}
+
+#[test]
+fn star_italic_at_line_start_is_not_a_list() {
+    // 行首 `*斜体*` (无空格) 仍是行内语法, 不是列表
+    let out = html("*这是斜体* 不是列表\n");
+    assert!(out.contains("<em>这是斜体</em>"));
+    assert!(!out.contains("lm-star"));
+}

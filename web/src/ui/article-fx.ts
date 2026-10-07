@@ -28,6 +28,7 @@ export function enhanceArticlePage(root: ParentNode): ArticleFx | null {
     addCopyChips(prose);
     stripLayouts = buildImageStrips(prose);
     bindSpoilers(prose);
+    bindSidenoteHighlight(root);
   }
 
   const relayout = () => {
@@ -51,12 +52,24 @@ export function enhanceArticlePage(root: ParentNode): ArticleFx | null {
   };
 }
 
-/** h2 序号 + 悬停锚点（h3 只要锚点）。容器块（分栏/折叠/callout/引用）里的
+/** h2 序号 + 悬停锚点（h3-h6 只要锚点）。容器块（分栏/折叠/callout/引用）里的
  * 标题不进服务端 TOC，客户端编号必须同样跳过，否则两边序号对不上。 */
 function numberHeadings(prose: HTMLElement) {
   let index = 0;
-  prose.querySelectorAll<HTMLHeadingElement>('h2, h3').forEach((heading) => {
+  prose.querySelectorAll<HTMLHeadingElement>('h2, h3, h4, h5, h6').forEach((heading) => {
     if (heading.closest('.lm-cols, .lm-fold, .lm-callout, blockquote')) return;
+    if (heading.tagName !== 'H2') {
+      if (heading.id) {
+        const anchor = document.createElement('a');
+        anchor.className = 'h-anchor';
+        anchor.href = `#${heading.id}`;
+        anchor.textContent = '#';
+        anchor.title = '小节链接';
+        anchor.addEventListener('click', (event) => event.stopPropagation());
+        heading.append(anchor);
+      }
+      return;
+    }
     if (heading.tagName === 'H2') {
       index += 1;
       const no = document.createElement('span');
@@ -263,6 +276,30 @@ function initStrip(
   });
   layout();
   return layout;
+}
+
+/** 旁注 ref ↔ note 悬停双向高亮（其余变暗）。 */
+function bindSidenoteHighlight(root: ParentNode) {
+  const aside = root.querySelector('.post-notes');
+  if (!aside) return;
+  const notes = [...aside.querySelectorAll<HTMLElement>('.post-note')];
+  root.querySelectorAll<HTMLAnchorElement>('.lm-noteref a').forEach((ref) => {
+    const anchor = ref.getAttribute('href')?.slice(1) ?? '';
+    const note = anchor ? notes.find((n) => n.id === anchor) : undefined;
+    if (!note) return;
+    ref.addEventListener('mouseenter', () => {
+      note.classList.add('hl');
+      notes.forEach((n) => {
+        if (n !== note) n.classList.add('dim');
+      });
+    });
+    ref.addEventListener('mouseleave', () => {
+      note.classList.remove('hl');
+      notes.forEach((n) => n.classList.remove('dim'));
+    });
+    note.addEventListener('mouseenter', () => ref.classList.add('hl'));
+    note.addEventListener('mouseleave', () => ref.classList.remove('hl'));
+  });
 }
 
 /** 剧透黑条：点按切换揭示。 */

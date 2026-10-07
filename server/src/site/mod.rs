@@ -595,7 +595,12 @@ struct HomeStats {
     .article-page .prose>h1:first-child{display:none}
     .prose p{margin:0 0 1.5em}
     .prose h2{margin:2.2em 0 1em;padding-bottom:10px;border-bottom:1px solid var(--line);font-family:var(--serif);font-size:24px;font-weight:700;line-height:1.5}
-    .prose h3{margin:1.9em 0 .8em;font-family:var(--serif);font-size:19px;font-weight:700;line-height:1.55}
+    .prose h3{position:relative;margin:1.9em 0 .8em;padding-left:13px;font-family:var(--serif);font-size:19px;font-weight:700;line-height:1.55}
+    .prose h3::before{content:'';position:absolute;top:6px;bottom:6px;left:0;width:4px;border-radius:2px;background:linear-gradient(var(--blue),var(--red))}
+    .prose h4{margin:1.7em 0 .7em;color:color-mix(in srgb,var(--ink) 82%,var(--muted));font-family:var(--serif);font-size:17px;font-weight:700;line-height:1.55}
+    .prose h4::before{content:'—';margin-right:8px;color:color-mix(in srgb,var(--blue) 60%,transparent)}
+    .prose h5{margin:1.6em 0 .6em;color:var(--muted);font-size:14px;font-weight:700;letter-spacing:.05em;line-height:1.55}
+    .prose h6{margin:1.5em 0 .5em;color:var(--faint);font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.18em;line-height:1.5;text-transform:uppercase}
     .prose h4,.prose h5,.prose h6{margin:1.6em 0 .7em;font-family:var(--serif);font-size:16.5px;font-weight:700}
     .prose a{color:var(--blue);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--blue) 40%,transparent);text-underline-offset:3px}
     .prose a:hover{text-decoration-color:var(--blue)}
@@ -608,11 +613,12 @@ struct HomeStats {
     .prose ul,.prose ol{margin:0 0 1.5em;padding-left:1.5em}
     .prose li{margin:.4em 0}
     .prose li::marker{color:var(--red)}
+    .prose li.lm-star::marker{content:'✦ ';color:var(--red)}
     .prose hr{margin:2.6em 0;border:0;border-top:1px solid var(--line)}
     .prose img{border-radius:8px}
     .prose table{display:block;margin:1.8em 0;overflow-x:auto;border-collapse:collapse;font-size:14px}
-    .prose th,.prose td{padding:7px 14px;border:1px solid var(--line);text-align:left}
-    .prose th{background:var(--surface);font-family:var(--mono);font-size:12px}
+    .prose th{padding:9px 14px;border:1px solid var(--line);background:color-mix(in srgb,var(--blue) 7%,var(--surface));color:var(--ink);font-family:var(--mono);font-size:12px;text-align:left}
+    .prose td{padding:9px 14px;border:1px solid var(--line);text-align:left}
     /* ---- LianMarkup 构造（书简静态版，与 Lit 同语义名/色系） ---- */
     .prose .lm-callout{position:relative;margin:1.8em 0;padding:12px 16px 12px 46px;border:1px solid color-mix(in srgb,var(--co) 34%,transparent);border-left:3px solid var(--co);border-radius:8px;background:color-mix(in srgb,var(--co) 5%,var(--surface))}
     .prose .lm-callout::before{content:'';position:absolute;left:15px;top:14px;width:18px;height:18px;background:var(--co);-webkit-mask:var(--icon) center/contain no-repeat;mask:var(--icon) center/contain no-repeat}

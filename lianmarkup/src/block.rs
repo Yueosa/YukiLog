@@ -4,7 +4,8 @@ use crate::escape::escape_html;
 use crate::{Parser, plain_text};
 
 /// 列表项: (TAB 层级, 是否有序, 任务勾选状态, 内容)
-type ListEntry = (usize, bool, Option<bool>, String);
+/// (TAB 层数, 有序?, 任务态, 文本, 星号标记?)
+type ListEntry = (usize, bool, Option<bool>, String, bool);
 
 impl Parser {
     pub(crate) fn parse_blocks(&mut self, text: &str) -> String {
@@ -347,15 +348,25 @@ impl Parser {
                 let entry = items[i].clone();
                 i += 1;
                 html.push_str("<li");
+                let star = entry.4;
                 match entry.2 {
                     Some(checked) => {
-                        html.push_str(" class=\"lm-task\"><input type=\"checkbox\" disabled");
+                        html.push_str(" class=\"lm-task");
+                        if star {
+                            html.push_str(" lm-star");
+                        }
+                        html.push_str("\"><input type=\"checkbox\" disabled");
                         if checked {
                             html.push_str(" checked");
                         }
                         html.push_str("> ");
                     }
-                    None => html.push('>'),
+                    None => {
+                        if star {
+                            html.push_str(" class=\"lm-star\"");
+                        }
+                        html.push('>');
+                    }
                 }
                 html.push_str(&self.parse_inline(&entry.3));
                 if i < items.len() && items[i].0 > depth {
@@ -493,18 +504,20 @@ fn split_custom_id(text: &str) -> (&str, Option<String>) {
 fn list_item(line: &str) -> Option<ListEntry> {
     let tabs = line.bytes().take_while(|&b| b == b'\t').count();
     let rest = &line[tabs..];
-    if let Some(r) = rest.strip_prefix("- ") {
-        if let Some(t) = r.strip_prefix("[ ] ") {
-            return Some((tabs, false, Some(false), t.to_string()));
+    for (prefix, star) in [("- ", false), ("* ", true)] {
+        if let Some(r) = rest.strip_prefix(prefix) {
+            if let Some(t) = r.strip_prefix("[ ] ") {
+                return Some((tabs, false, Some(false), t.to_string(), star));
+            }
+            if let Some(t) = r.strip_prefix("[x] ").or_else(|| r.strip_prefix("[X] ")) {
+                return Some((tabs, false, Some(true), t.to_string(), star));
+            }
+            return Some((tabs, false, None, r.to_string(), star));
         }
-        if let Some(t) = r.strip_prefix("[x] ").or_else(|| r.strip_prefix("[X] ")) {
-            return Some((tabs, false, Some(true), t.to_string()));
-        }
-        return Some((tabs, false, None, r.to_string()));
     }
     let digits = rest.bytes().take_while(|b| b.is_ascii_digit()).count();
     if digits > 0 && rest[digits..].starts_with(". ") {
-        return Some((tabs, true, None, rest[digits + 2..].to_string()));
+        return Some((tabs, true, None, rest[digits + 2..].to_string(), false));
     }
     None
 }
