@@ -59,7 +59,22 @@ async function renderMermaid(elements: HTMLElement[]): Promise<void> {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
-    theme: 'neutral',
+    // base 主题 + 夜航配色：节点蓝/粉/绿分层，对齐文章页设计稿
+    theme: 'base',
+    themeVariables: {
+      primaryColor: '#eef6fb',
+      primaryBorderColor: '#7eb6d9',
+      primaryTextColor: '#1c2733',
+      secondaryColor: '#fdf2f5',
+      secondaryBorderColor: '#e8a4b4',
+      secondaryTextColor: '#1c2733',
+      tertiaryColor: '#eafaf0',
+      tertiaryBorderColor: '#5da85f',
+      tertiaryTextColor: '#1c2733',
+      lineColor: '#6d7f90',
+      textColor: '#1c2733',
+      fontFamily: 'inherit',
+    },
     fontFamily: 'inherit',
   });
   for (const [index, element] of elements.entries()) {

@@ -110,6 +110,8 @@ export class YukiApp extends LitElement {
   private mobileMenuOpen = false;
   private navPastHero = false;
   private spaNavigated = false;
+  private currentPath = window.location.pathname;
+  private previousPath: string | null = null;
   private revealInstant = false;
   private quoteRefreshBusy = false;
   private feedSort: api.FeedSort | null = null;
@@ -189,6 +191,10 @@ export class YukiApp extends LitElement {
   };
 
   private readonly handleRouteChange = () => {
+    if (window.location.pathname !== this.currentPath) {
+      this.previousPath = this.currentPath;
+      this.currentPath = window.location.pathname;
+    }
     this.mobileMenuOpen = false;
     document.body.style.overflow = '';
     if (this.spaNavigated) this.revealInstant = true;
@@ -2609,7 +2615,15 @@ export class YukiApp extends LitElement {
               href="/articles"
               @click=${(event: Event) => {
                 event.preventDefault();
-                if (this.spaNavigated && window.history.length > 1) {
+                // 只有上一跳是列表页才 history.back（保留滚动位置）；
+                // 上一跳是另一篇文章时直接回列表，避免"返回"变成回上一篇
+                const LIST_PATHS = new Set(['/', '/articles', '/search', '/archive']);
+                if (
+                  this.spaNavigated &&
+                  this.previousPath !== null &&
+                  LIST_PATHS.has(this.previousPath) &&
+                  window.history.length > 1
+                ) {
                   window.history.back();
                 } else {
                   window.history.pushState(null, '', '/articles');
