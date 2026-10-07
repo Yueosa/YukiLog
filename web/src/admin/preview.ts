@@ -138,6 +138,8 @@ export const previewMedia: MediaAsset[] = [
     byte_size: 482_011,
     width: 1600,
     height: 1000,
+    origin: 'upload',
+    source_url: null,
   },
   {
     id: 'med-2',
@@ -147,6 +149,8 @@ export const previewMedia: MediaAsset[] = [
     byte_size: 88_204,
     width: 512,
     height: 512,
+    origin: 'upload',
+    source_url: null,
   },
   {
     id: 'med-3',
@@ -156,6 +160,8 @@ export const previewMedia: MediaAsset[] = [
     byte_size: 1_203_448,
     width: 2400,
     height: 1350,
+    origin: 'upload',
+    source_url: null,
   },
   {
     id: 'med-4',
@@ -165,6 +171,8 @@ export const previewMedia: MediaAsset[] = [
     byte_size: 645_120,
     width: 800,
     height: 337,
+    origin: 'upload',
+    source_url: null,
   },
   {
     id: 'med-5',
@@ -174,6 +182,8 @@ export const previewMedia: MediaAsset[] = [
     byte_size: 356_812,
     width: 1080,
     height: 1350,
+    origin: 'upload',
+    source_url: null,
   },
 ];
 

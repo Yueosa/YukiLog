@@ -1,7 +1,9 @@
 use std::{
     io::ErrorKind,
+    net::IpAddr,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 use axum::{
@@ -75,6 +77,8 @@ pub struct MediaResponse {
     byte_size: i64,
     width: Option<i32>,
     height: Option<i32>,
+    origin: String,
+    source_url: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -230,6 +234,23 @@ async fn store_upload(
             return Err(error);
         }
     };
+    persist_staged(state, staging_path, byte_size, sha256, sniffed, original_name, "upload", None)
+        .await
+}
+
+/// 把暂存文件落为媒体资产：魔数探测 → 尺寸 → 硬链接入正式目录 → 哈希去重 → 插行。
+/// 失败时清理暂存与误建的正式文件。
+#[allow(clippy::too_many_arguments)]
+async fn persist_staged(
+    state: &AppState,
+    staging_path: PathBuf,
+    byte_size: u64,
+    sha256: [u8; 32],
+    sniffed: Vec<u8>,
+    original_name: String,
+    origin: &'static str,
+    source_url: Option<String>,
+) -> Result<media_assets::Model, AppError> {
 
     let kind = match detect_media(&sniffed, byte_size) {
         Ok(kind) => kind,
@@ -294,9 +315,8 @@ async fn store_upload(
         sha256: Set(sha256.to_vec()),
         width: Set(width),
         height: Set(height),
-        // 上传媒体：origin 走数据库默认值 'upload'，source_url 为 NULL
-        origin: NotSet,
-        source_url: NotSet,
+        origin: Set(origin.to_owned()),
+        source_url: Set(source_url),
         created_at: NotSet,
     }
     .insert(&state.database)
@@ -509,6 +529,8 @@ impl From<media_assets::Model> for MediaResponse {
             byte_size: media.byte_size,
             width: media.width,
             height: media.height,
+            origin: media.origin,
+            source_url: media.source_url,
         }
     }
 }
@@ -536,5 +558,343 @@ mod tests {
         let encoded = hex_lower(&hash);
         assert_eq!(&encoded[..2], "ab");
         assert_eq!(encoded.len(), 64);
+    }
+}
+
+/* ---------- 从 URL 拉取媒体入库 ---------- */
+
+const MAX_FETCH_BYTES: usize = 15 * 1024 * 1024;
+const MAX_FETCH_REDIRECTS: usize = 3;
+
+#[derive(Debug, serde::Deserialize)]
+pub struct FetchUrlInput {
+    url: String,
+}
+
+/// 管理端输入外链 URL，服务端下载并按上传同一管线入库（origin='fetched'）。
+/// SSRF 防护：仅 http(s)、禁止凭据、域名解析后逐 IP 拒绝内网/保留地址、
+/// 手动跟随重定向（每跳重新校验）、15MB 上限、魔数与上传同一探测。
+pub async fn fetch_url(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(input): Json<FetchUrlInput>,
+) -> Result<Json<MediaResponse>, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let (bytes, final_url) = download_remote(&input.url).await?;
+    let original_name = remote_file_name(&final_url);
+    let staging_path = state
+        .media
+        .staging_dir
+        .join(format!(".fetch-{}", random_suffix()));
+    let staged = write_staging_bytes(&staging_path, &bytes).await;
+    let (byte_size, sha256, sniffed) = match staged {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = fs::remove_file(&staging_path).await;
+            return Err(error);
+        }
+    };
+    let model = persist_staged(
+        &state,
+        staging_path,
+        byte_size,
+        sha256,
+        sniffed,
+        original_name,
+        "fetched",
+        Some(final_url),
+    )
+    .await?;
+    Ok(Json(MediaResponse::from(model)))
+}
+
+async fn write_staging_bytes(
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(u64, [u8; 32], Vec<u8>), AppError> {
+    if bytes.is_empty() {
+        return Err(AppError::InvalidRequest("下载内容为空"));
+    }
+    if bytes.len() > MAX_FETCH_BYTES {
+        return Err(AppError::PayloadTooLarge);
+    }
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    let sniffed = bytes[..SNIFF_BYTES.min(bytes.len())].to_vec();
+    fs::write(path, bytes).await?;
+    Ok((bytes.len() as u64, hasher.finalize().into(), sniffed))
+}
+
+async fn download_remote(input: &str) -> Result<(Vec<u8>, String), AppError> {
+    let mut url = validate_fetch_url(input)?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent("YukiLog-MediaFetcher/1.0")
+        .build()
+        .map_err(|_| AppError::Internal("http client init failed"))?;
+    for _ in 0..=MAX_FETCH_REDIRECTS {
+        assert_public_url(&url).await?;
+        let response = client
+            .get(url.as_str())
+            .send()
+            .await
+            .map_err(|_| AppError::InvalidRequest("下载失败：无法连接目标"))?;
+        let status = response.status();
+        if status.is_redirection() {
+            let location = response
+                .headers()
+                .get(axum::http::header::LOCATION)
+                .and_then(|value| value.to_str().ok())
+                .ok_or(AppError::InvalidRequest("重定向缺少 Location"))?;
+            url = validate_fetch_url(&location.to_owned())?;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(AppError::InvalidRequest("下载失败：目标返回错误状态"));
+        }
+        if let Some(length) = response.content_length() {
+            if length > MAX_FETCH_BYTES as u64 {
+                return Err(AppError::PayloadTooLarge);
+            }
+        }
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|_| AppError::InvalidRequest("下载失败：读取内容出错"))?
+            .to_vec();
+        if bytes.len() > MAX_FETCH_BYTES {
+            return Err(AppError::PayloadTooLarge);
+        }
+        return Ok((bytes, url.to_string()));
+    }
+    Err(AppError::InvalidRequest("重定向次数过多"))
+}
+
+fn validate_fetch_url(input: &str) -> Result<reqwest::Url, AppError> {
+    if input.len() > 2048 {
+        return Err(AppError::InvalidRequest("URL 过长"));
+    }
+    let url = reqwest::Url::parse(input.trim()).map_err(|_| AppError::InvalidRequest("URL 无效"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(AppError::InvalidRequest("仅支持 http(s) URL"));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(AppError::InvalidRequest("URL 不允许携带凭据"));
+    }
+    if url.host_str().is_none() {
+        return Err(AppError::InvalidRequest("URL 缺少主机"));
+    }
+    Ok(url)
+}
+
+/// 域名解析后逐 IP 检查：任何一条落在内网/保留地址都拒绝（防 DNS 分拆应答）。
+async fn assert_public_url(url: &reqwest::Url) -> Result<(), AppError> {
+    let host = url
+        .host_str()
+        .ok_or(AppError::InvalidRequest("URL 缺少主机"))?;
+    let port = url.port_or_known_default().unwrap_or(80);
+    let addresses: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(|_| AppError::InvalidRequest("域名解析失败"))?
+        .collect();
+    if addresses.is_empty() {
+        return Err(AppError::InvalidRequest("域名解析失败"));
+    }
+    for address in addresses {
+        if !is_public_ip(&address.ip()) {
+            return Err(AppError::InvalidRequest("目标地址不允许访问（内网或保留地址）"));
+        }
+    }
+    Ok(())
+}
+
+fn is_public_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let octets = v4.octets();
+            !(v4.is_private()
+                || v4.is_loopback()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_multicast()
+                || v4.is_documentation()
+                || octets[0] == 0
+                || (octets[0] == 100 && (octets[1] & 0xC0) == 64))
+        }
+        IpAddr::V6(v6) => {
+            let segments = v6.segments();
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || (segments[0] & 0xfe00) == 0xfc00
+                || (segments[0] & 0xffc0) == 0xfe80)
+        }
+    }
+}
+
+fn remote_file_name(url: &str) -> String {
+    let name = reqwest::Url::parse(url)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .path_segments()
+                .and_then(|segments| segments.last().map(str::to_owned))
+        })
+        .filter(|name| !name.trim().is_empty() && name.len() <= 255)
+        .unwrap_or_else(|| "remote-image".to_owned());
+    name.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '(' | ')' | ' ') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/* ---------- 正文外链图片扫描 ---------- */
+
+#[derive(Debug, Serialize)]
+pub struct ExternalRefUsage {
+    kind: &'static str,
+    id: sea_orm::prelude::Uuid,
+    label: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExternalRefResponse {
+    url: String,
+    usages: Vec<ExternalRefUsage>,
+}
+
+/// 媒体页「外链」标签页的数据：实时从文章/动态正文扫描 `![alt](http...)` 图片引用，
+/// 按 URL 归组并列出使用位置。不落表——正文本身就是数据源，永不漂移。
+pub async fn external_media_refs(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<Vec<ExternalRefResponse>>, AppError> {
+    auth::authorize_read(&state, &jar).await?;
+    let mut refs: Vec<ExternalRefResponse> = Vec::new();
+    let article_rows = articles::Entity::find()
+        .all(&state.database)
+        .await?;
+    for article in article_rows {
+        for url in scan_external_images(&article.body_markdown) {
+            push_external_ref(
+                &mut refs,
+                url,
+                ExternalRefUsage {
+                    kind: "article",
+                    id: article.id,
+                    label: article.title.clone(),
+                },
+            );
+        }
+    }
+    let dynamic_rows = dynamics::Entity::find().all(&state.database).await?;
+    for dynamic in dynamic_rows {
+        let label: String = dynamic.content_markdown.chars().take(24).collect();
+        for url in scan_external_images(&dynamic.content_markdown) {
+            push_external_ref(
+                &mut refs,
+                url,
+                ExternalRefUsage {
+                    kind: "dynamic",
+                    id: dynamic.id,
+                    label: label.clone(),
+                },
+            );
+        }
+    }
+    refs.sort_by(|a, b| a.url.cmp(&b.url));
+    Ok(Json(refs))
+}
+
+fn push_external_ref(refs: &mut Vec<ExternalRefResponse>, url: String, usage: ExternalRefUsage) {
+    if let Some(existing) = refs.iter_mut().find(|item| item.url == url) {
+        existing.usages.push(usage);
+    } else {
+        refs.push(ExternalRefResponse {
+            url,
+            usages: vec![usage],
+        });
+    }
+}
+
+/// 手扫 `![alt](http...)`（与解析器同规则：URL 到第一个 `)` 为止）。
+fn scan_external_images(markdown: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    let mut rest = markdown;
+    while let Some(pos) = rest.find("![") {
+        rest = &rest[pos + 2..];
+        let Some(alt_end) = rest.find(']') else { break };
+        let after_alt = &rest[alt_end + 1..];
+        if !after_alt.starts_with('(') {
+            continue;
+        }
+        let target = &after_alt[1..];
+        let Some(url_end) = target.find(')') else { break };
+        let url = &target[..url_end];
+        if url.starts_with("http://") || url.starts_with("https://") {
+            urls.push(url.to_owned());
+        }
+        rest = target;
+    }
+    urls
+}
+
+#[cfg(test)]
+mod fetch_tests {
+    use super::*;
+
+    #[test]
+    fn fetch_url_validation_rejects_non_http_and_credentials() {
+        assert!(validate_fetch_url("ftp://example.com/a.jpg").is_err());
+        assert!(validate_fetch_url("https://user:pass@example.com/a.jpg").is_err());
+        assert!(validate_fetch_url("not-a-url").is_err());
+        assert!(validate_fetch_url("https://example.com/a.jpg").is_ok());
+    }
+
+    #[test]
+    fn public_ip_blocks_private_and_reserved() {
+        let private = [
+            "127.0.0.1", "10.0.0.5", "172.16.3.4", "192.168.1.1", "169.254.1.1", "100.64.0.1",
+            "0.0.0.0", "224.0.0.1",
+        ];
+        for ip in private {
+            assert!(!is_public_ip(&ip.parse().unwrap()), "{ip} 应被拒绝");
+        }
+        let public = ["8.8.8.8", "1.1.1.1", "43.163.241.49"];
+        for ip in public {
+            assert!(is_public_ip(&ip.parse().unwrap()), "{ip} 应放行");
+        }
+        assert!(!is_public_ip(&"::1".parse().unwrap()));
+        assert!(!is_public_ip(&"fc00::1".parse().unwrap()));
+        assert!(!is_public_ip(&"fe80::1".parse().unwrap()));
+        assert!(is_public_ip(&"2606:4700:4700::1111".parse().unwrap()));
+    }
+
+    #[test]
+    fn scan_finds_only_external_image_urls() {
+        let source = "![外链](https://a.com/x.jpg) 和 ![本地](/media/ab/cd.png) 和 [链接](https://a.com) 和 ![尾部](https://b.com/y.webp){width=40%}";
+        let urls = scan_external_images(source);
+        assert_eq!(urls, vec![
+            "https://a.com/x.jpg".to_owned(),
+            "https://b.com/y.webp".to_owned(),
+        ]);
+    }
+
+    #[test]
+    fn remote_file_name_sanitizes() {
+        assert_eq!(remote_file_name("https://a.com/pic/x.jpg"), "x.jpg");
+        assert_eq!(remote_file_name("https://a.com/"), "remote-image");
+        assert_eq!(remote_file_name("https://a.com/dir/photo(1).png"), "photo(1).png");
+        // 特殊字符替成下划线，不注入路径分隔或控制符
+        assert_eq!(remote_file_name("https://a.com/%E4%B8%AD%E6%96%87.png"), "_E4_B8_AD_E6_96_87.png");
+        // path_segments 不做百分号解码，特殊字符一律替成下划线
+        assert_eq!(remote_file_name("https://a.com/a/b/c%20d.png"), "c_20d.png");
     }
 }

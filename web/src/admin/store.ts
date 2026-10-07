@@ -24,6 +24,7 @@ import type {
   Comment,
   Delivery,
   Dynamic,
+  ExternalRef,
   FriendLink,
   MediaAsset,
   NotificationSettings,
@@ -431,6 +432,24 @@ export class AdminStore extends EventTarget {
       await api(`/api/admin/media/${id}`, { method: 'DELETE' });
       this.media = await api('/api/admin/media');
     }, '媒体已删除');
+  }
+
+  /** 从外链 URL 拉取图片入媒体库（SSRF 防护在服务端）。返回新资产；失败已 toast。 */
+  async fetchMediaUrl(url: string): Promise<MediaAsset | null> {
+    let uploaded: MediaAsset | null = null;
+    await this.run(async () => {
+      uploaded = await api<MediaAsset>('/api/admin/media/fetch-url', {
+        method: 'POST',
+        body: { url: url.trim() },
+      });
+      this.media = await api('/api/admin/media');
+    }, '已从 URL 拉取入库');
+    return uploaded;
+  }
+
+  /** 正文外链图片（实时从文章/动态正文扫描）。 */
+  async loadExternalRefs(): Promise<ExternalRef[]> {
+    return api<ExternalRef[]>('/api/admin/media/external-refs');
   }
 
   // ---------- 友链 ----------

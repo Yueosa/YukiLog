@@ -186,6 +186,14 @@ pub fn router(state: AppState) -> Router {
                 )),
         )
         .route(
+            "/api/admin/media/fetch-url",
+            post(crate::ops::media::fetch_url),
+        )
+        .route(
+            "/api/admin/media/external-refs",
+            get(crate::ops::media::external_media_refs),
+        )
+        .route(
             "/api/admin/media/{id}",
             axum::routing::delete(crate::ops::media::delete),
         )

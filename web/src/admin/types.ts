@@ -92,6 +92,19 @@ export type MediaAsset = {
   byte_size: number;
   width: number | null;
   height: number | null;
+  origin: string;
+  source_url: string | null;
+};
+
+export type ExternalRefUsage = {
+  kind: 'article' | 'dynamic';
+  id: string;
+  label: string;
+};
+
+export type ExternalRef = {
+  url: string;
+  usages: ExternalRefUsage[];
 };
 
 export type ThemeTokens = {

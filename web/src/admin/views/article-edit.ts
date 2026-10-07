@@ -15,6 +15,8 @@ export class AdmArticleEdit extends AdmView {
   @state() private slug = '';
   @state() private categoryId = '';
   @state() private coverMediaId: string | null = null;
+  @state() private coverFetchUrl = '';
+  @state() private coverFetchBusy = false;
   @state() private summary = '';
   @state() private body = '';
   @state() private allowComments = true;
@@ -76,6 +78,28 @@ export class AdmArticleEdit extends AdmView {
       .cover {
         display: grid;
         gap: 10px;
+      }
+
+      .cover-fetch {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+
+      .cover-fetch input {
+        width: 240px;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--ink);
+        font: inherit;
+        font-size: 12.5px;
+      }
+
+      .cover-fetch input:focus {
+        border-color: var(--primary);
+        outline: none;
       }
 
       .cover-current {
@@ -320,9 +344,23 @@ export class AdmArticleEdit extends AdmView {
     }
   }
 
+  private async fetchCover() {
+    const url = this.coverFetchUrl.trim();
+    if (!url || this.coverFetchBusy) return;
+    this.coverFetchBusy = true;
+    try {
+      const asset = await this.store.fetchMediaUrl(url);
+      if (asset) {
+        this.coverMediaId = asset.id;
+        this.coverFetchUrl = '';
+      }
+    } finally {
+      this.coverFetchBusy = false;
+    }
+  }
+
   private renderCover() {
-    const cover = this.coverMediaId ? this.store.media.find((item) => item.id === this.coverMediaId) : undefined;
-    return html`
+    const cover = this.coverMediaId ? this.store.media.find((item) => item.id === this.coverMediaId) : undefined;    return html`
       <div class="field">
         <span>封面</span>
         <div class="cover">
@@ -336,6 +374,23 @@ export class AdmArticleEdit extends AdmView {
             <button class="btn secondary small" type="button" @click=${() => (this.coverPickerOpen = true)}>
               ${cover ? '更换封面' : '从媒体库选择封面'}
             </button>
+            <span class="cover-fetch">
+              <input
+                type="url"
+                placeholder="或粘贴图片 URL 拉取"
+                .value=${this.coverFetchUrl}
+                @input=${(event: Event) => (this.coverFetchUrl = (event.target as HTMLInputElement).value)}
+                @keydown=${(event: KeyboardEvent) => event.key === 'Enter' && this.fetchCover()}
+              />
+              <button
+                class="btn secondary small"
+                type="button"
+                ?disabled=${this.coverFetchBusy || !this.coverFetchUrl.trim()}
+                @click=${() => this.fetchCover()}
+              >
+                ${this.coverFetchBusy ? '拉取中…' : '拉取'}
+              </button>
+            </span>
           </div>
         </div>
       </div>
