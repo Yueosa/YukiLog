@@ -21,6 +21,7 @@ import {
   yearOf,
 } from './format.js';
 import { PublicStore } from './store.js';
+import { enhanceArticlePage, type ArticleFx } from './article-fx.js';
 
 /** 组件内部使用的站点视图：/api/public/site 的归一化形态。 */
 interface SiteView {
@@ -346,6 +347,7 @@ export class YukiApp extends LitElement {
     if (event.key === 'Escape') this.closeLightbox();
     else if (event.key === 'ArrowLeft') this.stepLightbox(-1);
     else if (event.key === 'ArrowRight') this.stepLightbox(1);
+    else if (event.key === '0') this.lbReset();
   };
 
   // 正文图片点击进灯箱：以全文所有图片为一组，支持左右切换。
@@ -413,6 +415,10 @@ export class YukiApp extends LitElement {
   /** 旁注浮层（点按上标展开）；滚动/点别处即关。 */
   private notePopover: { html: string; x: number; y: number } | null = null;
 
+  /** 文章页结构增强（标题编号/代码卡/多图带/旁注对齐），随 slug 重建。 */
+  private articleFx: ArticleFx | null = null;
+  private articleFxKey = '';
+
   private renderNotePopover() {
     if (!this.notePopover) return nothing;
     return html`
@@ -435,53 +441,153 @@ export class YukiApp extends LitElement {
     const count = this.lightboxImages.length;
     const current = this.lightboxImages[this.lightboxIndex];
     return html`
-      <div
-        class="lightbox"
-        role="dialog"
-        aria-modal="true"
-        aria-label="查看图片"
-        @click=${() => this.closeLightbox()}
-      >
-        <button class="lightbox-close" type="button" aria-label="关闭">×</button>
+      <div class="lightbox" role="dialog" aria-modal="true" aria-label="查看图片">
+        <div
+          class="lightbox-stage"
+          @wheel=${this.lbWheel}
+          @pointerdown=${this.lbPointerDown}
+          @pointermove=${this.lbPointerMove}
+          @pointerup=${this.lbPointerUp}
+          @pointercancel=${this.lbPointerUp}
+          @dblclick=${this.lbDoubleClick}
+        >
+          ${keyed(
+            this.lightboxIndex,
+            html`<img class="lightbox-item" src=${current} alt="查看原图" @load=${this.lbPrepare} />`,
+          )}
+        </div>
+        <div class="lb-zoom" aria-hidden="true">100%</div>
+        <div class="lightbox-tools">
+          <button class="lb-btn" type="button" aria-label="放大" @click=${() => this.lbZoomAt(window.innerWidth / 2, window.innerHeight / 2, 1.25)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M11 8v6M8 11h6"/></svg>
+          </button>
+          <button class="lb-btn" type="button" aria-label="缩小" @click=${() => this.lbZoomAt(window.innerWidth / 2, window.innerHeight / 2, 0.8)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5M8 11h6"/></svg>
+          </button>
+          <button class="lb-btn" type="button" aria-label="复位" @click=${() => this.lbReset()}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          </button>
+          <button class="lb-btn" type="button" aria-label="关闭" @click=${() => this.closeLightbox()}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
         ${count > 1
           ? html`<button
-                class="lightbox-nav prev"
+                class="lb-nav prev"
                 type="button"
                 aria-label="上一张"
-                @click=${(event: Event) => {
-                  event.stopPropagation();
-                  this.stepLightbox(-1);
-                }}
+                @click=${() => this.stepLightbox(-1)}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
               <button
-                class="lightbox-nav next"
+                class="lb-nav next"
                 type="button"
                 aria-label="下一张"
-                @click=${(event: Event) => {
-                  event.stopPropagation();
-                  this.stepLightbox(1);
-                }}
+                @click=${() => this.stepLightbox(1)}
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>`
           : nothing}
-        ${keyed(
-          this.lightboxIndex,
-          html`<img
-            class="lightbox-image"
-            src=${current}
-            alt="查看原图"
-            @click=${(event: Event) => event.stopPropagation()}
-          />`,
-        )}
         ${count > 1
-          ? html`<span class="lightbox-counter">${this.lightboxIndex + 1} / ${count}</span>`
+          ? html`<span class="lb-counter">${this.lightboxIndex + 1} / ${count}</span>`
           : nothing}
+        <span class="lb-hint" aria-hidden="true">滚轮缩放 · 拖拽平移 · 双击复位 · ESC 关闭</span>
       </div>
     `;
   }
+
+  /* ---------- 灯箱缩放/平移（直接操作 DOM，不走状态重渲染） ---------- */
+  private lbScale = 1;
+  private lbTx = 0;
+  private lbTy = 0;
+  private lbFit = 1;
+  private lbBaseW = 0;
+  private lbBaseH = 0;
+  private lbDrag: { x: number; y: number } | null = null;
+  private lbZoomTimer: number | undefined;
+
+  private lbItem(): HTMLImageElement | null {
+    return this.renderRoot.querySelector('.lightbox-item');
+  }
+
+  private readonly lbPrepare = (event: Event) => {
+    const img = event.currentTarget as HTMLImageElement;
+    const naturalW = img.naturalWidth || 900;
+    const naturalH = img.naturalHeight || 600;
+    this.lbBaseW = Math.min(naturalW, window.innerWidth * 0.9, 1280);
+    this.lbBaseH = (this.lbBaseW * naturalH) / naturalW;
+    img.style.width = `${this.lbBaseW}px`;
+    this.lbFit = Math.min(
+      (window.innerWidth * 0.92) / this.lbBaseW,
+      (window.innerHeight * 0.86) / this.lbBaseH,
+      2,
+    );
+    this.lbReset();
+  };
+
+  private lbApply() {
+    const item = this.lbItem();
+    if (!item) return;
+    item.style.transform = `translate(${this.lbTx}px, ${this.lbTy}px) scale(${this.lbScale})`;
+    const badge = this.renderRoot.querySelector<HTMLElement>('.lb-zoom');
+    if (badge) {
+      badge.textContent = `${Math.round(this.lbScale * 100)}%`;
+      badge.classList.add('show');
+      window.clearTimeout(this.lbZoomTimer);
+      this.lbZoomTimer = window.setTimeout(() => badge.classList.remove('show'), 900);
+    }
+  }
+
+  private lbReset() {
+    this.lbScale = this.lbFit;
+    this.lbTx = (window.innerWidth - this.lbBaseW * this.lbScale) / 2;
+    this.lbTy = (window.innerHeight - this.lbBaseH * this.lbScale) / 2;
+    this.lbApply();
+  }
+
+  private lbZoomAt(cx: number, cy: number, factor: number) {
+    const next = Math.min(8, Math.max(0.15, this.lbScale * factor));
+    this.lbTx = cx - ((cx - this.lbTx) * next) / this.lbScale;
+    this.lbTy = cy - ((cy - this.lbTy) * next) / this.lbScale;
+    this.lbScale = next;
+    this.lbApply();
+  }
+
+  private readonly lbWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    this.lbZoomAt(event.clientX, event.clientY, Math.pow(1.0018, -event.deltaY));
+  };
+
+  private readonly lbPointerDown = (event: PointerEvent) => {
+    if (event.target === event.currentTarget) {
+      this.closeLightbox();
+      return;
+    }
+    this.lbDrag = { x: event.clientX - this.lbTx, y: event.clientY - this.lbTy };
+    (event.currentTarget as HTMLElement).classList.add('panning');
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  };
+
+  private readonly lbPointerMove = (event: PointerEvent) => {
+    if (!this.lbDrag) return;
+    this.lbTx = event.clientX - this.lbDrag.x;
+    this.lbTy = event.clientY - this.lbDrag.y;
+    this.lbApply();
+  };
+
+  private readonly lbPointerUp = (event: PointerEvent) => {
+    this.lbDrag = null;
+    (event.currentTarget as HTMLElement).classList.remove('panning');
+  };
+
+  private readonly lbDoubleClick = (event: MouseEvent) => {
+    if (this.lbScale > this.lbFit * 1.06) {
+      this.lbReset();
+    } else {
+      this.lbZoomAt(event.clientX, event.clientY, Math.min(3, this.lbFit * 2.4) / this.lbScale);
+    }
+  };
 
   /** 按当前地址同步数据。 */
   private syncRouteData() {
@@ -565,6 +671,7 @@ export class YukiApp extends LitElement {
       this.notePopover = null;
       this.requestUpdate();
     }
+    this.updateArticleProgress();
     const home = window.location.pathname === '/';
     if (!home) {
       if (!this.navPastHero) {
@@ -580,6 +687,28 @@ export class YukiApp extends LitElement {
     }
     this.updateHeroParallax();
   };
+
+  /** 文章页阅读进度：写进左栏目录的进度轨与已读百分比（DOM 直写不重渲染）。
+   * 对全页可滚动区间归一，保证到达底部时恰好 100%。 */
+  private updateArticleProgress() {
+    if (!window.location.pathname.startsWith('/articles/')) return;
+    const progressEl = this.renderRoot.querySelector<HTMLElement>('.post-toc .toc-progress');
+    const pctEl = this.renderRoot.querySelector<HTMLElement>('.post-toc .toc-foot b');
+    if (!progressEl || !pctEl) return;
+    const prose = this.renderRoot.querySelector<HTMLElement>('.prose');
+    if (!prose) return;
+    const y = window.scrollY;
+    const rect = prose.getBoundingClientRect();
+    const proseTop = rect.top + y;
+    const maxScroll = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+    const start = Math.max(0, proseTop - window.innerHeight * 0.3);
+    const end = Math.min(proseTop + rect.height - window.innerHeight * 0.55, maxScroll);
+    const progress =
+      end > start ? Math.min(1, Math.max(0, (y - start) / (end - start))) : y >= maxScroll ? 1 : 0;
+    progressEl.style.height = `${(progress * 100).toFixed(1)}%`;
+    const pct = String(Math.round(progress * 100));
+    if (pctEl.textContent !== pct) pctEl.textContent = pct;
+  }
 
   private updateScrollRing() {
     const ring = this.renderRoot?.querySelector<SVGCircleElement>('.to-top .ring-fg');
@@ -874,6 +1003,17 @@ export class YukiApp extends LitElement {
     ) {
       void import('./enhance.js').then((module) => module.enhanceProse(this.renderRoot));
     }
+    // 文章页结构增强：slug 变化时销毁旧的重建（标题编号/代码卡/多图带/旁注对齐）
+    const fxKey = path.startsWith('/articles/') ? path : '';
+    if (fxKey !== this.articleFxKey) {
+      this.articleFx?.destroy();
+      this.articleFx = null;
+      this.articleFxKey = fxKey;
+    }
+    if (fxKey && !this.articleFx) {
+      const fx = enhanceArticlePage(this.renderRoot);
+      if (fx) this.articleFx = fx;
+    }
     this.classList.toggle('is-intro', this.splashActive && !this.splashDone);
     if (this.pendingScrollRestore !== null) {
       const y = this.pendingScrollRestore;
@@ -907,8 +1047,8 @@ export class YukiApp extends LitElement {
     this.tocObserver?.disconnect();
     this.tocObserver = null;
     const items = (detail?.headings ?? [])
-      // 与 SSR 一致：目录收录 h1–h3（SSR 模板直接渲染 rendered.headings 全量）
-      .filter((heading) => heading.level >= 1 && heading.level <= 3)
+      // 目录只收 h2/h3：h1 是文章标题（页头已有），进目录是重复
+      .filter((heading) => heading.level >= 2 && heading.level <= 3)
       .map((heading) => ({ id: heading.id, text: heading.text, level: heading.level }));
     this.tocItems = items;
     this.tocActive = items[0]?.id ?? '';
@@ -2432,49 +2572,98 @@ export class YukiApp extends LitElement {
     const likeCount = metrics?.like_count ?? detail.likes;
     const liked = metrics?.liked ?? false;
     const likeBusy = this.store.likeBusy.has(slug);
-    const tocLink = (item: { id: string; text: string; level: number }) => html`<a
-      class="post-toc-item level-${item.level}${this.tocActive === item.id ? ' is-active' : ''}"
-      href="#${item.id}"
-      @click=${(event: Event) => {
-        event.preventDefault();
-        this.tocActive = item.id;
-        this.renderRoot
-          .querySelector(`#${CSS.escape(item.id)}`)
-          ?.scrollIntoView({ behavior: this.reducedMotion ? 'auto' : 'smooth', block: 'start' });
-      }}
-      >${item.text}</a
-    >`;
+    let tocIndex = 0;
+    const tocLink = (item: { id: string; text: string; level: number }) => {
+      const no = item.level === 2 ? String(++tocIndex).padStart(2, '0') : '';
+      return html`<a
+        class="post-toc-item level-${item.level}${this.tocActive === item.id ? ' is-active' : ''}"
+        href="#${item.id}"
+        @click=${(event: Event) => {
+          event.preventDefault();
+          this.tocActive = item.id;
+          this.renderRoot
+            .querySelector(`#${CSS.escape(item.id)}`)
+            ?.scrollIntoView({ behavior: this.reducedMotion ? 'auto' : 'smooth', block: 'start' });
+        }}
+        >${no ? html`<span class="no">${no}</span>` : nothing}<span>${item.text}</span></a
+      >`;
+    };
     return html`
       <main class="inner-page">
         <article class="article-page">
-          <a
-            class="post-back"
-            href="/articles"
-            @click=${(event: Event) => {
-              event.preventDefault();
-              if (this.spaNavigated && window.history.length > 1) {
-                window.history.back();
-              } else {
-                window.history.pushState(null, '', '/articles');
-                this.handleRouteChange();
-              }
-            }}
-            >← 返回</a
-          >
-          <header class="post-head" data-reveal>
-            <p class="component-kicker">${detail.category?.name ?? '未分类'}</p>
-            <h1>${detail.title}</h1>
-            <p class="post-meta">
-              <time>${formatDate(detail.publishedAt)}</time>
-              <span aria-hidden="true">·</span>
-              <span>${views} 阅读</span>
-              <span aria-hidden="true">·</span>
-              <span>${likeCount} 喜欢</span>
-              <span aria-hidden="true">·</span>
-              <span>约 ${readingMinutes(detail.html)} 分钟</span>
-            </p>
+          ${this.tocItems.length > 1
+            ? html`<nav class="post-toc" aria-label="目录">
+                <div class="post-toc-sticky">
+                  <p class="rail-kicker">Contents · 目录</p>
+                  <div class="toc">
+                    <i class="toc-progress" aria-hidden="true"></i>
+                    ${this.tocItems.map(tocLink)}
+                  </div>
+                  <p class="toc-foot"><b>0</b>% · 已读</p>
+                </div>
+              </nav>`
+            : nothing}
+          <div class="post-main">
+            <a
+              class="post-back"
+              href="/articles"
+              @click=${(event: Event) => {
+                event.preventDefault();
+                if (this.spaNavigated && window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  window.history.pushState(null, '', '/articles');
+                  this.handleRouteChange();
+                }
+              }}
+              >← 返回文章列表</a
+            >
+            <header class="post-head" data-reveal>
+              <p class="post-kicker">Nightflight Notes<span class="cat">· ${detail.category?.name ?? '未分类'}</span></p>
+              <h1>${detail.title}</h1>
+              <p class="post-meta">
+                <time>${formatDate(detail.publishedAt)}</time>
+                <i class="dot" aria-hidden="true"></i>
+                <span>${views} 阅读</span>
+                <i class="dot" aria-hidden="true"></i>
+                <span>${likeCount} 喜欢</span>
+                <i class="dot" aria-hidden="true"></i>
+                <span>约 ${readingMinutes(detail.html)} 分钟</span>
+              </p>
+              ${detail.summary ? html`<p class="post-summary">${detail.summary}</p>` : nothing}
+              <yuki-cover
+                class="post-cover"
+                src=${detail.coverUrl}
+                alt=${`${detail.title}的封面`}
+                seed=${detail.slug}
+                adaptive
+                max-height="68vh"
+                @click=${() => this.openLightbox([detail.coverUrl], 0)}
+              ></yuki-cover>
+            </header>
+            ${this.tocItems.length > 1
+              ? html`<details class="post-toc-mobile" data-reveal>
+                  <summary>目录 · ${this.tocItems.length} 节</summary>
+                  <div class="toc-mobile-list">${this.tocItems.map(tocLink)}</div>
+                </details>`
+              : nothing}
+            <div class="prose" data-reveal @click=${this.handleProseClick}>${unsafeHTML(detail.html)}</div>
+            ${detail.notes && detail.notes.length > 0
+              ? html`<aside class="post-notes" aria-label="旁注">
+                  <p class="rail-kicker">Notes · 旁注</p>
+                  ${detail.notes.map(
+                    (note) => html`
+                      <div class="post-note" id=${note.anchor}>
+                        <span class="sn-no">${String(note.index).padStart(2, '0')}</span>
+                        <span class="sn-body">${unsafeHTML(note.html)}</span>
+                      </div>
+                    `,
+                  )}
+                </aside>`
+              : nothing}
+            <p class="post-end" data-reveal>FIN</p>
             ${detail.tags.length > 0
-              ? html`<div class="post-tags">
+              ? html`<div class="post-tags" data-reveal>
                   ${detail.tags.map(
                     (tag) =>
                       html`<a
@@ -2485,81 +2674,41 @@ export class YukiApp extends LitElement {
                   )}
                 </div>`
               : nothing}
-            ${detail.summary ? html`<p class="post-summary">${detail.summary}</p>` : nothing}
-          </header>
-          ${this.tocItems.length > 1
-            ? html`<nav class="post-toc" aria-label="目录">
-                <div class="post-toc-sticky">
-                  <p class="post-toc-kicker">目录</p>
-                  ${this.tocItems.map(tocLink)}
-                </div>
-              </nav>`
-            : nothing}
-          <yuki-cover
-            class="post-cover"
-            src=${detail.coverUrl}
-            alt=${`${detail.title}的封面`}
-            seed=${detail.slug}
-            adaptive
-            max-height="68vh"
-            data-reveal
-          ></yuki-cover>
-          ${this.tocItems.length > 1
-            ? html`<details class="post-toc-mobile" data-reveal>
-                <summary>目录 · ${this.tocItems.length} 节</summary>
-                ${this.tocItems.map(tocLink)}
-              </details>`
-            : nothing}
-          <div class="prose" data-reveal @click=${this.handleProseClick}>${unsafeHTML(detail.html)}</div>
-          ${detail.notes && detail.notes.length > 0
-            ? html`<aside class="post-notes" aria-label="旁注" data-reveal>
-                <div class="post-notes-sticky">
-                  <p class="post-notes-kicker">旁注</p>
-                  ${detail.notes.map(
-                    (note) => html`
-                      <div class="post-note" id=${note.anchor}>
-                        <span class="post-note-index">${note.index}</span>
-                        <span class="post-note-body">${unsafeHTML(note.html)}</span>
-                      </div>
-                    `,
-                  )}
-                </div>
-              </aside>`
-            : nothing}
-          <p class="post-end" data-reveal>完</p>
-          <footer class="post-foot" data-reveal>
-            <button
-              class="heart-button post-like${liked ? ' liked' : ''}"
-              type="button"
-              aria-pressed=${liked}
-              aria-label=${liked ? '取消喜欢' : '喜欢这篇文章'}
-              ?disabled=${likeBusy}
-              @click=${() => void this.store.toggleArticleLike(slug)}
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M12 20.3C7.2 16.9 3.5 13.6 3.5 9.9 3.5 7.2 5.6 5 8.3 5c1.5 0 2.9.7 3.7 1.9C12.8 5.7 14.2 5 15.7 5c2.7 0 4.8 2.2 4.8 4.9 0 3.7-3.7 7-8.5 10.4Z"
-                />
-              </svg>
-              <span class="heart-count">${likeCount}</span>
-              <span>${liked ? '已喜欢' : '喜欢这篇'}</span>
-            </button>
-          </footer>
-          <nav class="post-nav" data-reveal aria-label="相邻文章">
-            ${detail.prev
-              ? html`<a class="post-nav-item" href=${`/articles/${detail.prev.slug}`}>
-                  <span class="post-nav-kicker">← 上一篇</span>
-                  <span class="post-nav-title">${detail.prev.title}</span>
-                </a>`
-              : html`<span aria-hidden="true"></span>`}
-            ${detail.next
-              ? html`<a class="post-nav-item older" href=${`/articles/${detail.next.slug}`}>
-                  <span class="post-nav-kicker">下一篇 →</span>
-                  <span class="post-nav-title">${detail.next.title}</span>
-                </a>`
-              : html`<span aria-hidden="true"></span>`}
-          </nav>
-          ${this.renderArticleComments(detail)}
+            <footer class="post-foot" data-reveal>
+              <button
+                class="heart-button post-like${liked ? ' liked' : ''}"
+                type="button"
+                aria-pressed=${liked}
+                aria-label=${liked ? '取消喜欢' : '喜欢这篇文章'}
+                ?disabled=${likeBusy}
+                @click=${() => void this.store.toggleArticleLike(slug)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M12 20.3C7.2 16.9 3.5 13.6 3.5 9.9 3.5 7.2 5.6 5 8.3 5c1.5 0 2.9.7 3.7 1.9C12.8 5.7 14.2 5 15.7 5c2.7 0 4.8 2.2 4.8 4.9 0 3.7-3.7 7-8.5 10.4Z"
+                  />
+                </svg>
+                <span class="heart-count">${likeCount}</span>
+                <span>${liked ? '已喜欢' : '喜欢这篇'}</span>
+              </button>
+              <span class="copyright">© ${new Date().getFullYear()} ${this.siteData.siteTitle || 'YukiLog'} · CC BY-NC-SA 4.0</span>
+            </footer>
+            <nav class="post-nav" data-reveal aria-label="相邻文章">
+              ${detail.prev
+                ? html`<a class="post-nav-item" href=${`/articles/${detail.prev.slug}`}>
+                    <span class="post-nav-kicker">← 上一篇</span>
+                    <span class="post-nav-title">${detail.prev.title}</span>
+                  </a>`
+                : html`<span aria-hidden="true"></span>`}
+              ${detail.next
+                ? html`<a class="post-nav-item older" href=${`/articles/${detail.next.slug}`}>
+                    <span class="post-nav-kicker">下一篇 →</span>
+                    <span class="post-nav-title">${detail.next.title}</span>
+                  </a>`
+                : html`<span aria-hidden="true"></span>`}
+            </nav>
+            ${this.renderArticleComments(detail)}
+          </div>
         </article>
       </main>
     `;
