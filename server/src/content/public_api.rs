@@ -147,6 +147,8 @@ pub struct DynamicItem {
     content_html: String,
     mood: Option<String>,
     media_urls: Vec<String>,
+    /// 与 media_urls 同序的 card 变体地址（无变体时回退原图），九宫格缩图用
+    media_card_urls: Vec<String>,
     likes: i64,
     comment_count: u64,
     created_at: String,
@@ -772,7 +774,7 @@ async fn article_item(
             });
         }
     }
-    let cover_url = media_url(state, article.cover_media_id).await?;
+    let cover_url = cover_media_url(state, article.cover_media_id).await?;
     let published_at = article
         .published_at
         .expect("published article has timestamp");
@@ -847,12 +849,18 @@ async fn dynamic_items(
             .collect::<HashMap<_, _>>()
     };
     let mut media_urls: HashMap<Uuid, Vec<String>> = HashMap::new();
+    let mut media_card_urls: HashMap<Uuid, Vec<String>> = HashMap::new();
     for attachment in attachments {
         if let Some(asset) = assets.get(&attachment.media_id) {
             media_urls
                 .entry(attachment.dynamic_id)
                 .or_default()
                 .push(format!("/media/{}", asset.storage_key));
+            // 九宫格用 card 变体，灯箱点开仍看 media_urls 里的原图
+            media_card_urls
+                .entry(attachment.dynamic_id)
+                .or_default()
+                .push(crate::ops::media::card_or_original(asset));
         }
     }
     Ok(models
@@ -864,6 +872,7 @@ async fn dynamic_items(
                 content_html: markup::render(&model.content_markdown).html,
                 mood: model.mood,
                 media_urls: media_urls.remove(&model.id).unwrap_or_default(),
+                media_card_urls: media_card_urls.remove(&model.id).unwrap_or_default(),
                 likes: likes.get(&model.id).copied().unwrap_or(0),
                 comment_count: comment_counts.get(&model.id).copied().unwrap_or(0),
                 created_at: published_at.to_rfc3339(),
@@ -895,6 +904,18 @@ async fn media_url(state: &AppState, id: Option<Uuid>) -> Result<String, AppErro
         .one(&state.database)
         .await?
         .map(|media| format!("/media/{}", media.storage_key))
+        .unwrap_or_default())
+}
+
+/// 封面没有灯箱场景，优先 card 变体（无变体回退原图）。
+async fn cover_media_url(state: &AppState, id: Option<Uuid>) -> Result<String, AppError> {
+    let Some(id) = id else {
+        return Ok(String::new());
+    };
+    Ok(media_assets::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .map(|media| crate::ops::media::card_or_original(&media))
         .unwrap_or_default())
 }
 

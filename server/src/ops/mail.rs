@@ -216,10 +216,15 @@ UPDATE admin_notifications
                         .one(&transaction)
                         .await?
                         .filter(|media| media.media_type.starts_with("image/"))
-                        .map(|media| format!("{}/media/{}", self.public_origin, media.storage_key)),
+                        .map(|media| {
+                            format!(
+                                "{}{}",
+                                self.public_origin,
+                                crate::ops::media::card_or_original(&media)
+                            )
+                        }),
                     None => None,
-                };
-                article_published_content(
+                };                article_published_content(
                     &self.unsubscribe_url(subscriber.id, &subscriber.token_nonce)?,
                     &article.title,
                     &format!("{}/articles/{}", self.public_origin, article.slug),
@@ -257,7 +262,14 @@ UPDATE admin_notifications
                     .iter()
                     .filter_map(|row| assets.iter().find(|media| media.id == row.media_id))
                     .filter(|media| media.media_type.starts_with("image/"))
-                    .map(|media| format!("{}/media/{}", self.public_origin, media.storage_key))
+                    // 邮件里用 card 变体压体积，无变体回退原图
+                    .map(|media| {
+                        format!(
+                            "{}{}",
+                            self.public_origin,
+                            crate::ops::media::card_or_original(media)
+                        )
+                    })
                     .collect::<Vec<_>>();
                 let link = format!("{}/dynamics#dynamic-{}", self.public_origin, dynamic.id);
                 dynamic_published_content(

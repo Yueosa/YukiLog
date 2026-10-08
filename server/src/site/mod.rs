@@ -1100,7 +1100,7 @@ async fn article_card(state: &AppState, article: articles::Model) -> Result<Arti
             });
         }
     }
-    let cover_url = media_url(state, article.cover_media_id).await?;
+    let cover_url = cover_media_url(state, article.cover_media_id).await?;
     let published_at = article
         .published_at
         .expect("published article has timestamp");
@@ -1222,7 +1222,8 @@ async fn load_dynamics(state: &AppState, offset: u64, limit: u64) -> Result<Vec<
             .entry(attachment.dynamic_id)
             .or_default()
             .push(DynamicMediaCard {
-                url: format!("/media/{}", asset.storage_key),
+                // SSR 九宫格没有灯箱，直接用 card 变体（无变体回退原图）
+                url: crate::ops::media::card_or_original(asset),
                 alt: asset.original_name.clone(),
                 width: asset.width,
                 height: asset.height,
@@ -1326,6 +1327,18 @@ async fn media_url(state: &AppState, id: Option<Uuid>) -> Result<String, AppErro
         .unwrap_or_default())
 }
 
+/// 封面没有灯箱场景，优先 card 变体（无变体回退原图）。
+async fn cover_media_url(state: &AppState, id: Option<Uuid>) -> Result<String, AppError> {
+    let Some(id) = id else {
+        return Ok(String::new());
+    };
+    Ok(media_assets::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .map(|media| crate::ops::media::card_or_original(&media))
+        .unwrap_or_default())
+}
+
 /// 封面 URL + 图片宽高比（宽/高；无媒体或缺尺寸时为 None）。
 async fn cover_url_and_ratio(
     state: &AppState,
@@ -1345,7 +1358,7 @@ async fn cover_url_and_ratio(
                 }
                 _ => None,
             };
-            (format!("/media/{}", media.storage_key), ratio)
+            (crate::ops::media::card_or_original(&media), ratio)
         }
         None => (String::new(), None),
     })

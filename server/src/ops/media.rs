@@ -571,6 +571,13 @@ fn write_variant(
     std::fs::write(&path, &bytes)
 }
 
+/// 封面/卡片等无灯箱场景优先用 card 变体，无变体时回退原图。
+/// hero 首屏背景不在此列（1200 不够，继续用原图）。
+pub(crate) fn card_or_original(media: &media_assets::Model) -> String {
+    let key = media.card_key.as_deref().unwrap_or(&media.storage_key);
+    format!("/media/{key}")
+}
+
 fn random_suffix() -> String {
     let mut bytes = [0_u8; 16];
     OsRng.fill_bytes(&mut bytes);

@@ -98,7 +98,8 @@ GET 撞 429 会自动等待 0.9 秒重试一次）。错误响应
   10000；非法 `sort` 返回 422；只返回已发布文章。排序口径与 SSR 一致：featured
   按 `featured_at` 降序（未精选排后）、popular 按 `like_count * 20 + view_count`
   加权、recent 按发布时间倒序 → `{ items: [ArticleItem], page, totalPages, total }`，
-  `ArticleItem = { id, slug, title, summary, coverUrl（无则 ""）, category:
+  `ArticleItem = { id, slug, title, summary, coverUrl（无则 ""，优先 card
+  变体、无变体回退原图）, category:
   { name, slug } | null, tags: [{ name, slug }], publishedAt, views, likes,
   featured }`；`id` 是文章 UUID，写端点（view/metrics/like/comments）按它寻址；
 - `GET /api/public/articles/{slug}` → `ArticleItem` 展平后另加 `{ html, headings:
@@ -110,8 +111,11 @@ GET 撞 429 会自动等待 0.9 秒重试一次）。错误响应
   avatarUrl, website | null, contentHtml, createdAt }`，`contentHtml` 是转义后
   的纯文本；列表保持平铺，前端按 `parentId` 自行组树（最多两层）；
 - `GET /api/public/dynamics?page=N&pageSize=M`（分页规则同上）→ `{ items: [{ id,
-  contentHtml, mood | null, mediaUrls: [], likes, commentCount, createdAt }], page,
-  totalPages, total }`；`createdAt` 取发布时间；`commentCount` 只计 visible 评论；
+  contentHtml, mood | null, mediaUrls: [], mediaCardUrls: [], likes, commentCount,
+  createdAt }], page,
+  totalPages, total }`；`mediaUrls` 为原图（灯箱点开用），`mediaCardUrls` 为同序的
+  card 变体地址（无变体回退原图，九宫格缩图用）；`createdAt` 取发布时间；
+  `commentCount` 只计 visible 评论；
 - `GET /api/public/dynamics/{id}/comments` → 同文章评论结构，按时间升序平铺
   （不做楼中楼嵌套）；
 - `GET /api/public/friends` → `{ items: [{ name, url, description, avatarUrl,

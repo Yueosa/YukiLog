@@ -39,6 +39,9 @@ JPEG、PNG、WebP、GIF 图片落盘原图后，在阻塞线程池生成两档 w
 - 生成失败不致命：记 warning，变体列留 `NULL`，原图照常入库；
 - 变体的 storage key 记录在 `media_assets.card_key` / `thumb_key`，
   响应字段为 `card_url` / `thumb_url`（`/media/{key}`，无变体时为 `null`）；
+- 消费口径：文章封面（公开 API、SSR、邮件）与 SSR 动态九宫格、邮件动态附图
+  一律用 card 变体（无变体回退原图）；公开动态 API 同时给 `mediaUrls`（原图，
+  灯箱用）与 `mediaCardUrls`（card）；hero 首屏背景保持原图；
 - 删除媒体时变体文件一并删除；
 - 存量图片用 `yukilog-admin media-backfill-variants` 回填（需要
   `DATABASE_URL` 与 `YUKILOG_MEDIA_DIR`），扫描变体列为 `NULL` 的图片资产，
