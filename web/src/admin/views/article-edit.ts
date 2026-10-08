@@ -14,6 +14,9 @@ export class AdmArticleEdit extends AdmView {
   @state() private formTitle = '';
   @state() private slug = '';
   @state() private categoryId = '';
+  @state() private seriesId = '';
+  @state() private seriesOrder = '';
+  @state() private seriesTitle = '';
   @state() private coverMediaId: string | null = null;
   @state() private coverFetchUrl = '';
   @state() private coverFetchBusy = false;
@@ -49,6 +52,18 @@ export class AdmArticleEdit extends AdmView {
       .editor {
         display: grid;
         gap: 16px;
+      }
+
+      .series-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      @media (max-width: 640px) {
+        .series-row {
+          grid-template-columns: 1fr;
+        }
       }
 
       .back {
@@ -243,6 +258,9 @@ export class AdmArticleEdit extends AdmView {
       this.formTitle = article.title;
       this.slug = article.slug;
       this.categoryId = article.category_id;
+      this.seriesId = article.series_id ?? '';
+      this.seriesOrder = article.series_order === null ? '' : String(article.series_order);
+      this.seriesTitle = article.series_title ?? '';
       this.coverMediaId = article.cover_media_id;
       this.summary = article.summary ?? '';
       this.body = article.body_markdown;
@@ -252,6 +270,9 @@ export class AdmArticleEdit extends AdmView {
       this.formTitle = '';
       this.slug = '';
       this.categoryId = this.store.categories[0]?.id ?? '';
+      this.seriesId = '';
+      this.seriesOrder = '';
+      this.seriesTitle = '';
       this.coverMediaId = null;
       this.summary = '';
       this.body = '';
@@ -282,11 +303,20 @@ export class AdmArticleEdit extends AdmView {
       this.store.toast('Slug 格式无效：仅限小写字母、数字和连字符', 'err');
       return;
     }
+    const seriesOrderText = this.seriesOrder.trim();
+    const seriesOrder = seriesOrderText === '' ? null : Number.parseInt(seriesOrderText, 10);
+    if (this.seriesId && seriesOrderText !== '' && (seriesOrder === null || Number.isNaN(seriesOrder) || seriesOrder < 0)) {
+      this.store.toast('系列序号需要是不小于 0 的整数', 'err');
+      return;
+    }
     const saved = await this.store.saveArticle(this.articleId, {
       title: this.formTitle.trim(),
       slug,
       category_id: this.categoryId,
       cover_media_id: this.coverMediaId,
+      series_id: this.seriesId || null,
+      series_order: this.seriesId ? seriesOrder : null,
+      series_title: this.seriesId ? this.seriesTitle.trim() || null : null,
       summary: this.summary.trim() || null,
       body_markdown: this.body,
       allow_comments: this.allowComments,
@@ -492,6 +522,44 @@ export class AdmArticleEdit extends AdmView {
                 )}
               </select>
             </label>
+            <label class="field">
+              <span>系列</span>
+              <select
+                .value=${this.seriesId}
+                @change=${(e: Event) => (this.seriesId = (e.currentTarget as HTMLSelectElement).value)}
+              >
+                <option value="" ?selected=${this.seriesId === ''}>不属于任何系列</option>
+                ${this.store.seriesList.map(
+                  (series) => html`<option value=${series.id} ?selected=${series.id === this.seriesId}>${series.name}</option>`,
+                )}
+              </select>
+            </label>
+            ${this.seriesId
+              ? html`
+                  <div class="row series-row">
+                    <label class="field">
+                      <span>章节序号（可空，0 起）</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        .value=${this.seriesOrder}
+                        placeholder="留空则排到系列末尾"
+                        @input=${(e: InputEvent) => (this.seriesOrder = (e.currentTarget as HTMLInputElement).value)}
+                      />
+                    </label>
+                    <label class="field">
+                      <span>系列短标题（可空）</span>
+                      <input
+                        maxlength="80"
+                        .value=${this.seriesTitle}
+                        placeholder="选集/目录里显示的短标题"
+                        @input=${(e: InputEvent) => (this.seriesTitle = (e.currentTarget as HTMLInputElement).value)}
+                      />
+                    </label>
+                  </div>
+                `
+              : nothing}
             ${this.renderCover()}
             <label class="field">
               <span>摘要</span>

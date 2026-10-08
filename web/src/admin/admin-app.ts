@@ -6,6 +6,7 @@ import './components/index.js';
 import './views/dashboard.js';
 import './views/articles.js';
 import './views/article-edit.js';
+import './views/series.js';
 import './views/dynamics.js';
 import './views/dynamic-edit.js';
 import './views/taxonomy.js';
@@ -20,6 +21,7 @@ type Route =
   | { name: 'dashboard' }
   | { name: 'articles' }
   | { name: 'article-edit'; id: string | null }
+  | { name: 'series' }
   | { name: 'dynamics' }
   | { name: 'dynamic-edit'; id: string | null }
   | { name: 'taxonomy' }
@@ -33,6 +35,7 @@ type Route =
 const NAV: Array<{ key: string; label: string; href: string; icon: string }> = [
   { key: 'dashboard', label: '概览', href: '#/', icon: 'M4 13h6V4H4v9Zm10 7h6v-9h-6v9ZM4 20h6v-4H4v4Zm10-11h6V4h-6v5Z' },
   { key: 'articles', label: '文章', href: '#/articles', icon: 'M6 3h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm8 1.5V9h4.5M9 13h7M9 17h7' },
+  { key: 'series', label: '系列', href: '#/series', icon: 'M5 4.5A1.5 1.5 0 0 1 6.5 3H20v15H6.5a1.5 1.5 0 0 0-1.5 1.5zM5 19.5A1.5 1.5 0 0 1 6.5 18H20M9 8h7' },
   { key: 'dynamics', label: '动态', href: '#/dynamics', icon: 'M12 21c-4.4-3.1-8-6.3-8-9.7C4 8.4 6.2 6.5 8.7 6.5c1.4 0 2.6.7 3.3 1.7.7-1 1.9-1.7 3.3-1.7 2.5 0 4.7 1.9 4.7 4.8 0 3.4-3.6 6.6-8 9.7Z' },
   { key: 'taxonomy', label: '分类与标签', href: '#/taxonomy', icon: 'M4 4h7l9 9-7 7-9-9V4Zm4.5 4.5a1.5 1.5 0 1 0 0 .01' },
   { key: 'comments', label: '评论', href: '#/comments', icon: 'M21 12a8 8 0 0 1-8 8H4l2.3-2.9A8 8 0 1 1 21 12Z' },
@@ -60,6 +63,7 @@ function parseHash(): Route {
       if (second) return { name: 'dynamic-edit', id: second };
       return { name: 'dynamics' };
     case 'taxonomy': return { name: 'taxonomy' };
+    case 'series': return { name: 'series' };
     case 'comments': return { name: 'comments' };
     case 'media': return { name: 'media' };
     case 'friends': return { name: 'friends' };
@@ -417,6 +421,7 @@ export class YukiAdmin extends LitElement {
       case 'dynamics': return html`<adm-dynamics .store=${store}></adm-dynamics>`;
       case 'dynamic-edit': return html`<adm-dynamic-edit .store=${store} .dynamicId=${this.route.id}></adm-dynamic-edit>`;
       case 'taxonomy': return html`<adm-taxonomy .store=${store}></adm-taxonomy>`;
+      case 'series': return html`<adm-series .store=${store}></adm-series>`;
       case 'comments': return html`<adm-comments .store=${store}></adm-comments>`;
       case 'media': return html`<adm-media .store=${store}></adm-media>`;
       case 'friends': return html`<adm-friends .store=${store}></adm-friends>`;

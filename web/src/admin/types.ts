@@ -24,6 +24,7 @@ export type Article = {
   id: string;
   category_id: string;
   cover_media_id: string | null;
+  series_id: string | null;
   title: string;
   slug: string;
   summary: string | null;
@@ -32,9 +33,21 @@ export type Article = {
   allow_comments: boolean;
   published_at: string | null;
   featured_at: string | null;
+  series_order: number | null;
+  series_title: string | null;
   created_at: string;
   updated_at: string;
   tag_ids: string[];
+};
+
+export type Series = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  cover_media_id: string | null;
+  featured: boolean;
+  chapter_count: number;
 };
 
 export type DynamicMediaItem = {

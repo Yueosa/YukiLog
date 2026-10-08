@@ -11,6 +11,7 @@ import {
   previewNotificationSettings,
   previewNotifications,
   previewOverview,
+  previewSeries,
   previewSettings,
   previewSubscribers,
   previewTags,
@@ -28,6 +29,7 @@ import type {
   FriendLink,
   MediaAsset,
   NotificationSettings,
+  Series,
   SiteSettings,
   Subscriber,
   Tag,
@@ -94,6 +96,7 @@ export class AdminStore extends EventTarget {
 
   categories: Category[] = [];
   tags: Tag[] = [];
+  seriesList: Series[] = [];
   articles: Article[] = [];
   dynamics: Dynamic[] = [];
   comments: Comment[] = [];
@@ -198,6 +201,7 @@ export class AdminStore extends EventTarget {
     Object.assign(this, {
       categories: previewCategories,
       tags: previewTags,
+      seriesList: previewSeries,
       articles: previewArticles,
       dynamics: previewDynamics,
       comments: previewComments,
@@ -234,6 +238,7 @@ export class AdminStore extends EventTarget {
     const [
       categories,
       tags,
+      seriesList,
       articles,
       dynamics,
       comments,
@@ -248,6 +253,7 @@ export class AdminStore extends EventTarget {
     ] = await Promise.all([
       api<Category[]>('/api/admin/categories'),
       api<Tag[]>('/api/admin/tags'),
+      api<Series[]>('/api/admin/series'),
       api<Article[]>('/api/admin/articles'),
       api<Dynamic[]>('/api/admin/dynamics'),
       api<Comment[]>('/api/admin/comments'),
@@ -264,7 +270,7 @@ export class AdminStore extends EventTarget {
       api<AdminOverview>('/api/admin/overview').catch(() => null),
     ]);
     Object.assign(this, {
-      categories, tags, articles, dynamics, comments, media, friends,
+      categories, tags, seriesList, articles, dynamics, comments, media, friends,
       subscribers, deliveries, notifications, notificationSettings, settings, overview,
     });
     this.emit();
@@ -342,10 +348,38 @@ export class AdminStore extends EventTarget {
     }, '动态已删除');
   }
 
+  // ---------- 系列 ----------
+
+  async saveSeries(id: string | null, body: unknown) {
+    await this.run(async () => {
+      await api(id ? `/api/admin/series/${id}` : '/api/admin/series', {
+        method: id ? 'PATCH' : 'POST',
+        body,
+      });
+      this.seriesList = await api('/api/admin/series');
+    }, id ? '系列已更新' : '系列已创建');
+  }
+
+  async deleteSeries(item: Series) {
+    if (
+      !(await this.confirm(
+        '删除系列',
+        `「${item.name}」会被删除，其中的 ${item.chapter_count} 篇文章保留但不再属于任何系列。`,
+        '删除',
+        true,
+      ))
+    )
+      return;
+    await this.run(async () => {
+      await api(`/api/admin/series/${item.id}`, { method: 'DELETE' });
+      this.seriesList = await api('/api/admin/series');
+      this.articles = await api('/api/admin/articles');
+    }, '系列已删除');
+  }
+
   // ---------- 分类与标签 ----------
 
-  async createCategory(body: unknown) {
-    await this.run(async () => {
+  async createCategory(body: unknown) {    await this.run(async () => {
       await api('/api/admin/categories', { method: 'POST', body });
       this.categories = await api('/api/admin/categories');
     }, '分类已添加');

@@ -3,6 +3,7 @@ import { html, nothing, type TemplateResult } from 'lit';
 export type IconName =
   | 'home'
   | 'article'
+  | 'series'
   | 'dynamic'
   | 'friends'
   | 'search'
@@ -20,6 +21,7 @@ export type IconName =
 export const publicNavigation = [
   { label: '首页', href: '/', icon: 'home' },
   { label: '文章', href: '/articles', icon: 'article' },
+  { label: '系列', href: '/series', icon: 'series' },
   { label: '动态', href: '/dynamics', icon: 'dynamic' },
   { label: '友链', href: '/friends', icon: 'friends' },
 ] as const;
@@ -30,6 +32,8 @@ export function icon(name: IconName) {
       return html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5v8a1.5 1.5 0 0 1-1.5 1.5h-5v-6h-5v6h-5A1.5 1.5 0 0 1 3 19.5z" /></svg>`;
     case 'article':
       return html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 10h6M9 14h6M9 18h4M15 3v4h4" /></svg>`;
+    case 'series':
+      return html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H20v15H6.5a1.5 1.5 0 0 0-1.5 1.5zM5 19.5A1.5 1.5 0 0 1 6.5 18H20M9 8h7M9 12h5" /></svg>`;
     case 'dynamic':
       return html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H8l-4 4zM8 9h8M8 13h5" /></svg>`;
     case 'friends':

@@ -22,6 +22,7 @@ import {
 } from './format.js';
 import { PublicStore } from './store.js';
 import { enhanceArticlePage, type ArticleFx } from './article-fx.js';
+import { countReadChapters, nextUnreadIndex } from './series-progress.js';
 
 /** 组件内部使用的站点视图：/api/public/site 的归一化形态。 */
 interface SiteView {
@@ -116,6 +117,8 @@ export class YukiApp extends LitElement {
   /** 文章页阅读布局预设（宽屏可切换，localStorage 持久化）。 */
   private layoutChoice = localStorage.getItem('yukilog-article-layout') ?? 'wide';
   private layoutMenuOpen = false;
+  /** 选集弹窗（系列文章的章节网格），仅文章页可开。 */
+  private episodeModalOpen = false;
   private revealInstant = false;
   private quoteRefreshBusy = false;
   private feedSort: api.FeedSort | null = null;
@@ -345,6 +348,44 @@ export class YukiApp extends LitElement {
     this.requestUpdate();
   }
 
+  /* ---------- 系列：进度派生 + 选集弹窗 ---------- */
+
+  /** 当前文章详情（仅文章页有）。 */
+  private currentArticle(): api.ArticleDetail | null {
+    const path = window.location.pathname;
+    if (!path.startsWith('/articles/')) return null;
+    const slug = decodeURIComponent(path.slice('/articles/'.length));
+    return this.store.articlesBySlug.get(slug)?.data ?? null;
+  }
+
+  private seriesReadSlugs(seriesSlug: string): string[] {
+    return this.store.seriesRead[seriesSlug] ?? [];
+  }
+
+  /** 章节号：seriesOrder 两位数格式化，未排序成员按列表位置兜底。 */
+  private chapterNo(chapter: api.SeriesChapter, index: number): string {
+    return String(chapter.seriesOrder ?? index).padStart(2, '0');
+  }
+
+  /** 章节在系列上下文里的显示标题：短标题优先。 */
+  private chapterTitle(chapter: { title: string; seriesTitle: string | null }): string {
+    return chapter.seriesTitle ?? chapter.title;
+  }
+
+  private openEpisodeModal() {
+    this.episodeModalOpen = true;
+    this.layoutMenuOpen = false;
+    document.body.style.overflow = 'hidden';
+    this.requestUpdate();
+  }
+
+  private closeEpisodeModal() {
+    if (!this.episodeModalOpen) return;
+    this.episodeModalOpen = false;
+    document.body.style.overflow = '';
+    this.requestUpdate();
+  }
+
   private stepLightbox(direction: -1 | 1) {
     const count = this.lightboxImages.length;
     if (count === 0) return;
@@ -353,6 +394,10 @@ export class YukiApp extends LitElement {
   }
 
   private readonly handleLightboxKeydown = (event: KeyboardEvent) => {
+    if (this.episodeModalOpen) {
+      if (event.key === 'Escape') this.closeEpisodeModal();
+      return;
+    }
     if (this.lightboxImages.length === 0) return;
     if (event.key === 'Escape') this.closeLightbox();
     else if (event.key === 'ArrowLeft') this.stepLightbox(-1);
@@ -616,6 +661,7 @@ export class YukiApp extends LitElement {
       this.store.loadDynamics(1);
       this.store.ensureFriends();
       this.store.ensurePulse();
+      this.store.ensureSeries();
       this.setTitle('');
       return;
     }
@@ -630,7 +676,19 @@ export class YukiApp extends LitElement {
       this.commentFormOpen = false;
       this.commentError = '';
       this.commentReplyTo = null;
+      this.episodeModalOpen = false;
       this.setTitle('文章');
+      return;
+    }
+    if (path === '/series') {
+      this.store.ensureSeries();
+      this.setTitle('系列');
+      return;
+    }
+    if (path.startsWith('/series/')) {
+      const slug = decodeURIComponent(path.slice('/series/'.length));
+      if (slug) this.store.loadSeriesDetail(slug);
+      this.setTitle('系列');
       return;
     }
     if (path === '/dynamics') {
@@ -671,6 +729,11 @@ export class YukiApp extends LitElement {
       const slug = decodeURIComponent(path.slice('/articles/'.length));
       const detail = this.store.articlesBySlug.get(slug)?.data;
       if (detail) section = detail.title;
+    }
+    if (path.startsWith('/series/')) {
+      const slug = decodeURIComponent(path.slice('/series/'.length));
+      const detail = this.store.seriesBySlug.get(slug)?.data;
+      if (detail) section = detail.name;
     }
     document.title = section ? `${section} · ${siteTitle}` : siteTitle;
   }
@@ -2239,8 +2302,23 @@ export class YukiApp extends LitElement {
     const limit = Math.max(1, Number(node.props.limit ?? 5));
     const sort = this.currentFeedSort();
     const feedSlice = this.store.homeFeed(sort);
-    const items = feedSlice?.data?.items ?? [];
+    let items = feedSlice?.data?.items ?? [];
     const total = feedSlice?.data?.total ?? 0;
+    // 精选流顶部：精选系列大图卡；同系列章节不在精选 feed 里重复出现
+    const featuredSeries =
+      sort === 'featured'
+        ? (this.store.series.data?.items.find((item) => item.featured) ?? null)
+        : null;
+    let featuredChapters: api.SeriesChapter[] | null = null;
+    if (featuredSeries) {
+      this.store.loadSeriesDetail(featuredSeries.slug);
+      featuredChapters =
+        this.store.seriesBySlug.get(featuredSeries.slug)?.data?.chapters ?? null;
+      if (featuredChapters) {
+        const chapterSlugs = new Set(featuredChapters.map((chapter) => chapter.slug));
+        items = items.filter((article) => !chapterSlugs.has(article.slug));
+      }
+    }
     return html`
       <section class="node node-article-feed article-feed feed-${variant}" data-part="article-feed">
         ${feedSlice?.status === 'idle' || feedSlice?.status === 'loading'
@@ -2249,6 +2327,7 @@ export class YukiApp extends LitElement {
         ${feedSlice?.status === 'error'
           ? this.renderLoadError(feedSlice.error, () => this.store.loadHomeFeed(sort, true))
           : nothing}
+        ${featuredSeries ? this.renderFeaturedSeriesCard(featuredSeries, featuredChapters) : nothing}
         ${items.slice(0, limit).map(
           (article) => html`
             <article class="article" data-reveal>
@@ -2322,6 +2401,211 @@ export class YukiApp extends LitElement {
       <p>${error ?? '内容加载失败，请稍后再试。'}</p>
       <button type="button" @click=${retry}>重试</button>
     </div>`;
+  }
+
+  /* ---------- 系列 ---------- */
+
+  /** 首页精选系列卡（方案 C 修订版）：大图铺底 + 渐变压字，摘要与按钮同行。 */
+  private renderFeaturedSeriesCard(
+    series: api.SeriesListItem,
+    chapters: api.SeriesChapter[] | null,
+  ) {
+    const read = this.seriesReadSlugs(series.slug);
+    const total = chapters?.length ?? series.chapterCount;
+    const readCount = chapters
+      ? countReadChapters(
+          this.store.seriesRead,
+          series.slug,
+          chapters.map((chapter) => chapter.slug),
+        )
+      : 0;
+    let ctaHref = `/series/${series.slug}`;
+    let ctaLabel = '进入系列 →';
+    if (chapters && chapters.length > 0) {
+      const slugs = chapters.map((chapter) => chapter.slug);
+      const nextIndex = nextUnreadIndex(slugs, read);
+      if (readCount === 0) {
+        ctaHref = `/articles/${chapters[0].slug}`;
+        ctaLabel = '从第一章开始读 →';
+      } else if (nextIndex >= 0) {
+        ctaHref = `/articles/${chapters[nextIndex].slug}`;
+        ctaLabel = `继续阅读 · 第 ${nextIndex + 1} 章 →`;
+      } else {
+        ctaHref = `/articles/${chapters[0].slug}`;
+        ctaLabel = '从头再读一遍 →';
+      }
+    }
+    const percent = total > 0 ? Math.round((readCount / total) * 100) : 0;
+    return html`
+      <section class="series-spot" data-reveal>
+        ${series.coverUrl
+          ? html`<img class="series-spot-bg" src=${series.coverUrl} alt="" />`
+          : html`<div
+              class="series-spot-bg"
+              style=${styleMap({ background: paletteFor(series.slug) })}
+            ></div>`}
+        <div class="series-spot-veil" aria-hidden="true"></div>
+        <div class="series-spot-body">
+          <span class="series-spot-kicker">系列</span>
+          <h2><a href=${`/series/${series.slug}`}>${series.name}</a></h2>
+          <div class="series-spot-row">
+            <p class="series-spot-desc">${series.description ?? ''}</p>
+            <div class="series-spot-action">
+              <a class="series-spot-cta" href=${ctaHref}>${ctaLabel}</a>
+              <div class="series-spot-progress">
+                <div class="bar"><i style=${styleMap({ width: `${percent}%` })}></i></div>
+                <div class="num">
+                  ${readCount > 0 ? `你已读 ${readCount} / ${total} 章` : `共 ${total} 章`}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  /** 系列 tab 列表页（B 书立式）：竖封面 + 元信息 + 前 3 章预览。 */
+  private renderSeriesListPage() {
+    const slice = this.store.series;
+    const items = slice.data?.items ?? [];
+    return html`
+      <main class="inner-page">
+        ${this.pageHead('YukiLog — Series', '系列', '连载中的长篇企划，按章节慢慢读。')}
+        ${slice.status === 'idle' || slice.status === 'loading'
+          ? html`<div class="series-b-list" aria-hidden="true">
+              <div class="skel" style="height: 210px; border-radius: 18px"></div>
+            </div>`
+          : nothing}
+        ${slice.status === 'error'
+          ? this.renderLoadError(slice.error, () => this.store.ensureSeries(true))
+          : nothing}
+        ${slice.status === 'ready' && items.length === 0
+          ? html`<p class="search-hint">还没有系列，第一部连载正在酝酿。</p>`
+          : nothing}
+        <div class="series-b-list">
+          ${items.map((item) => this.renderSeriesListCard(item))}
+        </div>
+      </main>
+    `;
+  }
+
+  private renderSeriesListCard(series: api.SeriesListItem) {
+    this.store.loadSeriesDetail(series.slug);
+    const chapters = this.store.seriesBySlug.get(series.slug)?.data?.chapters ?? [];
+    const preview = chapters.slice(0, 3);
+    const read = this.seriesReadSlugs(series.slug);
+    const readCount = countReadChapters(
+      this.store.seriesRead,
+      series.slug,
+      chapters.map((chapter) => chapter.slug),
+    );
+    const sub = [
+      `已发布 ${series.chapterCount} 章`,
+      readCount > 0 ? `你已读 ${readCount} 章` : '',
+      series.latestAt ? `更新于 ${formatMonthDay(series.latestAt)}` : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    return html`
+      <article class="series-b" data-reveal>
+        <a class="series-b-spine" href=${`/series/${series.slug}`} aria-label=${series.name}>
+          ${series.coverUrl
+            ? html`<img src=${series.coverUrl} alt="" loading="lazy" />`
+            : html`<span
+                class="series-b-spine-fallback"
+                style=${styleMap({ background: paletteFor(series.slug) })}
+              ></span>`}
+        </a>
+        <div class="series-b-body">
+          <span class="series-b-kicker">系列</span>
+          <h2><a href=${`/series/${series.slug}`}>${series.name}</a></h2>
+          <p class="series-b-sub">${sub}</p>
+          ${preview.length > 0
+            ? html`<ul class="chapter-list">
+                ${preview.map(
+                  (chapter, index) => html`
+                    <li class=${read.includes(chapter.slug) ? 'read' : ''}>
+                      <span class="no">${this.chapterNo(chapter, index)}</span>
+                      <a class="t" href=${`/articles/${chapter.slug}`}
+                        >${this.chapterTitle(chapter)}</a
+                      >
+                    </li>
+                  `,
+                )}
+                ${series.chapterCount > preview.length
+                  ? html`<li class="chapter-more">
+                      <a href=${`/series/${series.slug}`}>… 查看全部 ${series.chapterCount} 章</a>
+                    </li>`
+                  : nothing}
+              </ul>`
+            : nothing}
+          <div class="series-b-foot">
+            <span class="series-b-desc">${series.description ?? ''}</span>
+            <a class="series-b-enter" href=${`/series/${series.slug}`}>进入系列 →</a>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  /** 系列目录页：简介 + 全部章节正序列表。 */
+  private renderSeriesDetailPage(slug: string) {
+    const slice = this.store.seriesDetail(slug);
+    if (slice.status === 'error' && slice.notFound) return this.renderNotFound();
+    if (slice.status === 'error') {
+      return html`<main class="inner-page">
+        ${this.renderLoadError(slice.error, () => this.store.loadSeriesDetail(slug, true))}
+      </main>`;
+    }
+    const detail = slice.data;
+    if (!detail) {
+      return html`<main class="inner-page">
+        <div class="series-toc" aria-hidden="true">
+          <div class="skel skel-line" style="width: 16%"></div>
+          <div class="skel skel-line" style="width: 48%; height: 30px"></div>
+          <div class="skel skel-line" style="width: 82%"></div>
+          <div class="skel skel-line" style="width: 76%"></div>
+          <div class="skel skel-line" style="width: 68%"></div>
+        </div>
+      </main>`;
+    }
+    const read = this.seriesReadSlugs(detail.slug);
+    const slugs = detail.chapters.map((chapter) => chapter.slug);
+    const readCount = countReadChapters(this.store.seriesRead, detail.slug, slugs);
+    return html`
+      <main class="inner-page">
+        ${this.pageHead(
+          'YukiLog — Series',
+          detail.name,
+          detail.description ?? '',
+        )}
+        <p class="cap series-toc-cap" data-reveal>
+          共 ${detail.chapters.length} 章${readCount > 0 ? ` · 你已读 ${readCount} 章` : ''}
+        </p>
+        <ol class="series-toc">
+          ${detail.chapters.map(
+            (chapter, index) => html`
+              <li data-reveal>
+                <a
+                  class="series-toc-row${read.includes(chapter.slug) ? ' read' : ''}"
+                  href=${`/articles/${chapter.slug}`}
+                >
+                  <span class="no">${this.chapterNo(chapter, index)}</span>
+                  <span class="series-toc-main">
+                    <span class="t">${this.chapterTitle(chapter)}</span>
+                    ${chapter.summary
+                      ? html`<span class="series-toc-summary">${chapter.summary}</span>`
+                      : nothing}
+                  </span>
+                  <time>${formatMonthDay(chapter.publishedAt)}</time>
+                </a>
+              </li>
+            `,
+          )}
+        </ol>
+      </main>
+    `;
   }
 
   private renderPager(
@@ -2531,6 +2815,11 @@ export class YukiApp extends LitElement {
       if (slug) return this.renderArticleDetail(slug);
     }
     if (path === '/articles') return this.renderArticlesPage();
+    if (path === '/series') return this.renderSeriesListPage();
+    if (path.startsWith('/series/')) {
+      const slug = decodeURIComponent(path.slice('/series/'.length));
+      if (slug) return this.renderSeriesDetailPage(slug);
+    }
     if (path === '/dynamics') return this.renderDynamicsPage();
     if (path === '/friends') return this.renderFriendsPage();
     if (path === '/search') return this.renderSearchPage();
@@ -2692,6 +2981,7 @@ export class YukiApp extends LitElement {
                 </aside>`
               : nothing}
             <p class="post-end" data-reveal>FIN</p>
+            ${detail.series ? this.renderSeriesNav(detail.series) : nothing}
             ${detail.tags.length > 0
               ? html`<div class="post-tags" data-reveal>
                   ${detail.tags.map(
@@ -2741,6 +3031,118 @@ export class YukiApp extends LitElement {
           </div>
         </article>
       </main>
+    `;
+  }
+
+  /** 文章页系列卡：系列名 + 当前章位置 + 上一章/下一章（短标题优先）。 */
+  private renderSeriesNav(series: api.ArticleSeriesNav) {
+    const position =
+      series.order !== null ? `第 ${series.order + 1} 章 · 共 ${series.total} 章` : `共 ${series.total} 章`;
+    return html`
+      <section class="series-box" data-reveal>
+        <a class="series-box-head" href=${`/series/${series.slug}`}>
+          <span class="series-box-kicker">系列</span>
+          <span class="series-box-name">${series.name}</span>
+          <span class="series-box-pos">${position}</span>
+        </a>
+        <div class="series-box-nav">
+          ${series.prev
+            ? html`<a class="series-box-item" href=${`/articles/${series.prev.slug}`}>
+                <span class="series-box-item-kicker">← 上一章</span>
+                <span class="series-box-item-title">${this.chapterTitle(series.prev)}</span>
+              </a>`
+            : html`<span class="series-box-item is-empty">
+                <span class="series-box-item-kicker">← 上一章</span>
+                <span class="series-box-item-title">这是系列的起点</span>
+              </span>`}
+          ${series.next
+            ? html`<a class="series-box-item next" href=${`/articles/${series.next.slug}`}>
+                <span class="series-box-item-kicker">下一章 →</span>
+                <span class="series-box-item-title">${this.chapterTitle(series.next)}</span>
+              </a>`
+            : html`<span class="series-box-item next is-empty">
+                <span class="series-box-item-kicker">下一章 →</span>
+                <span class="series-box-item-title">这是系列的最新一章</span>
+              </span>`}
+        </div>
+      </section>
+    `;
+  }
+
+  /** 选集弹窗：双列章节网格（窄屏单列），当前章高亮，已读带 ✓。 */
+  private renderEpisodeModal() {
+    if (!this.episodeModalOpen) return nothing;
+    const detail = this.currentArticle();
+    const series = detail?.series ?? null;
+    if (!detail || !series) return nothing;
+    const slice = this.store.seriesDetail(series.slug);
+    const chapters = slice.data?.chapters ?? [];
+    const read = this.seriesReadSlugs(series.slug);
+    const currentIndex = chapters.findIndex((chapter) => chapter.slug === detail.slug);
+    const currentChapter = currentIndex >= 0 ? chapters[currentIndex] : null;
+    const position = `${currentIndex >= 0 ? currentIndex + 1 : '–'} / ${chapters.length || series.total}`;
+    return html`
+      <div
+        class="episode-mask"
+        role="dialog"
+        aria-modal="true"
+        aria-label="选集目录"
+        @click=${() => this.closeEpisodeModal()}
+      >
+        <div class="episode-modal" @click=${(event: Event) => event.stopPropagation()}>
+          <div class="episode-head">
+            <h3>${series.name}</h3>
+            <span class="episode-pos">${position}</span>
+            <button
+              class="episode-close"
+              type="button"
+              aria-label="关闭选集"
+              @click=${() => this.closeEpisodeModal()}
+            >
+              ${icon('close')}
+            </button>
+          </div>
+          <p class="episode-sub">${currentChapter ? this.chapterTitle(currentChapter) : detail.title} —— 正在阅读</p>
+          ${slice.status === 'loading' || slice.status === 'idle'
+            ? html`<div class="skel skel-line" style="width: 88%"></div>
+                <div class="skel skel-line" style="width: 72%"></div>`
+            : nothing}
+          ${slice.status === 'error'
+            ? html`<p class="episode-sub">
+                章节列表加载失败，
+                <a
+                  href=${`/series/${series.slug}`}
+                  @click=${(event: Event) => {
+                    event.preventDefault();
+                    this.store.loadSeriesDetail(series.slug, true);
+                  }}
+                  >重试</a
+                >
+              </p>`
+            : nothing}
+          ${chapters.length > 0
+            ? html`<div class="episode-grid">
+                ${chapters.map(
+                  (chapter, index) => html`
+                    <a
+                      class="ep${chapter.slug === detail.slug ? ' now' : ''}${read.includes(chapter.slug) ? ' read' : ''}"
+                      href=${`/articles/${chapter.slug}`}
+                      aria-current=${chapter.slug === detail.slug ? 'true' : nothing}
+                      @click=${() => this.closeEpisodeModal()}
+                    >
+                      <span class="no">${this.chapterNo(chapter, index)}</span>
+                      <span class="t">${this.chapterTitle(chapter)}</span>
+                    </a>
+                  `,
+                )}
+              </div>`
+            : nothing}
+          <div class="episode-foot">
+            <span class="hint">阅读进度只保存在你自己的浏览器里</span>
+            <a class="episode-series-link" href=${`/series/${series.slug}`}>查看系列页 →</a>
+          </div>
+        </div>
+      </div>
     `;
   }
 
@@ -3290,52 +3692,73 @@ export class YukiApp extends LitElement {
           <span>© ${new Date().getFullYear()} LIAN / SAKURINE</span>
         </footer>
         ${window.location.pathname.startsWith('/articles/')
-          ? html`<div class="layout-switch${this.layoutMenuOpen ? ' open' : ''}">
-              ${this.layoutMenuOpen
-                ? html`<div
-                    class="layout-backdrop"
-                    @click=${() => {
-                      this.layoutMenuOpen = false;
-                      this.requestUpdate();
-                    }}
-                  ></div>`
-                : nothing}
-              <div class="layout-menu" role="menu">
-                <p class="layout-menu-kicker">阅读布局</p>
-                ${[
-                  ['default', '紧凑', '720px 正文'],
-                  ['wide', '宽松', '880px 正文（≥1500px 视口生效）'],
-                  ['full-compact', '全宽', '18 / 60 / 18 三栏'],
-                ].map(
-                  ([key, name, desc]) => html`<button
-                    class="layout-option${this.layoutChoice === key ? ' active' : ''}"
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked=${this.layoutChoice === key}
-                    @click=${() => this.setArticleLayout(key)}
-                  >
-                    <span class="opt-name">${name}</span>
-                    <span class="opt-desc">${desc}</span>
-                  </button>`,
-                )}
-              </div>
-              <button
-                class="layout-fab${this.navPastHero ? ' show' : ''}"
-                type="button"
-                aria-label="阅读布局"
-                title="阅读布局"
-                @click=${() => {
-                  this.layoutMenuOpen = !this.layoutMenuOpen;
-                  this.requestUpdate();
-                }}
-              >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="3" y="4" width="4.5" height="16" rx="1.2" />
-                  <rect x="9.8" y="4" width="7" height="16" rx="1.2" />
-                  <rect x="19" y="4" width="3.4" height="16" rx="1.2" />
-                </svg>
-              </button>
-            </div>`
+          ? (() => {
+              const series = this.currentArticle()?.series ?? null;
+              return html`<div class="layout-switch${this.layoutMenuOpen ? ' open' : ''}">
+                ${this.layoutMenuOpen
+                  ? html`<div
+                      class="layout-backdrop"
+                      @click=${() => {
+                        this.layoutMenuOpen = false;
+                        this.requestUpdate();
+                      }}
+                    ></div>`
+                  : nothing}
+                <div class="layout-menu" role="menu">
+                  ${series
+                    ? html`<button
+                        class="episode-open"
+                        type="button"
+                        role="menuitem"
+                        @click=${() => this.openEpisodeModal()}
+                      >
+                        <span class="episode-open-icon" aria-hidden="true">▤</span>
+                        选集目录
+                        <span class="episode-open-pos"
+                          >${series.order !== null ? series.order + 1 : '–'}/${series.total}</span
+                        >
+                      </button>`
+                    : nothing}
+                  <div class="layout-menu-section">
+                    <p class="layout-menu-kicker">阅读布局</p>
+                    ${[
+                      ['default', '紧凑', '720px 正文'],
+                      ['wide', '宽松', '880px 正文（≥1500px 视口生效）'],
+                      ['full-compact', '全宽', '18 / 60 / 18 三栏'],
+                    ].map(
+                      ([key, name, desc]) => html`<button
+                        class="layout-option${this.layoutChoice === key ? ' active' : ''}"
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked=${this.layoutChoice === key}
+                        @click=${() => this.setArticleLayout(key)}
+                      >
+                        <span class="opt-name">${name}</span>
+                        <span class="opt-desc">${desc}</span>
+                      </button>`,
+                    )}
+                  </div>
+                </div>
+                <button
+                  class="layout-fab${this.navPastHero ? ' show' : ''}"
+                  type="button"
+                  aria-label="阅读工具"
+                  title="阅读工具"
+                  aria-expanded=${this.layoutMenuOpen}
+                  @click=${() => {
+                    this.layoutMenuOpen = !this.layoutMenuOpen;
+                    this.requestUpdate();
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                    <line x1="4" y1="8" x2="20" y2="8" />
+                    <circle cx="9" cy="8" r="2.2" fill="var(--surface)" />
+                    <line x1="4" y1="16" x2="20" y2="16" />
+                    <circle cx="15" cy="16" r="2.2" fill="var(--surface)" />
+                  </svg>
+                </button>
+              </div>`;
+            })()
           : nothing}
         <button
           class="to-top${this.navPastHero ? ' show' : ''}"
@@ -3363,6 +3786,7 @@ export class YukiApp extends LitElement {
       ${this.renderSplash()}
       ${this.renderLightbox()}
       ${this.renderNotePopover()}
+      ${this.renderEpisodeModal()}
     `;
   }
 }

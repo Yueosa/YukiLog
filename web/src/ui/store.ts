@@ -1,5 +1,11 @@
 import * as api from './api.js';
 import { fallbackQuote, type LocalQuote } from './quotes.js';
+import {
+  loadSeriesRead,
+  markChapterRead,
+  persistSeriesRead,
+  type SeriesReadMap,
+} from './series-progress.js';
 
 // 公开站数据层：每个视图一片 Slice（status/data/error），组件订阅后按 Slice 渲染
 // 骨架屏、错误重试与真实内容。所有加载都做了去重与竞态丢弃（后发的请求覆盖先发的）。
@@ -31,7 +37,13 @@ export interface SiteStats {
   views: number | null;
 }
 
-export const HOME_FEED_SIZE = 5;
+/** 首页文章流每屏条数：featured 放开拉取（客户端还要剔除精选系列章节），
+ *  popular/recent 维持一页 12 条。 */
+export const HOME_FEED_SIZES: Record<api.FeedSort, number> = {
+  featured: 50,
+  popular: 12,
+  recent: 12,
+};
 export const ARCHIVE_PAGE_SIZE = 12;
 export const DYNAMICS_PAGE_SIZE = 10;
 
@@ -47,8 +59,12 @@ export class PublicStore {
   archive: Slice<api.ArticleList> & { key: string } = { ...fresh(), key: '' };
   search: Slice<api.SearchResults> & { key: string } = { ...fresh(), key: '' };
   facets: Slice<api.ArticleList> = fresh();
+  series: Slice<api.SeriesList> = fresh();
+  /** 系列阅读进度（localStorage，纯客户端）：{[seriesSlug]: 已读文章 slug[]} */
+  seriesRead: SeriesReadMap = loadSeriesRead();
   readonly homeFeeds = new Map<api.FeedSort, Slice<api.ArticleList>>();
   readonly articlesBySlug = new Map<string, Slice<api.ArticleDetail>>();
+  readonly seriesBySlug = new Map<string, Slice<api.SeriesDetail>>();
   readonly commentsByTarget = new Map<string, Slice<api.CommentList>>();
   readonly articleMetrics = new Map<string, api.ArticleMetrics>();
   readonly dynamicMetrics = new Map<string, api.DynamicMetrics>();
@@ -141,8 +157,39 @@ export class PublicStore {
     const slice = this.homeFeed(sort);
     if (!force && (slice.status === 'loading' || slice.status === 'ready')) return;
     void this.run(`home:${sort}`, slice, () =>
-      api.fetchArticles({ sort, pageSize: HOME_FEED_SIZE }),
+      api.fetchArticles({ sort, pageSize: HOME_FEED_SIZES[sort] }),
     );
+  }
+
+  /* ---------- 系列 ---------- */
+
+  ensureSeries(force = false) {
+    if (!force && (this.series.status === 'loading' || this.series.status === 'ready')) return;
+    void this.run('series', this.series, () => api.fetchSeriesList());
+  }
+
+  seriesDetail(slug: string): Slice<api.SeriesDetail> {
+    let slice = this.seriesBySlug.get(slug);
+    if (!slice) {
+      slice = fresh();
+      this.seriesBySlug.set(slug, slice);
+    }
+    return slice;
+  }
+
+  loadSeriesDetail(slug: string, force = false) {
+    const slice = this.seriesDetail(slug);
+    if (!force && (slice.status === 'loading' || slice.status === 'ready')) return;
+    void this.run(`series:${slug}`, slice, () => api.fetchSeriesDetail(slug));
+  }
+
+  /** 打开系列文章即记一章已读（localStorage，不上报）。 */
+  markSeriesRead(seriesSlug: string, articleSlug: string) {
+    const next = markChapterRead(this.seriesRead, seriesSlug, articleSlug);
+    if (next === this.seriesRead) return;
+    this.seriesRead = next;
+    persistSeriesRead(next);
+    this.notify();
   }
 
   /* ---------- 文章列表 / 筛选 ---------- */
@@ -195,6 +242,11 @@ export class PublicStore {
     void this.run(`article:${slug}`, slice, () => api.fetchArticle(slug)).then((detail) => {
       if (!detail) return;
       this.loadArticleComments(slug);
+      if (detail.series) {
+        // 打开即记已读（纯客户端进度），并拉取系列目录供系列导航/选集弹窗使用
+        this.markSeriesRead(detail.series.slug, slug);
+        this.loadSeriesDetail(detail.series.slug);
+      }
       if (!detail.id) {
         // 契约之外的安全网：写端点按 UUID 寻址，详情缺少 id 时跳过计数/点赞。
         return;

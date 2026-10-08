@@ -163,6 +163,23 @@ export interface ArticleHeading {
   id: string;
 }
 
+/** 系列内相邻章节引用（系列上下文优先用 seriesTitle 短标题）。 */
+export interface SeriesChapterLink {
+  slug: string;
+  title: string;
+  seriesTitle: string | null;
+}
+
+/** 文章详情里的系列上下文：order 为当前章序号（未排序成员为 null）。 */
+export interface ArticleSeriesNav {
+  slug: string;
+  name: string;
+  order: number | null;
+  total: number;
+  prev: SeriesChapterLink | null;
+  next: SeriesChapterLink | null;
+}
+
 export interface ArticleDetail extends ArticleSummary {
   html: string;
   headings: ArticleHeading[];
@@ -172,6 +189,41 @@ export interface ArticleDetail extends ArticleSummary {
   allowComments: boolean;
   prev: { slug: string; title: string } | null;
   next: { slug: string; title: string } | null;
+  series: ArticleSeriesNav | null;
+}
+
+/** 系列列表项（featured 在前）。 */
+export interface SeriesListItem {
+  slug: string;
+  name: string;
+  description: string | null;
+  coverUrl: string | null;
+  chapterCount: number;
+  latestAt: string | null;
+  featured: boolean;
+}
+
+export interface SeriesList {
+  items: SeriesListItem[];
+}
+
+export interface SeriesChapter {
+  slug: string;
+  title: string;
+  seriesTitle: string | null;
+  summary: string | null;
+  coverUrl: string | null;
+  /** seriesOrder 升序，可为 null（未排序成员排最后）。 */
+  seriesOrder: number | null;
+  publishedAt: string;
+}
+
+export interface SeriesDetail {
+  slug: string;
+  name: string;
+  description: string | null;
+  coverUrl: string | null;
+  chapters: SeriesChapter[];
 }
 
 export interface PublicComment {
@@ -318,6 +370,19 @@ export function fetchDynamicComments(id: string): Promise<CommentList> {
 export function fetchFriends(): Promise<FriendList> {
   return get<FriendList>('/api/public/friends').then((list) => ({
     items: itemsOf<FriendLinkItem>(list?.items),
+  }));
+}
+
+export function fetchSeriesList(): Promise<SeriesList> {
+  return get<SeriesList>('/api/public/series').then((list) => ({
+    items: itemsOf<SeriesListItem>(list?.items),
+  }));
+}
+
+export function fetchSeriesDetail(slug: string): Promise<SeriesDetail> {
+  return get<SeriesDetail>(`/api/public/series/${encodeURIComponent(slug)}`).then((detail) => ({
+    ...detail,
+    chapters: itemsOf<SeriesChapter>(detail?.chapters),
   }));
 }
 

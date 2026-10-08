@@ -184,4 +184,62 @@ describe('PublicStore', () => {
     expect(calls).toContain('PUT /api/articles/art-1/like');
     expect(store.articleMetrics.get('wind')?.liked).toBe(true);
   });
+
+  it('marks series chapters as read and loads the series detail', async () => {
+    stubFetch((url) => {
+      if (url === '/api/public/articles/c1') {
+        return jsonResponse(200, {
+          id: 'art-c1',
+          slug: 'c1',
+          title: '第一章',
+          summary: '',
+          coverUrl: '',
+          category: null,
+          tags: [],
+          publishedAt: '2026-10-04T00:00:00+08:00',
+          views: 1,
+          likes: 0,
+          featured: false,
+          html: '<p>正文</p>',
+          headings: [],
+          updatedAt: '2026-10-04T00:00:00+08:00',
+          allowComments: true,
+          prev: null,
+          next: null,
+          series: {
+            slug: 'shells',
+            name: '贝壳的故事',
+            order: 0,
+            total: 2,
+            prev: null,
+            next: { slug: 'c2', title: '第二章', seriesTitle: '价格' },
+          },
+        });
+      }
+      if (url === '/api/public/articles/c1/comments') {
+        return jsonResponse(200, { items: [], total: 0 });
+      }
+      if (url === '/api/public/series/shells') {
+        return jsonResponse(200, {
+          slug: 'shells',
+          name: '贝壳的故事',
+          description: null,
+          coverUrl: null,
+          chapters: [],
+        });
+      }
+      if (url.endsWith('/view') || url.endsWith('/metrics')) {
+        return jsonResponse(200, { view_count: 2, like_count: 0, liked: false });
+      }
+      return jsonResponse(404, { code: 'not_found', message: 'missing' });
+    });
+    const store = new PublicStore();
+    store.loadArticle('c1');
+    await vi.waitFor(() => expect(store.article('c1').status).toBe('ready'));
+    expect(store.seriesRead.shells).toEqual(['c1']);
+    await vi.waitFor(() => expect(store.seriesDetail('shells').status).toBe('ready'));
+    // 重复打开不重复记录
+    store.markSeriesRead('shells', 'c1');
+    expect(store.seriesRead.shells).toEqual(['c1']);
+  });
 });

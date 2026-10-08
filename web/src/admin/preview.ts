@@ -10,6 +10,7 @@ import type {
   FriendLink,
   MediaAsset,
   NotificationSettings,
+  Series,
   SiteSettings,
   Subscriber,
   Tag,
@@ -33,11 +34,24 @@ export const previewTags: Tag[] = [
   { id: 'tag-3', name: 'Rust', slug: 'rust' },
 ];
 
+export const previewSeries: Series[] = [
+  {
+    id: 'ser-1',
+    name: 'ShellStory: 贝壳的故事',
+    slug: 'shellstory',
+    description: '从一个村庄和一枚贝壳开始，把「钱」这件事从头推一遍。',
+    cover_media_id: 'med-1',
+    featured: true,
+    chapter_count: 2,
+  },
+];
+
 export const previewArticles: Article[] = [
   {
     id: 'art-1',
     category_id: 'cat-1',
     cover_media_id: 'med-1',
+    series_id: 'ser-1',
     title: '在十月的晚风里，重新搭一座小小的站',
     slug: 'october-wind',
     summary: '旧服务器消失以后，我终于有机会重新想一遍：一个博客究竟应该留下什么。',
@@ -46,6 +60,8 @@ export const previewArticles: Article[] = [
     allow_comments: true,
     published_at: '2026-10-04T22:00:00+08:00',
     featured_at: '2026-10-04T22:30:00+08:00',
+    series_order: 0,
+    series_title: '贝壳的故事',
     created_at: now,
     updated_at: now,
     tag_ids: ['tag-1', 'tag-2'],
@@ -54,6 +70,7 @@ export const previewArticles: Article[] = [
     id: 'art-2',
     category_id: 'cat-2',
     cover_media_id: null,
+    series_id: null,
     title: '一套不替创作者做决定的博客系统',
     slug: 'blog-system',
     summary: '组件、布局和设计语言应当可以被更换，而内容不必跟着重新搬家。',
@@ -62,6 +79,8 @@ export const previewArticles: Article[] = [
     allow_comments: true,
     published_at: null,
     featured_at: null,
+    series_order: null,
+    series_title: null,
     created_at: now,
     updated_at: now,
     tag_ids: ['tag-3'],
