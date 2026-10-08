@@ -4,7 +4,7 @@ use axum::{
     Router,
     extract::DefaultBodyLimit,
     http::{HeaderName, HeaderValue},
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
 };
 use tower::ServiceBuilder;
 use tower_http::{
@@ -32,6 +32,11 @@ pub fn router(state: AppState) -> Router {
             get(crate::site::gateway::article_detail_page),
         )
         .route("/dynamics", get(crate::site::gateway::dynamic_list_page))
+        .route("/series", get(crate::site::gateway::series_list_page))
+        .route(
+            "/series/{slug}",
+            get(crate::site::gateway::series_detail_page),
+        )
         // 无 JS 表单回退（SSR 阅读版：纯表单评论与点赞，303 回跳）
         .route(
             "/articles/{slug}/comments",
@@ -76,6 +81,11 @@ pub fn router(state: AppState) -> Router {
             get(public_api::dynamic_comments),
         )
         .route("/api/public/friends", get(public_api::friends))
+        .route("/api/public/series", get(public_api::series_list))
+        .route(
+            "/api/public/series/{slug}",
+            get(public_api::series_detail),
+        )
         .route("/api/public/pulse", get(public_api::pulse))
         .route("/api/public/search", get(public_api::search))
         .route("/api/hitokoto", get(crate::ops::hitokoto::hitokoto))
@@ -123,6 +133,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/admin/tags/{id}",
             put(admin::update_tag).delete(admin::delete_tag),
+        )
+        .route(
+            "/api/admin/series",
+            get(admin::list_series).post(admin::create_series),
+        )
+        .route(
+            "/api/admin/series/{id}",
+            patch(admin::update_series).delete(admin::delete_series),
         )
         .route(
             "/api/admin/articles",

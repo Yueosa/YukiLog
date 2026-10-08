@@ -8,12 +8,12 @@ use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
 use crate::{
     AppState,
-    entities::{articles, categories, comments},
+    entities::{articles, categories, comments, series},
     error::AppError,
     markup,
 };
 
-use super::{PageMeta, avatar_fallback, cover_url_and_ratio, date, host_of, load_site, page};
+use super::{PageMeta, avatar_fallback, cover_url_and_ratio, date, escape_html, host_of, load_site, page};
 
 struct CommentCard {
     display_name: String,
@@ -29,7 +29,7 @@ struct CommentCard {
 
 #[derive(Template)]
 #[template(
-    source = r##"<article class="article-page"><a class="post-back" href="/articles">← 返回</a><header class="post-head" data-reveal><p class="component-kicker">{{ category }}</p><h1>{{ title }}</h1><p class="post-meta"><time>{{ published }}</time></p>{% if summary != "" %}<p class="post-summary">{{ summary }}</p>{% endif %}</header>{% if toc.len() > 1 %}<nav class="post-toc" aria-label="目录"><div class="post-toc-sticky"><p class="post-toc-kicker">目录</p>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</div></nav>{% endif %}{% if cover_url != "" %}<div class="post-cover{{ cover_class }}" style="background-image:url({{ cover_url }});{{ cover_style }}" role="img" aria-label="{{ title }}"></div>{% endif %}{% if toc.len() > 1 %}<details class="post-toc-mobile" data-reveal><summary>目录 · {{ toc.len() }} 节</summary>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</details>{% endif %}<div class="prose">{{ body_html|safe }}</div>{% if !notes.is_empty() %}<aside class="post-notes" aria-label="旁注"><div class="post-notes-sticky"><p class="post-notes-kicker">旁注</p>{% for note in notes %}<div class="post-note" id="{{ note.anchor }}"><span class="post-note-index">{{ note.index }}</span><span class="post-note-body">{{ note.html|safe }}</span></div>{% endfor %}</div></aside>{% endif %}</article><section class="comments" data-reveal><header class="comments-head"><h2>评论</h2><span class="comments-count">{{ comments.len() }} 条</span></header>{% if comment_sent %}<p class="comment-submitted">评论已寄出，审核通过后会显示。</p>{% endif %}<form class="comment-form" method="post" action="/articles/{{ slug }}/comments"><div class="comment-form-grid"><label>昵称<input name="display_name" required maxlength="80" placeholder="怎么称呼你"></label><label>邮箱（选填，会公开展示）<input name="email" type="email" maxlength="254" placeholder="用于头像和公开展示"></label><label>网站（选填）<input name="website" type="url" maxlength="2048" placeholder="https://"></label></div><label class="comment-content">内容<textarea name="content" required rows="4" maxlength="5000" placeholder="想说什么都可以，慢一点也没关系。"></textarea></label><div class="comment-form-foot"><p class="comment-note">评论会在审核后显示；昵称和邮箱会公开展示。</p><div class="comment-form-actions"><button type="submit">寄出评论</button></div></div></form>{% if comments.is_empty() %}<p class="empty">暂时还没有评论。</p>{% else %}<ol class="comment-list">{% for comment in comments %}<li class="comment"><header>{% if comment.avatar_url == "" %}<span class="comment-avatar">{{ comment.fallback_svg|safe }}</span>{% else %}<span class="comment-avatar has-img"><img src="{{ comment.avatar_url }}" alt="" loading="lazy" onerror="this.classList.add('is-broken')">{{ comment.fallback_svg|safe }}</span>{% endif %}<div class="comment-who"><div class="comment-line">{% if comment.website != "" %}<a class="comment-name" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.display_name }}</a>{% else %}<span class="comment-name">{{ comment.display_name }}</span>{% endif %}<time>{{ comment.created }}</time></div><div class="comment-meta">{% if comment.website != "" %}<a class="comment-site" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.host }}</a>{% endif %}{% if comment.email != "" %}<span>{{ comment.email }}</span>{% endif %}{% if comment.agent_label != "" %}<span>{{ comment.agent_label }}</span>{% endif %}</div></div></header><p>{{ comment.content }}</p></li>{% endfor %}</ol>{% endif %}</section>"##,
+    source = r##"<article class="article-page"><a class="post-back" href="/articles">← 返回</a><header class="post-head" data-reveal><p class="component-kicker">{{ category }}</p><h1>{{ title }}</h1><p class="post-meta"><time>{{ published }}</time></p>{% if summary != "" %}<p class="post-summary">{{ summary }}</p>{% endif %}</header>{% if toc.len() > 1 %}<nav class="post-toc" aria-label="目录"><div class="post-toc-sticky"><p class="post-toc-kicker">目录</p>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</div></nav>{% endif %}{% if cover_url != "" %}<div class="post-cover{{ cover_class }}" style="background-image:url({{ cover_url }});{{ cover_style }}" role="img" aria-label="{{ title }}"></div>{% endif %}{% if toc.len() > 1 %}<details class="post-toc-mobile" data-reveal><summary>目录 · {{ toc.len() }} 节</summary>{% for item in toc %}<a class="post-toc-item level-{{ item.level }}" href="#{{ item.id }}">{{ item.text }}</a>{% endfor %}</details>{% endif %}<div class="prose">{{ body_html|safe }}</div>{% if !notes.is_empty() %}<aside class="post-notes" aria-label="旁注"><div class="post-notes-sticky"><p class="post-notes-kicker">旁注</p>{% for note in notes %}<div class="post-note" id="{{ note.anchor }}"><span class="post-note-index">{{ note.index }}</span><span class="post-note-body">{{ note.html|safe }}</span></div>{% endfor %}</div></aside>{% endif %}</article>{{ series_nav|safe }}<section class="comments" data-reveal><header class="comments-head"><h2>评论</h2><span class="comments-count">{{ comments.len() }} 条</span></header>{% if comment_sent %}<p class="comment-submitted">评论已寄出，审核通过后会显示。</p>{% endif %}<form class="comment-form" method="post" action="/articles/{{ slug }}/comments"><div class="comment-form-grid"><label>昵称<input name="display_name" required maxlength="80" placeholder="怎么称呼你"></label><label>邮箱（选填，会公开展示）<input name="email" type="email" maxlength="254" placeholder="用于头像和公开展示"></label><label>网站（选填）<input name="website" type="url" maxlength="2048" placeholder="https://"></label></div><label class="comment-content">内容<textarea name="content" required rows="4" maxlength="5000" placeholder="想说什么都可以，慢一点也没关系。"></textarea></label><div class="comment-form-foot"><p class="comment-note">评论会在审核后显示；昵称和邮箱会公开展示。</p><div class="comment-form-actions"><button type="submit">寄出评论</button></div></div></form>{% if comments.is_empty() %}<p class="empty">暂时还没有评论。</p>{% else %}<ol class="comment-list">{% for comment in comments %}<li class="comment"><header>{% if comment.avatar_url == "" %}<span class="comment-avatar">{{ comment.fallback_svg|safe }}</span>{% else %}<span class="comment-avatar has-img"><img src="{{ comment.avatar_url }}" alt="" loading="lazy" onerror="this.classList.add('is-broken')">{{ comment.fallback_svg|safe }}</span>{% endif %}<div class="comment-who"><div class="comment-line">{% if comment.website != "" %}<a class="comment-name" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.display_name }}</a>{% else %}<span class="comment-name">{{ comment.display_name }}</span>{% endif %}<time>{{ comment.created }}</time></div><div class="comment-meta">{% if comment.website != "" %}<a class="comment-site" href="{{ comment.website }}" rel="ugc nofollow noopener">{{ comment.host }}</a>{% endif %}{% if comment.email != "" %}<span>{{ comment.email }}</span>{% endif %}{% if comment.agent_label != "" %}<span>{{ comment.agent_label }}</span>{% endif %}</div></div></header><p>{{ comment.content }}</p></li>{% endfor %}</ol>{% endif %}</section>"##,
     ext = "html"
 )]
 struct ArticleDetailTemplate<'a> {
@@ -47,6 +47,8 @@ struct ArticleDetailTemplate<'a> {
     slug: &'a str,
     comment_sent: bool,
     compose_avatar: &'a str,
+    /// 系列章节导航（上一章/下一章静态链接；非系列文章为空串）
+    series_nav: &'a str,
 }
 
 pub async fn article_detail(
@@ -116,6 +118,7 @@ pub async fn article_detail(
             .published_at
             .expect("published article has timestamp"),
     );
+    let series_nav = series_nav_html(&state, &article).await?;
     let content = ArticleDetailTemplate {
         title: &article.title,
         category: &category.name,
@@ -133,6 +136,7 @@ pub async fn article_detail(
             .as_deref()
             .is_some_and(|q| q.split('&').any(|pair| pair == "comment=sent")),
         compose_avatar: avatar_fallback("来访者"),
+        series_nav: &series_nav,
     }
     .render()
     .map_err(|_| AppError::Internal("render article"))?;
@@ -156,6 +160,62 @@ pub async fn article_detail(
         &meta.description,
     );
     page(&site, &meta, &content)
+}
+
+/// 系列章节导航：系列目录链接 + 上一章/下一章（按 series_order 相邻的已发布章节）。
+/// 未排序成员（series_order 为 NULL）没有前后章，只输出系列目录链接。
+async fn series_nav_html(state: &AppState, article: &articles::Model) -> Result<String, AppError> {
+    let Some(series_id) = article.series_id else {
+        return Ok(String::new());
+    };
+    let Some(series_model) = series::Entity::find_by_id(series_id)
+        .one(&state.database)
+        .await?
+    else {
+        return Ok(String::new());
+    };
+    let chapters = articles::Entity::find()
+        .filter(articles::Column::SeriesId.eq(series_id))
+        .filter(articles::Column::Status.eq("published"))
+        .filter(articles::Column::PublishedAt.lte(Utc::now().fixed_offset()))
+        .order_by_with_nulls(
+            articles::Column::SeriesOrder,
+            sea_orm::sea_query::Order::Asc,
+            sea_orm::sea_query::NullOrdering::Last,
+        )
+        .order_by_asc(articles::Column::PublishedAt)
+        .all(&state.database)
+        .await?;
+    let ordered: Vec<&articles::Model> = chapters
+        .iter()
+        .filter(|chapter| chapter.series_order.is_some())
+        .collect();
+    fn display<'a>(chapter: &'a articles::Model) -> &'a str {
+        chapter.series_title.as_deref().unwrap_or(&chapter.title)
+    }
+    let mut html = format!(
+        r#"<nav class="series-nav" aria-label="系列章节"><a class="series-nav-home" href="/series/{}">系列 · {}</a>"#,
+        escape_html(&series_model.slug),
+        escape_html(&series_model.name)
+    );
+    if let Some(index) = ordered.iter().position(|chapter| chapter.id == article.id) {
+        if let Some(prev) = index.checked_sub(1).map(|i| ordered[i]) {
+            html.push_str(&format!(
+                r#"<a class="series-nav-prev" href="/articles/{}">← 上一章：{}</a>"#,
+                escape_html(&prev.slug),
+                escape_html(display(prev))
+            ));
+        }
+        if let Some(next) = ordered.get(index + 1) {
+            html.push_str(&format!(
+                r#"<a class="series-nav-next" href="/articles/{}">下一章：{} →</a>"#,
+                escape_html(&next.slug),
+                escape_html(display(next))
+            ));
+        }
+    }
+    html.push_str("</nav>");
+    Ok(html)
 }
 
 fn article_json_ld(
@@ -202,6 +262,7 @@ mod tests {
             id: Uuid::nil(),
             category_id: Uuid::nil(),
             cover_media_id: None,
+            series_id: None,
             title: title.to_owned(),
             slug: "hello-world".to_owned(),
             summary: Some("摘要".to_owned()),
@@ -210,6 +271,8 @@ mod tests {
             allow_comments: true,
             published_at: Some(now.fixed_offset()),
             featured_at: None,
+            series_order: None,
+            series_title: None,
             created_at: now.fixed_offset(),
             updated_at: now.fixed_offset(),
         }

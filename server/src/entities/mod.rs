@@ -121,6 +121,29 @@ pub mod media_assets {
     impl ActiveModelBehavior for ActiveModel {}
 }
 
+pub mod series {
+    use sea_orm::entity::prelude::*;
+
+    #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+    #[sea_orm(table_name = "series")]
+    pub struct Model {
+        #[sea_orm(primary_key, auto_increment = false)]
+        pub id: Uuid,
+        pub name: String,
+        pub slug: String,
+        pub description: Option<String>,
+        pub cover_media_id: Option<Uuid>,
+        pub featured_at: Option<DateTimeWithTimeZone>,
+        pub created_at: DateTimeWithTimeZone,
+        pub updated_at: DateTimeWithTimeZone,
+    }
+
+    #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+    pub enum Relation {}
+
+    impl ActiveModelBehavior for ActiveModel {}
+}
+
 pub mod articles {
     use sea_orm::entity::prelude::*;
 
@@ -131,6 +154,7 @@ pub mod articles {
         pub id: Uuid,
         pub category_id: Uuid,
         pub cover_media_id: Option<Uuid>,
+        pub series_id: Option<Uuid>,
         pub title: String,
         pub slug: String,
         pub summary: Option<String>,
@@ -139,6 +163,8 @@ pub mod articles {
         pub allow_comments: bool,
         pub published_at: Option<DateTimeWithTimeZone>,
         pub featured_at: Option<DateTimeWithTimeZone>,
+        pub series_order: Option<i32>,
+        pub series_title: Option<String>,
         pub created_at: DateTimeWithTimeZone,
         pub updated_at: DateTimeWithTimeZone,
     }

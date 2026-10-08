@@ -3,6 +3,7 @@ mod components;
 pub mod gateway;
 pub mod home;
 pub mod lists;
+pub mod series;
 
 use std::collections::HashMap;
 
@@ -670,6 +671,11 @@ struct HomeStats {
     .prose .lm-notes{color:var(--muted);font-size:13.5px}
     .prose .lm-notes li{margin:.3em 0}
     /* ---------- 评论 ---------- */
+    .series-nav{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 20px;margin:44px 0 0;padding:16px 0 0;border-top:1px solid var(--line);font-size:13.5px}
+    .series-nav a{color:var(--muted);text-decoration:none}
+    .series-nav a:hover{color:var(--blue)}
+    .series-nav .series-nav-home{color:var(--ink);font-weight:600}
+    .series-nav .series-nav-next{margin-left:auto}
     .comments{margin-top:52px;padding-top:22px;border-top:1px solid var(--ink)}
     .comments-head{display:flex;align-items:baseline;gap:12px;margin-bottom:18px}
     .comments-head h2{margin:0;font-family:var(--serif);font-size:21px;font-weight:700}

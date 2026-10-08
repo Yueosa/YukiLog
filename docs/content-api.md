@@ -9,9 +9,20 @@
 - `/api/admin/categories`：分类列表与创建；
 - `/api/admin/categories/{id}`：分类修改与删除；
 - `/api/admin/tags`、`/api/admin/tags/{id}`：标签 CRUD；
+- `/api/admin/series`（GET 列表 / POST 创建）、`/api/admin/series/{id}`
+  （PATCH 修改 / DELETE 删除；注意系列用的是 PATCH，与分类标签的 PUT 不同）：
+  系列 CRUD，写请求体 `{ name, slug, description | null, cover_media_id | null
+  （兼容 camelCase 别名 coverMediaId）, featured }`，未知字段直接 422；`featured`
+  布尔映射到 `featured_at`（置精选时保留原时间戳，取消则清空）；slug/name 冲突
+  由数据库唯一约束返回 409；删除系列后其文章的 `series_id` 自动置 NULL；列表与
+  单条响应带 `chapter_count`（该系列全部文章数，含草稿）；
 - `/api/admin/articles`、`/api/admin/articles/{id}`：文章 CRUD；写请求体严格校验
   字段名（未知字段直接 422，不再静默丢弃），封面字段接受 `cover_media_id`，
-  并兼容 camelCase 别名 `coverMediaId`；
+  并兼容 camelCase 别名 `coverMediaId`；文章写请求体另接受可选
+  `series_id`（可传 null 清空）、`series_order`（≥0，同系列内唯一）、
+  `series_title`（去空白后为空存 null）——三者均兼容 camelCase 别名
+  `seriesId`/`seriesOrder`/`seriesTitle`，`series_id` 必须指向存在的系列，
+  否则 422；文章响应带同名字段；
 - `/api/admin/articles/{id}/publish|withdraw`：发布与撤回；
 - `PUT /api/admin/articles/{id}/featured`：设置或取消精选，请求体
   `{ "featured": true|false }`，响应中的文章带 `featured_at`；撤回文章会同时清空精选；
@@ -104,8 +115,21 @@ GET 撞 429 会自动等待 0.9 秒重试一次）。错误响应
   featured }`；`id` 是文章 UUID，写端点（view/metrics/like/comments）按它寻址；
 - `GET /api/public/articles/{slug}` → `ArticleItem` 展平后另加 `{ html, headings:
   [{ level, text, id }], updatedAt, allowComments, prev: { slug, title } | null,
-  next: { slug, title } | null }`；`prev` 是发布时间更晚（较新）的一篇、`next` 是
-  更早的一篇；不存在或未发布返回 404；
+  next: { slug, title } | null, series }`；`prev` 是发布时间更晚（较新）的一篇、`next` 是
+  更早的一篇；`series` 为 `null`（不属于系列）或 `{ slug, name, order | null, total,
+  prev: { slug, title, seriesTitle | null } | null, next: 同左 | null }`——系列上下文
+  只计已发布章节，`order` 是当前章的 `series_order`（未排序成员为 null 且没有前后章），
+  `total` 是系列已发布章节总数，`prev`/`next` 按 `series_order` 相邻；不存在或未发布
+  返回 404；
+- `GET /api/public/series` → `{ items: [{ slug, name, description | null,
+  coverUrl | null, chapterCount, latestAt | null, featured }] }`：`coverUrl` 用
+  card 变体（系列无封面时回退第一章封面，再没有为 null）；`chapterCount` 与
+  `latestAt` 只计已发布且到点章节；排序为精选系列在前，其余按 `latestAt` 倒序
+  （无章节排最后）；
+- `GET /api/public/series/{slug}` → `{ slug, name, description | null,
+  coverUrl | null, chapters: [{ slug, title, seriesTitle | null, summary | null,
+  coverUrl | null, seriesOrder | null, publishedAt }] }`；`chapters` 只含已发布章节，
+  按 `seriesOrder` 升序（未排序成员排最后，平局按发布时间次序）；不存在返回 404；
 - `GET /api/public/articles/{slug}/comments` → `{ items: [CommentItem], total }`，
   只含 visible、按时间升序；`CommentItem = { id, parentId | null, displayName,
   avatarUrl, website | null, contentHtml, createdAt }`，`contentHtml` 是转义后
@@ -133,8 +157,8 @@ GET 撞 429 会自动等待 0.9 秒重试一次）。错误响应
   `{"hitokoto","from"}` JSON）；超时、非 2xx、非法响应一律回退内置句库并返回
   200，绝不向前端返回 5xx。
 
-页面壳契约：`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/friends`、
-`/search` 对人类 UA 返回 SPA 壳 HTML（`<yuki-app>` 挂载点 +
+页面壳契约：`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/series`、
+`/series/{slug}`、`/friends`、`/search` 对人类 UA 返回 SPA 壳 HTML（`<yuki-app>` 挂载点 +
 `/admin/assets/yuki-app-<hash>.js` 模块脚本；hash 由服务端读取
 `$YUKILOG_WEB_DIR/.vite/manifest.json` 中 `name: "yuki-app"` 的 chunk 解析，壳里
 同时输出 manifest 声明的 CSS）。爬虫 UA 与带 `?ssr=1` 的请求继续返回完整 SSR

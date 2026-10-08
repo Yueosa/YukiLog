@@ -6,7 +6,7 @@ use axum::{
 use chrono::Utc;
 use sea_orm::{ColumnTrait, EntityTrait, QueryFilter, QueryOrder};
 
-use crate::{AppState, entities::articles, error::AppError};
+use crate::{AppState, entities::{articles, series}, error::AppError};
 
 pub async fn sitemap(State(state): State<AppState>) -> Result<Response<axum::body::Body>, AppError> {
     let models = articles::Entity::find()
@@ -25,7 +25,14 @@ pub async fn sitemap(State(state): State<AppState>) -> Result<Response<axum::bod
             (article.slug, lastmod.format("%Y-%m-%d").to_string())
         })
         .collect::<Vec<_>>();
-    let body = sitemap_xml(state.auth.public_origin(), &entries);
+    let series_slugs = series::Entity::find()
+        .order_by_asc(series::Column::Slug)
+        .all(&state.database)
+        .await?
+        .into_iter()
+        .map(|model| model.slug)
+        .collect::<Vec<_>>();
+    let body = sitemap_xml(state.auth.public_origin(), &entries, &series_slugs);
     Ok(([(CONTENT_TYPE, "application/xml; charset=utf-8")], body).into_response())
 }
 
@@ -37,7 +44,7 @@ pub async fn robots(State(state): State<AppState>) -> Response<axum::body::Body>
         .into_response()
 }
 
-fn sitemap_xml(origin: &str, articles: &[(String, String)]) -> String {
+fn sitemap_xml(origin: &str, articles: &[(String, String)], series: &[String]) -> String {
     let mut xml = String::from(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -47,11 +54,18 @@ fn sitemap_xml(origin: &str, articles: &[(String, String)]) -> String {
         ("/", "daily"),
         ("/articles", "daily"),
         ("/dynamics", "hourly"),
+        ("/series", "weekly"),
         ("/friends", "weekly"),
     ] {
         xml.push_str(&format!(
             "  <url><loc>{}</loc><changefreq>{changefreq}</changefreq></url>\n",
             xml_escape(&format!("{origin}{path}"))
+        ));
+    }
+    for slug in series {
+        xml.push_str(&format!(
+            "  <url><loc>{}</loc><changefreq>weekly</changefreq></url>\n",
+            xml_escape(&format!("{origin}/series/{slug}"))
         ));
     }
     for (slug, lastmod) in articles {
@@ -85,18 +99,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sitemap_lists_static_pages_and_articles() {
+    fn sitemap_lists_static_pages_series_and_articles() {
         let xml = sitemap_xml(
             "https://blog.example.com",
             &[
                 ("first-post".to_owned(), "2026-10-01".to_owned()),
                 ("night-flight".to_owned(), "2026-09-20".to_owned()),
             ],
+            &["nightflight-notes".to_owned()],
         );
         assert!(xml.contains("<loc>https://blog.example.com/</loc>"));
         assert!(xml.contains("<loc>https://blog.example.com/articles</loc>"));
         assert!(xml.contains("<loc>https://blog.example.com/dynamics</loc>"));
         assert!(xml.contains("<loc>https://blog.example.com/friends</loc>"));
+        assert!(xml.contains("<loc>https://blog.example.com/series</loc>"));
+        assert!(xml.contains("<loc>https://blog.example.com/series/nightflight-notes</loc>"));
         assert!(!xml.contains("/search</loc>"));
         assert!(xml.contains("<loc>https://blog.example.com/articles/first-post</loc>"));
         assert!(xml.contains("<lastmod>2026-10-01</lastmod>"));

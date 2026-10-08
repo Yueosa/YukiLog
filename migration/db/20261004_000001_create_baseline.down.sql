@@ -4,6 +4,7 @@ DROP TRIGGER IF EXISTS admin_notifications_set_updated_at ON admin_notifications
 DROP TRIGGER IF EXISTS friend_links_set_updated_at ON friend_links;
 DROP TRIGGER IF EXISTS dynamics_set_updated_at ON dynamics;
 DROP TRIGGER IF EXISTS articles_set_updated_at ON articles;
+DROP TRIGGER IF EXISTS series_set_updated_at ON series;
 DROP TRIGGER IF EXISTS categories_set_updated_at ON categories;
 DROP TRIGGER IF EXISTS admin_accounts_set_updated_at ON admin_accounts;
 
@@ -31,6 +32,7 @@ DROP TABLE IF EXISTS dynamic_media;
 DROP TABLE IF EXISTS dynamics;
 DROP TABLE IF EXISTS article_tags;
 DROP TABLE IF EXISTS articles;
+DROP TABLE IF EXISTS series;
 DROP TABLE IF EXISTS media_assets;
 DROP TABLE IF EXISTS tags;
 DROP TABLE IF EXISTS categories;

@@ -135,10 +135,28 @@ CREATE TABLE media_assets (
         CHECK (thumb_key IS NULL OR thumb_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_.-]*\.webp$')
 );
 
+CREATE TABLE series (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    name varchar(80) NOT NULL UNIQUE,
+    slug citext NOT NULL UNIQUE,
+    description varchar(500),
+    cover_media_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
+    featured_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT series_name_length
+        CHECK (char_length(btrim(name)) BETWEEN 1 AND 80),
+    CONSTRAINT series_slug_format
+        CHECK (slug::text ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$'),
+    CONSTRAINT series_description_length
+        CHECK (description IS NULL OR char_length(description) <= 500)
+);
+
 CREATE TABLE articles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     category_id uuid NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
     cover_media_id uuid REFERENCES media_assets(id) ON DELETE SET NULL,
+    series_id uuid REFERENCES series(id) ON DELETE SET NULL,
     title varchar(200) NOT NULL,
     slug citext NOT NULL UNIQUE,
     summary varchar(500),
@@ -147,6 +165,8 @@ CREATE TABLE articles (
     allow_comments boolean NOT NULL DEFAULT true,
     published_at timestamptz,
     featured_at timestamptz,
+    series_order integer,
+    series_title varchar(120),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT articles_title_length
@@ -163,9 +183,16 @@ CREATE TABLE articles (
         CHECK (
             (status = 'draft' AND published_at IS NULL)
             OR (status = 'published' AND published_at IS NOT NULL)
-        )
+        ),
+    CONSTRAINT articles_series_order_nonnegative
+        CHECK (series_order IS NULL OR series_order >= 0),
+    CONSTRAINT articles_series_title_length
+        CHECK (series_title IS NULL OR char_length(btrim(series_title)) BETWEEN 1 AND 120)
 );
 CREATE INDEX articles_category_id_idx ON articles (category_id);
+CREATE UNIQUE INDEX articles_series_order_uidx
+    ON articles (series_id, series_order)
+    WHERE series_id IS NOT NULL;
 CREATE INDEX articles_published_at_idx
     ON articles (published_at DESC)
     WHERE status = 'published';
@@ -691,6 +718,10 @@ FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
 
 CREATE TRIGGER articles_set_updated_at
 BEFORE UPDATE ON articles
+FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
+
+CREATE TRIGGER series_set_updated_at
+BEFORE UPDATE ON series
 FOR EACH ROW EXECUTE FUNCTION yukilog_set_updated_at();
 
 CREATE TRIGGER dynamics_set_updated_at

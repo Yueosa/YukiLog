@@ -19,7 +19,7 @@ use crate::{
     content::{client_ip, settings::{SiteSettingsWrite, SocialLink}},
     entities::{
         article_metrics, article_tags, articles, categories, comments, dynamic_media,
-        dynamic_metrics, dynamics, friend_links, media_assets, site_settings, tags,
+        dynamic_metrics, dynamics, friend_links, media_assets, series, site_settings, tags,
     },
     error::AppError,
     markup,
@@ -106,6 +106,67 @@ pub struct ArticleLink {
     title: String,
 }
 
+/// 系列内相邻章节引用（系列上下文优先用 seriesTitle 短标题）
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesChapterLink {
+    slug: String,
+    title: String,
+    series_title: Option<String>,
+}
+
+/// 文章详情里的系列上下文：order 为当前章序号（未排序成员为 null）
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArticleSeriesNav {
+    slug: String,
+    name: String,
+    order: Option<i32>,
+    total: i64,
+    prev: Option<SeriesChapterLink>,
+    next: Option<SeriesChapterLink>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesListItem {
+    slug: String,
+    name: String,
+    description: Option<String>,
+    cover_url: Option<String>,
+    chapter_count: i64,
+    latest_at: Option<String>,
+    featured: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesListResponse {
+    items: Vec<SeriesListItem>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesChapterItem {
+    slug: String,
+    title: String,
+    series_title: Option<String>,
+    summary: Option<String>,
+    cover_url: Option<String>,
+    series_order: Option<i32>,
+    published_at: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesDetailResponse {
+    slug: String,
+    name: String,
+    description: Option<String>,
+    cover_url: Option<String>,
+    chapters: Vec<SeriesChapterItem>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArticleDetailResponse {
@@ -119,6 +180,7 @@ pub struct ArticleDetailResponse {
     allow_comments: bool,
     prev: Option<ArticleLink>,
     next: Option<ArticleLink>,
+    series: Option<ArticleSeriesNav>,
 }
 
 #[derive(Debug, Serialize)]
@@ -432,6 +494,10 @@ pub async fn article_detail(
         .await?;
     let updated_at = article.updated_at.to_rfc3339();
     let allow_comments = article.allow_comments;
+    let series_nav = match article.series_id {
+        Some(series_id) => series_nav(&state, series_id, article.id, article.series_order).await?,
+        None => None,
+    };
     let item = article_item(&state, article).await?;
     Ok(Json(ArticleDetailResponse {
         item,
@@ -448,7 +514,196 @@ pub async fn article_detail(
             slug: article.slug,
             title: article.title,
         }),
+        series: series_nav,
     }))
+}
+
+/// 系列列表：featured 在前（按 featured_at 倒序），其余按最近章节发布倒序。
+pub async fn series_list(
+    State(state): State<AppState>,
+) -> Result<Json<SeriesListResponse>, AppError> {
+    let models = series::Entity::find()
+        .order_by_asc(series::Column::Name)
+        .all(&state.database)
+        .await?;
+    // 章节聚合（只计已发布且到点）：博客规模直接在内存里 group
+    let chapters = published_articles()
+        .filter(articles::Column::SeriesId.is_not_null())
+        .all(&state.database)
+        .await?;
+    let mut aggregates: HashMap<Uuid, (i64, Option<DateTime<FixedOffset>>)> = HashMap::new();
+    for chapter in chapters {
+        let Some(series_id) = chapter.series_id else {
+            continue;
+        };
+        let entry = aggregates.entry(series_id).or_insert((0, None));
+        entry.0 += 1;
+        if let Some(published_at) = chapter.published_at {
+            entry.1 = Some(entry.1.map_or(published_at, |latest| latest.max(published_at)));
+        }
+    }
+    let mut rows: Vec<(series::Model, i64, Option<DateTime<FixedOffset>>)> = models
+        .into_iter()
+        .map(|model| {
+            let (count, latest) = aggregates.get(&model.id).copied().unwrap_or((0, None));
+            (model, count, latest)
+        })
+        .collect();
+    rows.sort_by(|a, b| {
+        b.0.featured_at
+            .is_some()
+            .cmp(&a.0.featured_at.is_some())
+            .then_with(|| b.0.featured_at.cmp(&a.0.featured_at))
+            .then_with(|| b.2.cmp(&a.2))
+            .then_with(|| a.0.name.cmp(&b.0.name))
+    });
+    let mut items = Vec::with_capacity(rows.len());
+    for (model, chapter_count, latest_at) in rows {
+        items.push(SeriesListItem {
+            slug: model.slug.clone(),
+            name: model.name.clone(),
+            description: model.description.clone(),
+            cover_url: series_cover_url(&state, &model).await?,
+            chapter_count,
+            latest_at: latest_at.map(|at| at.to_rfc3339()),
+            featured: model.featured_at.is_some(),
+        });
+    }
+    Ok(Json(SeriesListResponse { items }))
+}
+
+/// 系列目录：章节按 series_order 升序（未排序成员排最后，按发布时间次序）。
+pub async fn series_detail(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<SeriesDetailResponse>, AppError> {
+    let model = require(
+        series::Entity::find()
+            .filter(series::Column::Slug.eq(slug))
+            .one(&state.database)
+            .await?,
+    )?;
+    let chapters = series_chapters(&state, model.id).await?;
+    let cover_url = series_cover_url(&state, &model).await?;
+    let mut chapter_items = Vec::with_capacity(chapters.len());
+    for chapter in chapters {
+        let published_at = chapter
+            .published_at
+            .expect("published article has timestamp");
+        let cover_url = cover_media_url(&state, chapter.cover_media_id).await?;
+        chapter_items.push(SeriesChapterItem {
+            slug: chapter.slug,
+            title: chapter.title,
+            series_title: chapter.series_title,
+            summary: chapter.summary,
+            cover_url: (!cover_url.is_empty()).then_some(cover_url),
+            series_order: chapter.series_order,
+            published_at: published_at.to_rfc3339(),
+        });
+    }
+    Ok(Json(SeriesDetailResponse {
+        slug: model.slug,
+        name: model.name,
+        description: model.description,
+        cover_url,
+        chapters: chapter_items,
+    }))
+}
+
+/// 一个系列的已发布章节：series_order 升序、NULL 排最后，平局按发布时间次序。
+fn series_chapters_query(series_id: Uuid) -> Select<articles::Entity> {
+    published_articles()
+        .filter(articles::Column::SeriesId.eq(series_id))
+        .order_by_with_nulls(
+            articles::Column::SeriesOrder,
+            sea_orm::sea_query::Order::Asc,
+            sea_orm::sea_query::NullOrdering::Last,
+        )
+        .order_by_asc(articles::Column::PublishedAt)
+}
+
+async fn series_chapters(
+    state: &AppState,
+    series_id: Uuid,
+) -> Result<Vec<articles::Model>, AppError> {
+    Ok(series_chapters_query(series_id).all(&state.database).await?)
+}
+
+/// 系列封面：自身封面优先（card 变体），没有则回退第一章封面，再无为 null。
+async fn series_cover_url(
+    state: &AppState,
+    model: &series::Model,
+) -> Result<Option<String>, AppError> {
+    if model.cover_media_id.is_some() {
+        let url = cover_media_url(state, model.cover_media_id).await?;
+        if !url.is_empty() {
+            return Ok(Some(url));
+        }
+    }
+    let first = series_chapters_query(model.id)
+        .limit(1)
+        .one(&state.database)
+        .await?;
+    if let Some(chapter) = first {
+        let url = cover_media_url(state, chapter.cover_media_id).await?;
+        if !url.is_empty() {
+            return Ok(Some(url));
+        }
+    }
+    Ok(None)
+}
+
+/// 文章详情的系列上下文；文章不属于系列或系列已不存在时为 None。
+async fn series_nav(
+    state: &AppState,
+    series_id: Uuid,
+    current_id: Uuid,
+    current_order: Option<i32>,
+) -> Result<Option<ArticleSeriesNav>, AppError> {
+    let Some(model) = series::Entity::find_by_id(series_id)
+        .one(&state.database)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let chapters = series_chapters(state, series_id).await?;
+    Ok(Some(series_nav_from(&model, &chapters, current_id, current_order)))
+}
+
+/// prev/next 只按已排序章节（series_order 非空）的相邻关系计算；
+/// 未排序成员没有前后章。chapters 必须已按 series_chapters_query 的顺序排好。
+fn series_nav_from(
+    model: &series::Model,
+    chapters: &[articles::Model],
+    current_id: Uuid,
+    current_order: Option<i32>,
+) -> ArticleSeriesNav {
+    fn link(chapter: &articles::Model) -> SeriesChapterLink {
+        SeriesChapterLink {
+            slug: chapter.slug.clone(),
+            title: chapter.title.clone(),
+            series_title: chapter.series_title.clone(),
+        }
+    }
+    let ordered: Vec<&articles::Model> = chapters
+        .iter()
+        .filter(|chapter| chapter.series_order.is_some())
+        .collect();
+    let (prev, next) = match ordered.iter().position(|chapter| chapter.id == current_id) {
+        Some(index) => (
+            index.checked_sub(1).map(|i| link(ordered[i])),
+            ordered.get(index + 1).map(|chapter| link(chapter)),
+        ),
+        None => (None, None),
+    };
+    ArticleSeriesNav {
+        slug: model.slug.clone(),
+        name: model.name.clone(),
+        order: current_order,
+        total: chapters.len() as i64,
+        prev,
+        next,
+    }
 }
 
 pub async fn article_comments(
@@ -1050,5 +1305,258 @@ mod tests {
         let item = comment_item(comment);
         assert_eq!(item.content_html, "&lt;b&gt;你好&lt;/b&gt;");
         assert_eq!(item.avatar_url, "https://example.com/favicon.ico");
+    }
+
+    fn test_series() -> series::Model {
+        test_series_with(100, false)
+    }
+
+    fn test_series_with(id: u128, featured: bool) -> series::Model {
+        let now = Utc::now().fixed_offset();
+        series::Model {
+            id: Uuid::from_u128(id),
+            name: "夜航系列".to_owned(),
+            slug: "nightflight".to_owned(),
+            description: None,
+            cover_media_id: None,
+            featured_at: featured.then_some(now),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    fn test_chapter(id: u128, order: Option<i32>) -> articles::Model {
+        let now = Utc::now().fixed_offset();
+        articles::Model {
+            id: Uuid::from_u128(id),
+            category_id: Uuid::nil(),
+            cover_media_id: None,
+            series_id: Some(Uuid::nil()),
+            title: format!("章节 {id}"),
+            slug: format!("chapter-{id}"),
+            summary: None,
+            body_markdown: "正文".to_owned(),
+            status: "published".to_owned(),
+            allow_comments: true,
+            published_at: Some(now),
+            featured_at: None,
+            series_order: order,
+            series_title: Some(format!("第 {id} 章")),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn series_chapters_query_orders_sorted_first_then_unsorted() {
+        let query = series_chapters_query(Uuid::nil());
+        let sql = sea_orm::QueryTrait::build(&query, DatabaseBackend::Postgres).to_string();
+        assert!(sql.contains(r#""series_id""#), "missing series filter: {sql}");
+        assert!(sql.contains("'published'"), "only published chapters: {sql}");
+        assert!(
+            sql.contains(r#""series_order" ASC NULLS LAST"#),
+            "unsorted members must come last: {sql}"
+        );
+        assert!(
+            sql.contains(r#""published_at" ASC"#),
+            "ties break by publish time: {sql}"
+        );
+    }
+
+    #[test]
+    fn series_nav_links_adjacent_ordered_chapters() {
+        let series = test_series();
+        // 已按 series_chapters_query 顺序：0,1,2，未排序成员排最后
+        let chapters = vec![
+            test_chapter(1, Some(0)),
+            test_chapter(2, Some(1)),
+            test_chapter(3, Some(2)),
+            test_chapter(4, None),
+        ];
+        let nav = series_nav_from(&series, &chapters, Uuid::from_u128(2), Some(1));
+        assert_eq!(nav.slug, "nightflight");
+        assert_eq!(nav.name, "夜航系列");
+        assert_eq!(nav.order, Some(1));
+        assert_eq!(nav.total, 4);
+        let prev = nav.prev.unwrap();
+        assert_eq!(prev.slug, "chapter-1");
+        assert_eq!(prev.series_title, Some("第 1 章".to_owned()));
+        let next = nav.next.unwrap();
+        assert_eq!(next.slug, "chapter-3");
+
+        // 首章没有上一章；末章没有下一章
+        let nav = series_nav_from(&series, &chapters, Uuid::from_u128(1), Some(0));
+        assert!(nav.prev.is_none());
+        assert!(nav.next.is_some());
+        let nav = series_nav_from(&series, &chapters, Uuid::from_u128(3), Some(2));
+        assert!(nav.prev.is_some());
+        assert!(nav.next.is_none());
+
+        // 未排序成员没有前后章，order 为 None，但仍计入 total
+        let nav = series_nav_from(&series, &chapters, Uuid::from_u128(4), None);
+        assert_eq!(nav.order, None);
+        assert_eq!(nav.total, 4);
+        assert!(nav.prev.is_none());
+        assert!(nav.next.is_none());
+    }
+
+    #[test]
+    fn series_responses_serialize_camel_case() {
+        let item = SeriesListItem {
+            slug: "nightflight".to_owned(),
+            name: "夜航系列".to_owned(),
+            description: None,
+            cover_url: None,
+            chapter_count: 3,
+            latest_at: None,
+            featured: true,
+        };
+        let value = serde_json::to_value(&item).unwrap();
+        let object = value.as_object().unwrap();
+        for key in [
+            "slug",
+            "name",
+            "description",
+            "coverUrl",
+            "chapterCount",
+            "latestAt",
+            "featured",
+        ] {
+            assert!(object.contains_key(key), "missing key {key}");
+        }
+        assert!(value["coverUrl"].is_null());
+        assert_eq!(value["chapterCount"], 3);
+
+        let chapter = SeriesChapterItem {
+            slug: "chapter-1".to_owned(),
+            title: "标题".to_owned(),
+            series_title: Some("第一章".to_owned()),
+            summary: None,
+            cover_url: None,
+            series_order: Some(0),
+            published_at: "2026-10-01T00:00:00+00:00".to_owned(),
+        };
+        let value = serde_json::to_value(&chapter).unwrap();
+        let object = value.as_object().unwrap();
+        for key in [
+            "slug",
+            "title",
+            "seriesTitle",
+            "summary",
+            "coverUrl",
+            "seriesOrder",
+            "publishedAt",
+        ] {
+            assert!(object.contains_key(key), "missing key {key}");
+        }
+
+        let nav = ArticleSeriesNav {
+            slug: "nightflight".to_owned(),
+            name: "夜航系列".to_owned(),
+            order: Some(0),
+            total: 3,
+            prev: None,
+            next: Some(SeriesChapterLink {
+                slug: "chapter-2".to_owned(),
+                title: "标题".to_owned(),
+                series_title: None,
+            }),
+        };
+        let value = serde_json::to_value(&nav).unwrap();
+        assert!(value["prev"].is_null());
+        assert!(value["next"]["seriesTitle"].is_null());
+        assert_eq!(value["total"], 3);
+    }
+
+    // 响应样例：构造三个端点的真实序列化输出（打印供文档/联调参考）。
+    // sea-orm mock 特性会让 DatabaseConnection 失去 Clone（AppState 依赖），
+    // 因此 handler 级联调留在 SQL 形状断言与纯函数测试，此处直接构造响应体。
+    #[test]
+    fn series_endpoints_sample_payloads() {
+        let latest = Utc::now().fixed_offset().to_rfc3339();
+        let list = SeriesListResponse {
+            items: vec![
+                SeriesListItem {
+                    slug: "nightflight".to_owned(),
+                    name: "夜航系列".to_owned(),
+                    description: Some("长夜飞行记录".to_owned()),
+                    cover_url: Some("/media/ab/cover-1.card.webp".to_owned()),
+                    chapter_count: 3,
+                    latest_at: Some(latest.clone()),
+                    featured: true,
+                },
+                SeriesListItem {
+                    slug: "fragments".to_owned(),
+                    name: "碎片集".to_owned(),
+                    description: None,
+                    cover_url: None,
+                    chapter_count: 1,
+                    latest_at: None,
+                    featured: false,
+                },
+            ],
+        };
+        let value = serde_json::to_value(&list).unwrap();
+        println!(
+            "GET /api/public/series →\n{}",
+            serde_json::to_string_pretty(&value).unwrap()
+        );
+        assert_eq!(value["items"][0]["slug"], "nightflight");
+        assert_eq!(value["items"][1]["coverUrl"], serde_json::Value::Null);
+
+        let detail = SeriesDetailResponse {
+            slug: "nightflight".to_owned(),
+            name: "夜航系列".to_owned(),
+            description: Some("长夜飞行记录".to_owned()),
+            cover_url: Some("/media/ab/cover-1.card.webp".to_owned()),
+            chapters: vec![
+                SeriesChapterItem {
+                    slug: "chapter-0".to_owned(),
+                    title: "长标题：夜航之前".to_owned(),
+                    series_title: Some("第零章".to_owned()),
+                    summary: Some("系列序章".to_owned()),
+                    cover_url: None,
+                    series_order: Some(0),
+                    published_at: latest.clone(),
+                },
+                SeriesChapterItem {
+                    slug: "chapter-1".to_owned(),
+                    title: "第一章正文标题".to_owned(),
+                    series_title: None,
+                    summary: None,
+                    cover_url: None,
+                    series_order: None,
+                    published_at: latest.clone(),
+                },
+            ],
+        };
+        let value = serde_json::to_value(&detail).unwrap();
+        println!(
+            "GET /api/public/series/nightflight →\n{}",
+            serde_json::to_string_pretty(&value).unwrap()
+        );
+        assert_eq!(value["chapters"][0]["seriesOrder"], 0);
+        assert_eq!(value["chapters"][0]["seriesTitle"], "第零章");
+
+        let nav = ArticleSeriesNav {
+            slug: "nightflight".to_owned(),
+            name: "夜航系列".to_owned(),
+            order: Some(1),
+            total: 3,
+            prev: Some(SeriesChapterLink {
+                slug: "chapter-0".to_owned(),
+                title: "长标题：夜航之前".to_owned(),
+                series_title: Some("第零章".to_owned()),
+            }),
+            next: None,
+        };
+        let value = serde_json::to_value(&nav).unwrap();
+        println!(
+            "GET /api/public/articles/<slug> → series =\n{}",
+            serde_json::to_string_pretty(&value).unwrap()
+        );
+        assert_eq!(value["order"], 1);
+        assert_eq!(value["prev"]["seriesTitle"], "第零章");
+        assert!(value["next"].is_null());
     }
 }

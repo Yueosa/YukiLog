@@ -8,7 +8,7 @@ use axum::{
 
 use crate::{AppState, error::AppError};
 
-use super::{SiteView, article, escape_html, home, lists, load_site};
+use super::{SiteView, article, escape_html, home, lists, load_site, series};
 
 const BOT_MARKERS: &[&str] = &[
     "bot",
@@ -126,6 +126,45 @@ pub async fn dynamic_list_page(
         .map_err(|_| AppError::InvalidRequest("查询参数无效"))?;
     Ok(render_cookie_layer(
         lists::dynamic_list(State(state), query).await?.into_response(),
+        uri.query(),
+    ))
+}
+
+pub async fn series_list_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> Result<Response, AppError> {
+    if !wants_ssr(&headers, uri.query()) {
+        if let Some(shell) = spa_shell(&state, &uri).await? {
+            return Ok(shell.into_response());
+        }
+    }
+    Ok(render_cookie_layer(
+        series::series_list(State(state)).await?.into_response(),
+        uri.query(),
+    ))
+}
+
+pub async fn series_detail_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    uri: Uri,
+) -> Result<Response, AppError> {
+    if !wants_ssr(&headers, uri.query()) {
+        if let Some(shell) = spa_shell(&state, &uri).await? {
+            return Ok(shell.into_response());
+        }
+    }
+    let slug = uri
+        .path()
+        .strip_prefix("/series/")
+        .unwrap_or_default()
+        .to_owned();
+    Ok(render_cookie_layer(
+        series::series_detail(State(state), AxumPath(slug))
+            .await?
+            .into_response(),
         uri.query(),
     ))
 }

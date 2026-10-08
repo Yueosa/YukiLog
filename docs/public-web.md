@@ -3,11 +3,12 @@
 公开站点是「Lit SPA 给人类访客，SSR 给爬虫与无 JS 环境」的双形态架构：同一组
 路由按请求分流，人类拿到 SPA 壳（加载 `yuki-app`，数据走 `/api/public/*`），
 爬虫与 `?ssr=1` 调试请求拿到 Askama 服务端渲染的完整 HTML。浏览器不执行
-JavaScript 也能通过 SSR 版本阅读首页、文章、动态、评论、友链和搜索结果。
+JavaScript 也能通过 SSR 版本阅读首页、文章、动态、评论、友链、系列和搜索结果。
 
 ## UA 分流
 
-`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/friends`、`/search` 由
+`/`、`/articles`、`/articles/{slug}`、`/dynamics`、`/series`、`/series/{slug}`、
+`/friends`、`/search` 由
 `server/src/site/gateway.rs` 分流，判定顺序：
 
 1. query 含 `ssr=1` → SSR（调试与降级通道）；
@@ -48,18 +49,25 @@ JavaScript 也能通过 SSR 版本阅读首页、文章、动态、评论、友�
   切换。抽中图加载完成后，其余轮换图与刊头图会以会话级驻留方式预载（Image
   对象常驻内存），SPA 换页回来不再重新加载；
 - `/articles`：已发布文章列表；支持 `tag`、`category`、`year` 与 `page` 查询参数；
-- `/articles/{slug}`：文章正文和公开评论；
+- `/articles/{slug}`：文章正文和公开评论；系列文章正文后输出系列导航（系列
+  目录链接 + 按 `series_order` 相邻的上一章/下一章静态链接，未排序成员没有
+  前后章）；
 - `/dynamics`：已发布动态；朋友圈形态卡片（头像 + 昵称 + 相对时间与可选心情、
   Markdown 正文、配图——单图限宽展示、多图九宫格（2/4 张两列）、点赞与评论计数、
   灰底内联评论区含楼中楼缩进、作者徽章与常驻一行输入框，输入框聚焦/提交时展开
   昵称等字段，评论身份存 `localStorage`）；
+- `/series`：系列列表（精选在前，其余按最近章节发布倒序；封面缺失时回退第一章
+  封面）；
+- `/series/{slug}`：系列目录，已发布章节按 `series_order` 正序（未排序成员排
+  最后），展示 `series_title` 短标题（空则回退文章标题）；
 - `/friends`：公开友链；
 - `/search?q=`：在已发布文章标题、摘要和正文中搜索。
 - `/feed.xml`：文章与动态聚合 RSS；
 - `/feeds/articles.xml`：文章 RSS；
 - `/feeds/dynamics.xml`：动态 RSS。
-- `/sitemap.xml`：首页、文章、动态、友链四个列表页加每篇已发布文章详情页
-  （不含 `/search`），`lastmod` 取 `published_at` 与 `updated_at` 的较晚者；
+- `/sitemap.xml`：首页、文章、动态、系列、友链五个列表页，加每个系列目录页
+  （`/series/{slug}`）与每篇已发布文章详情页（不含 `/search`），`lastmod` 取
+  `published_at` 与 `updated_at` 的较晚者；
 - `/robots.txt`：放行公开页，`Disallow: /admin` 与 `/api`，并以
   `YUKILOG_PUBLIC_ORIGIN` 的绝对 URL 指向 sitemap。
 

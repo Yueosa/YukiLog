@@ -17,7 +17,7 @@ use crate::{
     AppState, auth,
     entities::{
         article_tags, articles, categories, comments, dynamic_media, dynamics, friend_links,
-        media_assets, tags,
+        media_assets, series, tags,
     },
     error::AppError,
     ops::media::MediaResponse,
@@ -187,6 +187,139 @@ pub async fn delete_tag(
     Ok(())
 }
 
+// 与 ArticleWrite 同因：deny_unknown_fields 防止拼错/camelCase 字段被静默丢弃。
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SeriesWrite {
+    name: String,
+    slug: String,
+    description: Option<String>,
+    #[serde(alias = "coverMediaId")]
+    cover_media_id: Option<Uuid>,
+    featured: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SeriesResponse {
+    id: Uuid,
+    name: String,
+    slug: String,
+    description: Option<String>,
+    cover_media_id: Option<Uuid>,
+    featured: bool,
+    chapter_count: i64,
+}
+
+pub async fn list_series(
+    State(state): State<AppState>,
+    jar: CookieJar,
+) -> Result<Json<Vec<SeriesResponse>>, AppError> {
+    auth::authorize_read(&state, &jar).await?;
+    let models = series::Entity::find()
+        .order_by_asc(series::Column::Name)
+        .all(&state.database)
+        .await?;
+    let mut responses = Vec::with_capacity(models.len());
+    for model in models {
+        responses.push(series_response(&state, model).await?);
+    }
+    Ok(Json(responses))
+}
+
+pub async fn create_series(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(input): Json<SeriesWrite>,
+) -> Result<Json<SeriesResponse>, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    validate_cover(&state.database, input.cover_media_id).await?;
+    let model = series::ActiveModel {
+        id: NotSet,
+        name: Set(input.name),
+        slug: Set(input.slug),
+        description: Set(normalize_optional_text(input.description)),
+        cover_media_id: Set(input.cover_media_id),
+        featured_at: Set(input.featured.then(|| Utc::now().fixed_offset())),
+        created_at: NotSet,
+        updated_at: NotSet,
+    }
+    .insert(&state.database)
+    .await?;
+    Ok(Json(series_response(&state, model).await?))
+}
+
+pub async fn update_series(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(input): Json<SeriesWrite>,
+) -> Result<Json<SeriesResponse>, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let model = series::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    validate_cover(&state.database, input.cover_media_id).await?;
+    let mut active = model.into_active_model();
+    active.name = Set(input.name);
+    active.slug = Set(input.slug);
+    active.description = Set(normalize_optional_text(input.description));
+    active.cover_media_id = Set(input.cover_media_id);
+    // 精选保留原时间戳（避免反复开关改变精选排序），取消则清空
+    active.featured_at = Set(if input.featured {
+        Some(active.featured_at.clone().unwrap().unwrap_or_else(|| Utc::now().fixed_offset()))
+    } else {
+        None
+    });
+    let model = active.update(&state.database).await?;
+    Ok(Json(series_response(&state, model).await?))
+}
+
+/// 删除系列：文章的 series_id 由外键 ON DELETE SET NULL 自动清空。
+pub async fn delete_series(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+) -> Result<(), AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    let result = series::Entity::delete_by_id(id)
+        .exec(&state.database)
+        .await?;
+    if result.rows_affected == 0 {
+        return Err(AppError::NotFound);
+    }
+    Ok(())
+}
+
+async fn series_response(
+    state: &AppState,
+    model: series::Model,
+) -> Result<SeriesResponse, AppError> {
+    let chapter_count = articles::Entity::find()
+        .filter(articles::Column::SeriesId.eq(model.id))
+        .count(&state.database)
+        .await? as i64;
+    Ok(SeriesResponse {
+        id: model.id,
+        name: model.name,
+        slug: model.slug,
+        description: model.description,
+        cover_media_id: model.cover_media_id,
+        featured: model.featured_at.is_some(),
+        chapter_count,
+    })
+}
+
+fn normalize_optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|text| {
+        let trimmed = text.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_owned())
+    })
+}
+
 // deny_unknown_fields：拼错或用 camelCase 的字段必须立刻 422，不能静默丢弃——
 // 生产事故根因：客户端发 coverMediaId 时被 serde 忽略，cover_media_id 落为
 // None，每次保存都把已绑定的封面清成 NULL 且返回 200。
@@ -203,6 +336,12 @@ pub struct ArticleWrite {
     allow_comments: bool,
     #[serde(default)]
     tag_ids: Vec<Uuid>,
+    #[serde(default, alias = "seriesId")]
+    series_id: Option<Uuid>,
+    #[serde(default, alias = "seriesOrder")]
+    series_order: Option<i32>,
+    #[serde(default, alias = "seriesTitle")]
+    series_title: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -210,6 +349,7 @@ pub struct ArticleResponse {
     id: Uuid,
     category_id: Uuid,
     cover_media_id: Option<Uuid>,
+    series_id: Option<Uuid>,
     title: String,
     slug: String,
     summary: Option<String>,
@@ -218,6 +358,8 @@ pub struct ArticleResponse {
     allow_comments: bool,
     published_at: Option<DateTime<FixedOffset>>,
     featured_at: Option<DateTime<FixedOffset>>,
+    series_order: Option<i32>,
+    series_title: Option<String>,
     created_at: DateTime<FixedOffset>,
     updated_at: DateTime<FixedOffset>,
     tag_ids: Vec<Uuid>,
@@ -271,10 +413,12 @@ pub async fn create_article(
     auth::authorize_write(&state, &headers, &jar).await?;
     let transaction = state.database.begin().await?;
     validate_cover(&transaction, input.cover_media_id).await?;
+    validate_series_membership(&transaction, input.series_id, input.series_order).await?;
     let model = articles::ActiveModel {
         id: NotSet,
         category_id: Set(input.category_id),
         cover_media_id: Set(input.cover_media_id),
+        series_id: Set(input.series_id),
         title: Set(input.title),
         slug: Set(input.slug),
         summary: Set(input.summary),
@@ -283,6 +427,8 @@ pub async fn create_article(
         allow_comments: Set(input.allow_comments),
         published_at: Set(None),
         featured_at: Set(None),
+        series_order: Set(input.series_order),
+        series_title: Set(normalize_optional_text(input.series_title)),
         created_at: NotSet,
         updated_at: NotSet,
     }
@@ -308,14 +454,18 @@ pub async fn update_article(
         .await?
         .ok_or(AppError::NotFound)?;
     validate_cover(&transaction, input.cover_media_id).await?;
+    validate_series_membership(&transaction, input.series_id, input.series_order).await?;
     let mut active = model.into_active_model();
     active.category_id = Set(input.category_id);
     active.cover_media_id = Set(input.cover_media_id);
+    active.series_id = Set(input.series_id);
     active.title = Set(input.title);
     active.slug = Set(input.slug);
     active.summary = Set(input.summary);
     active.body_markdown = Set(input.body_markdown);
     active.allow_comments = Set(input.allow_comments);
+    active.series_order = Set(input.series_order);
+    active.series_title = Set(normalize_optional_text(input.series_title));
     let model = active.update(&transaction).await?;
     replace_article_tags(&transaction, id, input.tag_ids).await?;
     transaction.commit().await?;
@@ -813,18 +963,38 @@ pub async fn list_media(
 }
 
 async fn validate_cover(
-    transaction: &DatabaseTransaction,
+    connection: &impl ConnectionTrait,
     cover_media_id: Option<Uuid>,
 ) -> Result<(), AppError> {
     let Some(id) = cover_media_id else {
         return Ok(());
     };
     let media = media_assets::Entity::find_by_id(id)
-        .one(transaction)
+        .one(connection)
         .await?
         .ok_or(AppError::InvalidRequest("封面媒体不存在"))?;
     if !media.media_type.starts_with("image/") {
-        return Err(AppError::InvalidRequest("文章封面必须是图片"));
+        return Err(AppError::InvalidRequest("封面必须是图片"));
+    }
+    Ok(())
+}
+
+/// 文章入系列校验：系列必须存在；序号为负直接拒绝（数据库 CHECK 是最后边界）。
+async fn validate_series_membership(
+    connection: &impl ConnectionTrait,
+    series_id: Option<Uuid>,
+    series_order: Option<i32>,
+) -> Result<(), AppError> {
+    if let Some(order) = series_order {
+        if order < 0 {
+            return Err(AppError::InvalidRequest("系列章节序号不能为负"));
+        }
+    }
+    if let Some(series_id) = series_id {
+        series::Entity::find_by_id(series_id)
+            .one(connection)
+            .await?
+            .ok_or(AppError::InvalidRequest("系列不存在"))?;
     }
     Ok(())
 }
@@ -867,6 +1037,7 @@ async fn article_response(
         id: article.id,
         category_id: article.category_id,
         cover_media_id: article.cover_media_id,
+        series_id: article.series_id,
         title: article.title,
         slug: article.slug,
         summary: article.summary,
@@ -875,6 +1046,8 @@ async fn article_response(
         allow_comments: article.allow_comments,
         published_at: article.published_at,
         featured_at: article.featured_at,
+        series_order: article.series_order,
+        series_title: article.series_title,
         created_at: article.created_at,
         updated_at: article.updated_at,
         tag_ids,
@@ -1284,5 +1457,75 @@ mod tests {
         let mut payload = article_write_payload();
         payload["cover_media_ids"] = serde_json::json!(Uuid::from_u128(42));
         assert!(serde_json::from_value::<ArticleWrite>(payload).is_err());
+    }
+
+    #[test]
+    fn article_write_accepts_series_membership_fields() {
+        // 旧客户端不带系列字段，默认全部 None（可清空）
+        let parsed: ArticleWrite = serde_json::from_value(article_write_payload()).unwrap();
+        assert_eq!(parsed.series_id, None);
+        assert_eq!(parsed.series_order, None);
+        assert_eq!(parsed.series_title, None);
+
+        let mut payload = article_write_payload();
+        payload["series_id"] = serde_json::json!(Uuid::from_u128(7));
+        payload["series_order"] = serde_json::json!(0);
+        payload["series_title"] = serde_json::json!("第零章");
+        let parsed: ArticleWrite = serde_json::from_value(payload).unwrap();
+        assert_eq!(parsed.series_id, Some(Uuid::from_u128(7)));
+        assert_eq!(parsed.series_order, Some(0));
+        assert_eq!(parsed.series_title, Some("第零章".to_owned()));
+
+        // camelCase 别名与 coverMediaId 同款兼容
+        let mut payload = article_write_payload();
+        payload["seriesId"] = serde_json::json!(Uuid::from_u128(7));
+        payload["seriesOrder"] = serde_json::json!(3);
+        payload["seriesTitle"] = serde_json::json!("第三章");
+        let parsed: ArticleWrite = serde_json::from_value(payload).unwrap();
+        assert_eq!(parsed.series_id, Some(Uuid::from_u128(7)));
+        assert_eq!(parsed.series_order, Some(3));
+        assert_eq!(parsed.series_title, Some("第三章".to_owned()));
+    }
+
+    #[test]
+    fn series_write_rejects_unknown_fields() {
+        let payload = serde_json::json!({
+            "name": "夜航系列",
+            "slug": "nightflight",
+            "description": null,
+            "cover_media_id": null,
+            "featured": false
+        });
+        let parsed: SeriesWrite = serde_json::from_value(payload).unwrap();
+        assert!(!parsed.featured);
+
+        let payload = serde_json::json!({
+            "name": "夜航系列",
+            "slug": "nightflight",
+            "description": null,
+            "coverMediaId": Uuid::from_u128(9),
+            "featured": true
+        });
+        let parsed: SeriesWrite = serde_json::from_value(payload).unwrap();
+        assert_eq!(parsed.cover_media_id, Some(Uuid::from_u128(9)));
+        assert!(parsed.featured);
+
+        let payload = serde_json::json!({
+            "name": "夜航系列",
+            "slug": "nightflight",
+            "featured": true,
+            "featuredAt": "2026-10-09T00:00:00Z"
+        });
+        assert!(serde_json::from_value::<SeriesWrite>(payload).is_err());
+    }
+
+    #[test]
+    fn optional_text_trimmed_blank_becomes_none() {
+        assert_eq!(normalize_optional_text(None), None);
+        assert_eq!(normalize_optional_text(Some("   ".to_owned())), None);
+        assert_eq!(
+            normalize_optional_text(Some("  序章  ".to_owned())),
+            Some("序章".to_owned())
+        );
     }
 }

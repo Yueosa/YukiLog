@@ -97,4 +97,44 @@ mod tests {
         // subscriber 对评论回复类型可空
         assert!(UP_SQL.contains("subscriber_id uuid REFERENCES subscribers(id) ON DELETE CASCADE"));
     }
+
+    #[test]
+    fn up_sql_creates_series_table() {
+        assert!(UP_SQL.contains("CREATE TABLE series ("));
+        assert!(UP_SQL.contains("name varchar(80) NOT NULL UNIQUE"));
+        assert!(UP_SQL.contains("slug citext NOT NULL UNIQUE"));
+        assert!(UP_SQL.contains("description varchar(500)"));
+        assert!(
+            UP_SQL.contains("cover_media_id uuid REFERENCES media_assets(id) ON DELETE SET NULL")
+        );
+        assert!(UP_SQL.contains("featured_at timestamptz"));
+        assert!(UP_SQL.contains("CHECK (slug::text ~ '^[a-z0-9]+(?:-[a-z0-9]+)*$')"));
+        assert!(UP_SQL.contains("CREATE TRIGGER series_set_updated_at"));
+    }
+
+    #[test]
+    fn up_sql_articles_belong_to_series() {
+        assert!(UP_SQL.contains("series_id uuid REFERENCES series(id) ON DELETE SET NULL"));
+        assert!(UP_SQL.contains("series_order integer"));
+        assert!(UP_SQL.contains("series_title varchar(120)"));
+        assert!(UP_SQL.contains("CHECK (series_order IS NULL OR series_order >= 0)"));
+        assert!(UP_SQL.contains(
+            "CHECK (series_title IS NULL OR char_length(btrim(series_title)) BETWEEN 1 AND 120)"
+        ));
+        assert!(UP_SQL.contains(
+            "CREATE UNIQUE INDEX articles_series_order_uidx\n    ON articles (series_id, series_order)\n    WHERE series_id IS NOT NULL;"
+        ));
+        // series 必须先于 articles 建表（外键依赖）
+        let series_create = UP_SQL.find("CREATE TABLE series (").unwrap();
+        let articles_create = UP_SQL.find("CREATE TABLE articles (").unwrap();
+        assert!(series_create < articles_create);
+    }
+
+    #[test]
+    fn down_sql_drops_series_after_articles() {
+        let articles_drop = DOWN_SQL.find("DROP TABLE IF EXISTS articles;").unwrap();
+        let series_drop = DOWN_SQL.find("DROP TABLE IF EXISTS series;").unwrap();
+        assert!(articles_drop < series_drop);
+        assert!(DOWN_SQL.contains("DROP TRIGGER IF EXISTS series_set_updated_at ON series;"));
+    }
 }
