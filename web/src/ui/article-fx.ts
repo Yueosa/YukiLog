@@ -113,9 +113,12 @@ function wrapCodeBlocks(prose: HTMLElement) {
   });
 }
 
-/** 原样块 / 示例块原文栏：悬停复制角标（写法就是要给人抄的）。 */
+/** 原样块 / 示例块原文栏：悬停复制角标（写法就是要给人抄的）。
+ * pre 是横向滚动容器，角标/按钮必须挂在外层不滚动的壳上，否则跟着内容滚走。 */
 function addCopyChips(prose: HTMLElement) {
   prose.querySelectorAll<HTMLElement>('pre.lm-verbatim').forEach((pre) => {
+    const box = document.createElement('div');
+    box.className = 'lm-verbatim-box';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'copy-chip';
@@ -125,7 +128,8 @@ function addCopyChips(prose: HTMLElement) {
       event.stopPropagation();
       void copyText(pre.innerText, button, '');
     });
-    pre.append(button);
+    pre.parentNode?.insertBefore(box, pre);
+    box.append(pre, button);
   });
 }
 

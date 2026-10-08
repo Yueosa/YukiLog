@@ -1647,7 +1647,7 @@ export const appStyles = css`
       background: rgb(28 39 51 / 6%);
     }
 
-    .prose .lm-verbatim:hover .copy-chip {
+    .prose .lm-verbatim-box:hover .copy-chip {
       opacity: 1;
     }
 
@@ -2163,9 +2163,18 @@ export const appStyles = css`
       white-space: nowrap;
     }
 
-    /* 原样块：浅色"写法卡" */
-    .prose .lm-verbatim {
+    /* 原样块：浅色"写法卡"。lm-verbatim-box 是客户端包的不滚动外壳，
+       承载 LY 角标和复制按钮（pre 自身横向滚动，不能挂定位子元素） */
+    .prose .lm-verbatim-box {
       position: relative;
+      margin: 2em 0;
+    }
+
+    .prose .lm-verbatim-box .lm-verbatim {
+      margin: 0;
+    }
+
+    .prose .lm-verbatim {
       border: 1px dashed color-mix(in srgb, var(--faint) 60%, transparent);
       background: var(--surface-soft);
       color: var(--muted);
@@ -2173,7 +2182,7 @@ export const appStyles = css`
       font-size: 13px;
     }
 
-    .prose .lm-verbatim::after {
+    .prose .lm-verbatim-box::after {
       content: 'LY';
       position: absolute;
       top: 10px;
@@ -2181,6 +2190,7 @@ export const appStyles = css`
       color: var(--faint);
       font-size: 9.5px;
       letter-spacing: 0.2em;
+      pointer-events: none;
     }
 
     .prose pre.lm-mermaid {
