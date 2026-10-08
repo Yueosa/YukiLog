@@ -195,6 +195,8 @@ export interface DynamicItem {
   contentHtml: string;
   mood: string | null;
   mediaUrls: string[];
+  /** 与 mediaUrls 同序的 card 变体（约 1200px webp），九宫格展示用；灯箱仍开原图 */
+  mediaCardUrls?: string[];
   likes: number;
   commentCount: number;
   createdAt: string;

@@ -1173,6 +1173,8 @@ export class YukiApp extends LitElement {
     const commentsSlice = this.store.comments(`dynamic:${item.id}`);
     const comments = commentsSlice.data?.items ?? [];
     const images = item.mediaUrls ?? [];
+    // 展示用 card 变体（无变体回退原图），灯箱始终开原图
+    const display = images.map((url, i) => item.mediaCardUrls?.[i] ?? url);
     const author = this.siteData.ownerName || '博主';
     return html`
       <div class="moment" data-dyn=${item.id} data-reveal>
@@ -1192,7 +1194,7 @@ export class YukiApp extends LitElement {
           ${images.length === 1
             ? html`<yuki-cover
                 class="m-media zoomable"
-                src=${images[0]}
+                src=${display[0]}
                 alt="动态配图"
                 seed=${item.id}
                 adaptive
@@ -1204,7 +1206,7 @@ export class YukiApp extends LitElement {
                   ${images.map(
                     (url, imageIndex) => html`<yuki-cover
                       class="zoomable"
-                      src=${url}
+                      src=${display[imageIndex]}
                       alt="动态配图 ${imageIndex + 1}"
                       seed=${`${item.id}-${imageIndex}`}
                       ratio="1 / 1"
