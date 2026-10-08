@@ -73,10 +73,10 @@ mod tests {
         assert!(UP_SQL.contains("card_key text"));
         assert!(UP_SQL.contains("thumb_key text"));
         assert!(UP_SQL.contains(
-            "CHECK (card_key IS NULL OR card_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_-]*\\.webp$')"
+            "CHECK (card_key IS NULL OR card_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_.-]*\\.webp$')"
         ));
         assert!(UP_SQL.contains(
-            "CHECK (thumb_key IS NULL OR thumb_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_-]*\\.webp$')"
+            "CHECK (thumb_key IS NULL OR thumb_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_.-]*\\.webp$')"
         ));
     }
 
