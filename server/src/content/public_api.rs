@@ -28,7 +28,7 @@ use crate::{
 const LIST_COOLDOWN: Duration = Duration::from_millis(300);
 const SEARCH_COOLDOWN: Duration = Duration::from_millis(800);
 const DEFAULT_PAGE_SIZE: u64 = 10;
-const MAX_PAGE_SIZE: u64 = 20;
+const MAX_PAGE_SIZE: u64 = 100;
 const SEARCH_LIMIT: u64 = 10;
 
 #[derive(Debug, Serialize)]
