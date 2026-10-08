@@ -336,7 +336,7 @@ export class AdmMedia extends AdmView {
       <div class="card">
         <div class="thumb">
           ${isImage
-            ? html`<img src=${item.url} alt=${item.original_name} loading="lazy" />`
+            ? html`<img src=${item.thumb_url ?? item.url} alt=${item.original_name} loading="lazy" />`
             : html`<span class="kind">${item.media_type}</span>`}
         </div>
         <div class="meta">

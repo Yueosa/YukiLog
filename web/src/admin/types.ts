@@ -87,6 +87,8 @@ export type FriendLink = {
 export type MediaAsset = {
   id: string;
   url: string;
+  card_url?: string | null;
+  thumb_url?: string | null;
   original_name: string;
   media_type: string;
   byte_size: number;

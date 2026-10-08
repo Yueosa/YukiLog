@@ -1,4 +1,4 @@
-import { api, ApiError } from './api.js';
+import { api, ApiError, csrfToken } from './api.js';
 import {
   previewAdmin,
   previewArticles,
@@ -414,16 +414,49 @@ export class AdminStore extends EventTarget {
     }
   }
 
-  async uploadMedia(file: File): Promise<MediaAsset | null> {
-    let uploaded: MediaAsset | null = null;
-    const known = new Set(this.media.map((item) => item.id));
-    const data = new FormData();
-    data.append('file', file, file.name);
-    await this.run(async () => {
-      uploaded = await api<MediaAsset>('/api/admin/media', { method: 'POST', formData: data });
-      this.media = await api('/api/admin/media');
-    }, () => (uploaded && known.has(uploaded.id) ? '文件与已有媒体内容重复，已自动复用' : '上传成功'));
-    return uploaded;
+  /**
+   * 单文件上传。用 XMLHttpRequest 拿 upload.onprogress 真实进度（fetch 做不到）；
+   * 不走 run()/busy，批量上传的队列状态与汇总提示由调用方（adm-upload）负责。
+   * 成功 resolve 资产；预览模式 toast 后 resolve null；失败 reject ApiError。
+   */
+  uploadMedia(file: File, onProgress?: (percent: number) => void): Promise<MediaAsset | null> {
+    if (this.previewMode) {
+      this.toast('预览模式：改动不会保存', 'info');
+      return Promise.resolve(null);
+    }
+    return new Promise((resolve, reject) => {
+      const data = new FormData();
+      data.append('file', file, file.name);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/admin/media');
+      xhr.withCredentials = true;
+      xhr.setRequestHeader('Accept', 'application/json');
+      const csrf = csrfToken();
+      if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf);
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) onProgress?.(Math.round((event.loaded / event.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText) as MediaAsset);
+          } catch {
+            reject(new ApiError('响应解析失败', xhr.status));
+          }
+          return;
+        }
+        const payload = (() => {
+          try {
+            return JSON.parse(xhr.responseText) as { code?: string; message?: string } | null;
+          } catch {
+            return null;
+          }
+        })();
+        reject(new ApiError(payload?.message ?? `请求失败（${xhr.status}）`, xhr.status, payload?.code));
+      };
+      xhr.onerror = () => reject(new ApiError('网络错误，上传失败', 0));
+      xhr.send(data);
+    });
   }
 
   async deleteMedia(id: string) {

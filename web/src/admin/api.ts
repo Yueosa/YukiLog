@@ -47,7 +47,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
-function csrfToken(): string | undefined {
+export function csrfToken(): string | undefined {
   for (const entry of document.cookie.split(';')) {
     const [rawName, ...rawValue] = entry.trim().split('=');
     if (rawName === 'yukilog_csrf' || rawName === '__Host-yukilog_csrf') {

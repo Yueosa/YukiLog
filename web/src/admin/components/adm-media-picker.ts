@@ -366,7 +366,7 @@ export class AdmMediaPicker extends LitElement {
                         this.confirm();
                       }}
                     >
-                      <span class="thumb"><img src=${item.url} alt=${item.original_name} loading="lazy" /></span>
+                      <span class="thumb"><img src=${item.thumb_url ?? item.url} alt=${item.original_name} loading="lazy" /></span>
                       <span class="name">${item.original_name}</span>
                     </button>
                   `,

@@ -219,7 +219,7 @@ export class AdmArticles extends AdmView {
       <a class="card" href="#/articles/${article.id}">
         <div class="cover">
           ${cover
-            ? html`<img src=${cover.url} alt=${article.title} loading="lazy" />`
+            ? html`<img src=${cover.thumb_url ?? cover.url} alt=${article.title} loading="lazy" />`
             : html`
                 <span class="placeholder">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
