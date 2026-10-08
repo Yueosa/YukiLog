@@ -105,6 +105,8 @@ CREATE TABLE media_assets (
     sha256 bytea NOT NULL UNIQUE,
     width integer,
     height integer,
+    card_key text,
+    thumb_key text,
     origin text NOT NULL DEFAULT 'upload',
     source_url text,
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -126,7 +128,11 @@ CREATE TABLE media_assets (
         CHECK (
             (width IS NULL AND height IS NULL)
             OR (width > 0 AND height > 0)
-        )
+        ),
+    CONSTRAINT media_assets_card_key_format
+        CHECK (card_key IS NULL OR card_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_-]*\.webp$'),
+    CONSTRAINT media_assets_thumb_key_format
+        CHECK (thumb_key IS NULL OR thumb_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_-]*\.webp$')
 );
 
 CREATE TABLE articles (

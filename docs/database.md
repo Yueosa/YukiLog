@@ -83,6 +83,8 @@ outbox 或邮件供应商 webhook。
 | `sha256` | 文件内容摘要；上传时计算，用于去重和完整性检查。 |
 | `width` | 图片/视频宽度；可选，上传探测后写。 |
 | `height` | 图片/视频高度；可选，上传探测后写。 |
+| `card_key` | 卡片变体（最长边 1200 webp）的 storage key；可选，入库时生成或回填写。 |
+| `thumb_key` | 缩略图变体（最长边 360 webp）的 storage key；可选，入库时生成或回填写。 |
 | `origin` | 媒体来源：`upload`（本地上传，默认）或 `fetched`（管理端从 URL 拉取入库）。 |
 | `source_url` | `origin = 'fetched'` 时的原始外链；上传媒体为 NULL，最长 2048 字符。 |
 | `created_at` | 上传完成时间。 |

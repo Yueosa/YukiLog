@@ -23,7 +23,7 @@
   IP，无从返回）；
 - `/api/admin/friend-links`、`/api/admin/friend-links/{id}`：友链 CRUD；
 - `GET /api/admin/media`：媒体选择列表（含 `origin`（`upload`/`fetched`）与
-  `source_url` 字段）；
+  `source_url` 字段；图片另带 `card_url`/`thumb_url` 变体地址，无变体为 `null`）；
 - `POST /api/admin/media/fetch-url`：从外链 URL 拉取图片入库（body: `{url}`）。
   SSRF 防护：仅 `http(s)`、禁止 URL 凭据、域名解析后逐 IP 拒绝内网/保留地址
   （含 CGNAT 100.64/10 与组播）、手动跟随重定向（每跳重新校验，最多 3 跳）、

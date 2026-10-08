@@ -72,6 +72,8 @@ impl MediaStorage {
 pub struct MediaResponse {
     id: sea_orm::prelude::Uuid,
     url: String,
+    card_url: Option<String>,
+    thumb_url: Option<String>,
     original_name: String,
     media_type: String,
     byte_size: i64,
@@ -179,7 +181,16 @@ pub async fn delete(
     media_assets::Entity::delete_by_id(id)
         .exec(&state.database)
         .await?;
-    let path = state.media.public_dir.join(&media.storage_key);
+    remove_media_file(&state.media.public_dir, &media.storage_key).await;
+    // 变体文件与原图同目录，一并清理
+    for key in [&media.card_key, &media.thumb_key].into_iter().flatten() {
+        remove_media_file(&state.media.public_dir, key).await;
+    }
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+async fn remove_media_file(public_dir: &Path, storage_key: &str) {
+    let path = public_dir.join(storage_key);
     match fs::remove_file(&path).await {
         Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {}
@@ -187,7 +198,6 @@ pub async fn delete(
             tracing::warn!(path = %path.display(), %error, "failed to remove media file");
         }
     }
-    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 pub async fn upload(
@@ -301,6 +311,19 @@ async fn persist_staged(
         return Ok(existing);
     }
 
+    // 生成 card/thumb 变体；失败不致命，变体列留 NULL，原图照常入库
+    let (card_key, thumb_key) = if kind.image && supports_variants(kind.mime) {
+        match generate_variants(&state.media, &sha256, &storage_key).await {
+            Ok((card_key, thumb_key)) => (Some(card_key), Some(thumb_key)),
+            Err(error) => {
+                tracing::warn!(storage_key = %storage_key, %error, "failed to generate media variants");
+                (None, None)
+            }
+        }
+    } else {
+        (None, None)
+    };
+
     let (width, height) = dimensions
         .map(|(width, height)| (Some(width), Some(height)))
         .unwrap_or((None, None));
@@ -315,6 +338,8 @@ async fn persist_staged(
         sha256: Set(sha256.to_vec()),
         width: Set(width),
         height: Set(height),
+        card_key: Set(card_key.clone()),
+        thumb_key: Set(thumb_key.clone()),
         origin: Set(origin.to_owned()),
         source_url: Set(source_url),
         created_at: NotSet,
@@ -334,6 +359,10 @@ async fn persist_staged(
             }
             if created_file {
                 let _ = fs::remove_file(final_path).await;
+                // 插行失败时把刚生成的变体一并清掉，避免遗留孤儿文件
+                for key in [&card_key, &thumb_key].into_iter().flatten() {
+                    let _ = fs::remove_file(state.media.public_dir.join(key)).await;
+                }
             }
             Err(error.into())
         }
@@ -451,6 +480,97 @@ async fn image_dimensions(path: &Path) -> Result<(i32, i32), AppError> {
     ))
 }
 
+/* ---------- 图片变体（card / thumb） ---------- */
+
+pub const VARIANT_CARD_EDGE: u32 = 1200;
+pub const VARIANT_THUMB_EDGE: u32 = 360;
+
+/// 变体仅面向可直接解码的位图格式；AVIF 与视频不生成变体。
+pub fn supports_variants(media_type: &str) -> bool {
+    matches!(
+        media_type,
+        "image/jpeg" | "image/png" | "image/webp" | "image/gif"
+    )
+}
+
+/// 变体与原图同目录、同哈希前缀：`<hash>.card.webp` / `<hash>.thumb.webp`。
+pub fn variant_keys(hash_hex: &str) -> (String, String) {
+    (
+        format!("{}/{}.card.webp", &hash_hex[..2], hash_hex),
+        format!("{}/{}.thumb.webp", &hash_hex[..2], hash_hex),
+    )
+}
+
+/// 异步入口：解码/缩放/编码全部放进阻塞线程池，不占 async runtime。
+/// 上传管线与 `media-backfill-variants` 回填命令共用。
+pub async fn generate_variants(
+    media: &MediaStorage,
+    sha256: &[u8],
+    storage_key: &str,
+) -> Result<(String, String), AppError> {
+    let hash_hex = hex_lower(sha256);
+    let public_dir = media.public_dir().to_owned();
+    let source = public_dir.join(storage_key);
+    tokio::task::spawn_blocking(move || render_variant_files(&public_dir, &source, &hash_hex))
+        .await
+        .map_err(|_| AppError::Internal("media variant task"))?
+        .map_err(AppError::from)
+}
+
+/// 同步核心（可单测）：解码原图（GIF 取首帧）→ 最长边等比缩到目标边长（只缩
+/// 不放）→ webp 编码写盘。注意 image-webp 目前只提供无损 VP8L 编码，没有纯
+/// Rust 的有损实现；失败时清掉已写出的半成品，保证两档全有或全无。
+fn render_variant_files(
+    public_dir: &Path,
+    source: &Path,
+    hash_hex: &str,
+) -> Result<(String, String), std::io::Error> {
+    let image = image::ImageReader::open(source)?
+        .with_guessed_format()?
+        .decode()
+        .map_err(std::io::Error::other)?;
+    let (card_key, thumb_key) = variant_keys(hash_hex);
+    for (key, max_edge) in [
+        (&card_key, VARIANT_CARD_EDGE),
+        (&thumb_key, VARIANT_THUMB_EDGE),
+    ] {
+        let result = write_variant(public_dir, key, &image, max_edge);
+        if let Err(error) = result {
+            for written in [&card_key, &thumb_key] {
+                let _ = std::fs::remove_file(public_dir.join(written));
+            }
+            return Err(error);
+        }
+    }
+    Ok((card_key, thumb_key))
+}
+
+fn write_variant(
+    public_dir: &Path,
+    key: &str,
+    image: &image::DynamicImage,
+    max_edge: u32,
+) -> Result<(), std::io::Error> {
+    // thumbnail 保持宽高比但会放大小图，这里手动保证只缩不放
+    let variant = if image.width() > max_edge || image.height() > max_edge {
+        image.thumbnail(max_edge, max_edge)
+    } else {
+        image.clone()
+    };
+    let mut bytes = Vec::new();
+    variant
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::WebP,
+        )
+        .map_err(std::io::Error::other)?;
+    let path = public_dir.join(key);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, &bytes)
+}
+
 fn random_suffix() -> String {
     let mut bytes = [0_u8; 16];
     OsRng.fill_bytes(&mut bytes);
@@ -524,6 +644,8 @@ impl From<media_assets::Model> for MediaResponse {
         Self {
             id: media.id,
             url: format!("/media/{}", media.storage_key),
+            card_url: media.card_key.map(|key| format!("/media/{key}")),
+            thumb_url: media.thumb_key.map(|key| format!("/media/{key}")),
             original_name: media.original_name,
             media_type: media.media_type,
             byte_size: media.byte_size,
@@ -558,6 +680,105 @@ mod tests {
         let encoded = hex_lower(&hash);
         assert_eq!(&encoded[..2], "ab");
         assert_eq!(encoded.len(), 64);
+    }
+}
+
+#[cfg(test)]
+mod variant_tests {
+    use super::*;
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("yukilog-variant-test-{tag}-{}", random_suffix()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn test_hash() -> String {
+        format!("ab{}", "cd".repeat(31))
+    }
+
+    /// 生成渐变图，避免纯色把编码结果压成玩具尺寸
+    fn gradient_rgb(width: u32, height: u32) -> image::RgbImage {
+        let mut image = image::RgbImage::new(width, height);
+        for (x, y, pixel) in image.enumerate_pixels_mut() {
+            *pixel = image::Rgb([(x % 251) as u8, (y % 241) as u8, ((x * y) % 233) as u8]);
+        }
+        image
+    }
+
+    fn decode_dimensions(path: &Path) -> (u32, u32) {
+        let reader = image::ImageReader::open(path)
+            .unwrap()
+            .with_guessed_format()
+            .unwrap();
+        assert_eq!(reader.format(), Some(image::ImageFormat::WebP));
+        let image = reader.decode().unwrap();
+        (image.width(), image.height())
+    }
+
+    #[test]
+    fn variants_shrink_large_png() {
+        let dir = temp_dir("png");
+        let source = dir.join("source.png");
+        gradient_rgb(2400, 1800).save(&source).unwrap();
+
+        let hash = test_hash();
+        let (card_key, thumb_key) = render_variant_files(&dir, &source, &hash).unwrap();
+        assert_eq!(card_key, format!("ab/{hash}.card.webp"));
+        assert_eq!(thumb_key, format!("ab/{hash}.thumb.webp"));
+        assert_eq!(decode_dimensions(&dir.join(&card_key)), (1200, 900));
+        assert_eq!(decode_dimensions(&dir.join(&thumb_key)), (360, 270));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn variants_never_enlarge_small_images() {
+        let dir = temp_dir("small");
+        let source = dir.join("source.png");
+        gradient_rgb(200, 100).save(&source).unwrap();
+
+        let hash = test_hash();
+        let (card_key, thumb_key) = render_variant_files(&dir, &source, &hash).unwrap();
+        assert_eq!(decode_dimensions(&dir.join(&card_key)), (200, 100));
+        assert_eq!(decode_dimensions(&dir.join(&thumb_key)), (200, 100));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn gif_variants_use_first_frame() {
+        use image::codecs::gif::GifEncoder;
+
+        let dir = temp_dir("gif");
+        let source = dir.join("source.gif");
+        // 两帧尺寸一致但内容不同，解码应只取首帧
+        let first =
+            image::RgbaImage::from_fn(500, 400, |x, _| image::Rgba([(x % 256) as u8, 0, 0, 255]));
+        let second = image::RgbaImage::from_fn(500, 400, |_, _| image::Rgba([0, 0, 255, 255]));
+        {
+            let file = std::fs::File::create(&source).unwrap();
+            let mut encoder = GifEncoder::new(file);
+            encoder
+                .encode_frames(vec![image::Frame::new(first), image::Frame::new(second)])
+                .unwrap();
+        }
+
+        let hash = test_hash();
+        let (card_key, thumb_key) = render_variant_files(&dir, &source, &hash).unwrap();
+        assert_eq!(decode_dimensions(&dir.join(&card_key)), (500, 400));
+        assert_eq!(decode_dimensions(&dir.join(&thumb_key)), (360, 288));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn avif_and_video_skip_variants() {
+        assert!(supports_variants("image/jpeg"));
+        assert!(supports_variants("image/png"));
+        assert!(supports_variants("image/webp"));
+        assert!(supports_variants("image/gif"));
+        assert!(!supports_variants("image/avif"));
+        assert!(!supports_variants("video/mp4"));
+        assert!(!supports_variants("video/webm"));
     }
 }
 

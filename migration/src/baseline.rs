@@ -69,6 +69,18 @@ mod tests {
     }
 
     #[test]
+    fn up_sql_media_assets_have_variant_columns() {
+        assert!(UP_SQL.contains("card_key text"));
+        assert!(UP_SQL.contains("thumb_key text"));
+        assert!(UP_SQL.contains(
+            "CHECK (card_key IS NULL OR card_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_-]*\\.webp$')"
+        ));
+        assert!(UP_SQL.contains(
+            "CHECK (thumb_key IS NULL OR thumb_key ~ '^[a-zA-Z0-9][a-zA-Z0-9/_-]*\\.webp$')"
+        ));
+    }
+
+    #[test]
     fn up_sql_site_settings_have_appearance_and_hero() {
         assert!(UP_SQL.contains("avatar_external_url text"));
         assert!(UP_SQL.contains("masthead_media_id uuid REFERENCES media_assets(id)"));
