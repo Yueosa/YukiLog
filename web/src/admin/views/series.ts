@@ -150,7 +150,29 @@ export class AdmSeries extends AdmView {
       .short-title-input {
         width: 180px;
         padding: 6px 10px;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--ink);
         font-size: 12.5px;
+        transition:
+          border-color 180ms ease,
+          background 180ms ease;
+      }
+
+      .short-title-input::placeholder {
+        color: var(--faint);
+      }
+
+      .short-title-input:hover {
+        border-color: var(--line);
+      }
+
+      .short-title-input:focus {
+        outline: none;
+        border-color: var(--primary);
+        background: var(--surface);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
       }
 
       .order-btns {

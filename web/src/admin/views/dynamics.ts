@@ -32,11 +32,11 @@ export class AdmDynamics extends AdmView {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 14px;
-        align-items: start;
       }
 
       .card {
         display: grid;
+        grid-template-rows: auto 1fr;
         overflow: hidden;
         border: 1px solid var(--line);
         border-radius: 16px;
@@ -95,8 +95,8 @@ export class AdmDynamics extends AdmView {
       }
 
       .body {
-        display: grid;
-        align-content: start;
+        display: flex;
+        flex-direction: column;
         gap: 8px;
         padding: 12px 14px 14px;
       }
@@ -137,7 +137,8 @@ export class AdmDynamics extends AdmView {
         display: flex;
         align-items: center;
         gap: 12px;
-        padding-top: 4px;
+        margin-top: auto;
+        padding-top: 8px;
         color: var(--faint);
         font-size: 12px;
       }
