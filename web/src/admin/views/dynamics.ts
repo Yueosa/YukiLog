@@ -7,7 +7,7 @@ import { contentStatusLabel, formatRelative } from '../labels.js';
 import type { Dynamic } from '../types.js';
 
 
-/** 动态列表：卡片流——正文截断、心情/状态徽标、配图缩略、评论/喜欢数、编辑删除。 */
+/** 动态列表：卡片网格——封面/心情占位、徽标、正文截断、评论/喜欢数、编辑删除。 */
 export class AdmDynamics extends AdmView {
   @property() articleId: string | null = null;
   @property() dynamicId: string | null = null;
@@ -30,43 +30,52 @@ export class AdmDynamics extends AdmView {
 
       .cards {
         display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
         gap: 14px;
+        align-items: start;
       }
 
       .card {
-        display: flex;
-        gap: 14px;
-        align-items: center;
-        padding: 12px 16px;
+        display: grid;
+        overflow: hidden;
         border: 1px solid var(--line);
-        border-radius: 14px;
+        border-radius: 16px;
         background: var(--surface);
         transition:
           border-color 220ms ease,
-          translate 220ms ease;
+          translate 220ms ease,
+          box-shadow 220ms ease;
+      }
+
+      .card:hover {
+        border-color: var(--primary);
+        translate: 0 -2px;
+        box-shadow: 0 10px 26px rgb(28 39 51 / 8%);
       }
 
       .cover {
         position: relative;
-        flex: none;
         display: grid;
-        width: 88px;
-        height: 88px;
+        aspect-ratio: 16 / 9;
         place-items: center;
         overflow: hidden;
-        border: 1px solid var(--line);
-        border-radius: 12px;
         background: var(--surface-muted);
-        font-size: 26px;
+        font-size: 30px;
       }
 
       .cover.mood-fallback {
-        background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, var(--surface)), color-mix(in srgb, var(--secondary) 14%, var(--surface)));
-        font-size: 15px;
+        background: linear-gradient(
+          135deg,
+          color-mix(in srgb, var(--primary) 14%, var(--surface)),
+          color-mix(in srgb, var(--secondary) 16%, var(--surface))
+        );
+        font-size: 20px;
         color: var(--muted);
       }
 
       .cover img {
+        position: absolute;
+        inset: 0;
         width: 100%;
         height: 100%;
         object-fit: cover;
@@ -75,9 +84,9 @@ export class AdmDynamics extends AdmView {
 
       .cover em {
         position: absolute;
-        right: 6px;
-        bottom: 6px;
-        padding: 1px 7px;
+        right: 8px;
+        bottom: 8px;
+        padding: 2px 8px;
         border-radius: 999px;
         background: rgb(20 26 36 / 72%);
         color: #fff;
@@ -87,16 +96,9 @@ export class AdmDynamics extends AdmView {
 
       .body {
         display: grid;
-        flex: 1;
-        min-width: 0;
         align-content: start;
         gap: 8px;
-        padding: 2px 4px 2px 0;
-      }
-
-      .card:hover {
-        border-color: var(--primary);
-        translate: 0 -1px;
+        padding: 12px 14px 14px;
       }
 
       .head {
@@ -107,12 +109,9 @@ export class AdmDynamics extends AdmView {
       }
 
       .head time {
+        margin-left: auto;
         color: var(--faint);
         font-size: 11.5px;
-      }
-
-      .head .spacer {
-        flex: 1;
       }
 
       .text {
@@ -124,11 +123,9 @@ export class AdmDynamics extends AdmView {
         word-break: break-word;
         display: -webkit-box;
         -webkit-box-orient: vertical;
-        -webkit-line-clamp: 2;
+        -webkit-line-clamp: 3;
         overflow: hidden;
-      }
-
-      a.text {
+        min-height: calc(1.75em * 2);
         text-decoration: none;
       }
 
@@ -136,15 +133,10 @@ export class AdmDynamics extends AdmView {
         color: var(--primary-d);
       }
 
-
-
-
       .foot {
         display: flex;
-        flex-wrap: wrap;
         align-items: center;
         gap: 12px;
-        margin-top: auto;
         padding-top: 4px;
         color: var(--faint);
         font-size: 12px;
@@ -194,17 +186,16 @@ export class AdmDynamics extends AdmView {
     const cover = item.media[0];
     return html`
       <article class="card">
-        ${cover
-          ? html`<span class="cover">
-              <img src=${cover.url} alt=${cover.original_name} loading="lazy" />
-              ${item.media.length > 1 ? html`<em>+${item.media.length - 1}</em>` : nothing}
-            </span>`
-          : html`<span class="cover mood-fallback">${item.mood ?? '💬'}</span>`}
+        <a class="cover ${cover ? '' : 'mood-fallback'}" href=${`#/dynamics/${item.id}`}>
+          ${cover
+            ? html`<img src=${cover.url} alt=${cover.original_name} loading="lazy" />`
+            : html`<span>${item.mood ?? '💬'}</span>`}
+          ${item.media.length > 1 ? html`<em>+${item.media.length - 1}</em>` : nothing}
+        </a>
         <div class="body">
           <div class="head">
             ${item.mood ? html`<span class="badge warn">${item.mood}</span>` : nothing}
             <span class="badge ${item.status === 'published' ? 'ok' : ''}">${contentStatusLabel(item)}</span>
-            <span class="spacer"></span>
             <time title=${item.published_at ?? item.created_at}>
               ${formatRelative(item.published_at ?? item.created_at)}
             </time>

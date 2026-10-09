@@ -35,7 +35,9 @@ export class AdmSeries extends AdmView {
   // 详情模式：章节草稿（顺序即序号，保存时归一化为 0..n-1）
   @state() private chapters: ChapterDraft[] = [];
   @state() private chapterDirty = false;
-  @state() private addCandidateId = '';
+  @state() private articlePickerOpen = false;
+  @state() private articlePickerQuery = '';
+  @state() private articlePickedId = '';
   private originalChapterIds: string[] = [];
   private syncedFor: string | null | undefined = undefined;
 
@@ -183,8 +185,147 @@ export class AdmSeries extends AdmView {
         margin-top: 12px;
       }
 
-      .add-row select {
+      /* 文章选择弹窗（模式对齐 adm-media-picker） */
+      .picker-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 400;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: rgb(28 39 51 / 42%);
+        backdrop-filter: blur(3px);
+      }
+
+      .picker-dialog {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        gap: 14px;
+        width: min(720px, 100%);
+        max-height: min(640px, calc(100dvh - 48px));
+        padding: 20px 22px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: var(--surface);
+        box-shadow: 0 24px 64px rgb(28 39 51 / 18%);
+      }
+
+      .picker-head {
+        display: flex;
+        align-items: flex-end;
+        gap: 12px;
+      }
+
+      .picker-head h2 {
+        margin: 0;
         flex: 1;
+        color: var(--ink);
+        font-family: var(--serif, serif);
+        font-size: 17px;
+      }
+
+      .picker-head .search {
+        flex: 2;
+        min-width: 180px;
+        padding: 9px 13px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--ink);
+        font: inherit;
+        font-size: 13px;
+      }
+
+      .picker-head .search:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+      }
+
+      .picker-list {
+        overflow-y: auto;
+        display: grid;
+        gap: 8px;
+        align-content: start;
+        min-height: 160px;
+        padding: 2px;
+      }
+
+      .picker-cell {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 12px;
+        border: 2px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        cursor: pointer;
+        text-align: left;
+        transition:
+          border-color 160ms ease,
+          translate 160ms ease;
+      }
+
+      .picker-cell:hover {
+        border-color: var(--primary);
+        translate: 0 -1px;
+      }
+
+      .picker-cell.selected {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+      }
+
+      .picker-cell img,
+      .picker-cell .no-cover {
+        width: 64px;
+        height: 44px;
+        flex: none;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        object-fit: cover;
+      }
+
+      .picker-cell .no-cover {
+        display: grid;
+        place-items: center;
+        border-style: dashed;
+        color: var(--faint);
+        font-size: 10.5px;
+      }
+
+      .picker-cell .cell-main {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .picker-cell .cell-title {
+        overflow: hidden;
+        color: var(--ink);
+        font-size: 13.5px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .picker-cell .cell-meta {
+        margin-top: 3px;
+        color: var(--faint);
+        font-size: 11.5px;
+      }
+
+      .picker-foot {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding-top: 4px;
+        border-top: 1px solid var(--surface-muted);
+      }
+
+      .picker-foot .hint {
+        flex: 1;
+        color: var(--faint);
+        font-size: 12px;
       }
 
       .chapter-foot {
@@ -228,7 +369,8 @@ export class AdmSeries extends AdmView {
       this.chapters = chapters;
       this.originalChapterIds = chapters.map((chapter) => chapter.article_id);
       this.chapterDirty = false;
-      this.addCandidateId = '';
+      this.articlePickerOpen = false;
+      this.articlePickedId = '';
     }
     this.syncedFor = key;
   }
@@ -293,8 +435,31 @@ export class AdmSeries extends AdmView {
     this.chapterDirty = true;
   }
 
-  private addChapter() {
-    const article = this.store.articles.find((entry) => entry.id === this.addCandidateId);
+  private chapterCandidates() {
+    const item = this.currentSeries;
+    const query = this.articlePickerQuery.trim().toLowerCase();
+    return this.store.articles.filter(
+      (article) =>
+        article.series_id !== item?.id &&
+        !this.chapters.some((chapter) => chapter.article_id === article.id) &&
+        (!query || article.title.toLowerCase().includes(query)),
+    );
+  }
+
+  private seriesNameOf(article: Article) {
+    return article.series_id
+      ? (this.store.seriesList.find((entry) => entry.id === article.series_id)?.name ?? '其他系列')
+      : null;
+  }
+
+  private articleCoverOf(article: Article) {
+    return article.cover_media_id
+      ? this.store.media.find((media) => media.id === article.cover_media_id)
+      : undefined;
+  }
+
+  private confirmAddChapter() {
+    const article = this.store.articles.find((entry) => entry.id === this.articlePickedId);
     if (!article) return;
     this.chapters = [
       ...this.chapters,
@@ -305,7 +470,8 @@ export class AdmSeries extends AdmView {
         series_title: article.series_title,
       },
     ];
-    this.addCandidateId = '';
+    this.articlePickedId = '';
+    this.articlePickerOpen = false;
     this.chapterDirty = true;
   }
 
@@ -465,15 +631,6 @@ export class AdmSeries extends AdmView {
   }
 
   private renderChaptersPanel(item: Series) {
-    const candidates = this.store.articles.filter(
-      (article) =>
-        article.series_id !== item.id &&
-        !this.chapters.some((chapter) => chapter.article_id === article.id),
-    );
-    const seriesNameOf = (article: Article) =>
-      article.series_id
-        ? (this.store.seriesList.find((entry) => entry.id === article.series_id)?.name ?? '其他系列')
-        : null;
     return html`
       <section class="panel">
         <h2 class="panel-title">章节管理（${this.chapters.length}）</h2>
@@ -530,21 +687,16 @@ export class AdmSeries extends AdmView {
             `
           : html`<adm-empty text="这个系列还没有章节" hint="从下方把文章加进来"></adm-empty>`}
         <div class="add-row">
-          <select
-            .value=${this.addCandidateId}
-            @change=${(e: Event) => (this.addCandidateId = (e.target as HTMLSelectElement).value)}
+          <button
+            class="btn secondary"
+            type="button"
+            @click=${() => {
+              this.articlePickerQuery = '';
+              this.articlePickedId = '';
+              this.articlePickerOpen = true;
+            }}
           >
-            <option value="">选择要加入的文章…</option>
-            ${candidates.map(
-              (article) => html`
-                <option value=${article.id}>
-                  ${article.title}${article.series_id ? html`（现属「${seriesNameOf(article)}」）` : nothing}
-                </option>
-              `,
-            )}
-          </select>
-          <button class="btn secondary" type="button" ?disabled=${!this.addCandidateId} @click=${this.addChapter}>
-            加入系列
+            选择文章加入…
           </button>
         </div>
         <div class="chapter-foot">
@@ -569,6 +721,66 @@ export class AdmSeries extends AdmView {
             : nothing}
         </div>
       </section>
+      ${this.renderArticlePicker()}
+    `;
+  }
+
+  private renderArticlePicker() {
+    if (!this.articlePickerOpen) return nothing;
+    const candidates = this.chapterCandidates();
+    const picked = candidates.find((article) => article.id === this.articlePickedId);
+    return html`
+      <div
+        class="picker-overlay"
+        @click=${(event: Event) => {
+          if (event.target === event.currentTarget) this.articlePickerOpen = false;
+        }}
+      >
+        <div class="picker-dialog" role="dialog" aria-modal="true" aria-label="选择文章加入系列">
+          <div class="picker-head">
+            <h2>选择文章加入系列</h2>
+            <input
+              class="search"
+              type="search"
+              placeholder="按标题搜索…"
+              .value=${this.articlePickerQuery}
+              @input=${(e: InputEvent) => (this.articlePickerQuery = (e.target as HTMLInputElement).value)}
+            />
+          </div>
+          ${candidates.length
+            ? html`<div class="picker-list">
+                ${candidates.map((article) => {
+                  const cover = this.articleCoverOf(article);
+                  const inSeries = this.seriesNameOf(article);
+                  return html`
+                    <button
+                      class="picker-cell ${this.articlePickedId === article.id ? 'selected' : ''}"
+                      @click=${() => (this.articlePickedId = article.id)}
+                      @dblclick=${this.confirmAddChapter}
+                    >
+                      ${cover
+                        ? html`<img src=${cover.thumb_url || cover.url} alt=${cover.original_name} loading="lazy" />`
+                        : html`<span class="no-cover">无封面</span>`}
+                      <span class="cell-main">
+                        <span class="cell-title">${article.title}</span>
+                        <span class="cell-meta">
+                          ${article.status === 'published' ? '已发布' : '草稿'}${inSeries ? ` · 现属「${inSeries}」` : ''}
+                        </span>
+                      </span>
+                    </button>
+                  `;
+                })}
+              </div>`
+            : html`<adm-empty text="没有可加入的文章" hint="全部文章都已经在系列里了"></adm-empty>`}
+          <div class="picker-foot">
+            <span class="hint">${picked ? picked.title : '未选择（双击可直接加入）'}</span>
+            <button class="btn secondary" type="button" @click=${() => (this.articlePickerOpen = false)}>取消</button>
+            <button class="btn primary" type="button" ?disabled=${!picked} @click=${this.confirmAddChapter}>
+              加入系列
+            </button>
+          </div>
+        </div>
+      </div>
     `;
   }
 

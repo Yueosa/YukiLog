@@ -6144,8 +6144,12 @@ export const appStyles = css`
     }
 
     .series-spot-progress {
-      flex: 1;
       max-width: 240px;
+      flex: 0 1 240px;
+    }
+
+    .series-spot-cta {
+      margin-left: auto;
     }
 
     .series-spot-progress .bar {
@@ -6203,6 +6207,7 @@ export const appStyles = css`
       }
 
       .series-spot-cta {
+        margin-left: 0;
         text-align: center;
       }
     }
