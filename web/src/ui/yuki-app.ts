@@ -2405,7 +2405,7 @@ export class YukiApp extends LitElement {
 
   /* ---------- 系列 ---------- */
 
-  /** 首页精选系列卡（方案 C 修订版）：大图铺底 + 渐变压字，摘要与按钮同行。 */
+  /** 首页精选系列卡：封面在上（与文章卡同一圆角语言），正文排版对齐 feed。 */
   private renderFeaturedSeriesCard(
     series: api.SeriesListItem,
     chapters: api.SeriesChapter[] | null,
@@ -2438,27 +2438,26 @@ export class YukiApp extends LitElement {
     const percent = total > 0 ? Math.round((readCount / total) * 100) : 0;
     return html`
       <section class="series-spot" data-reveal>
-        ${series.coverUrl
-          ? html`<img class="series-spot-bg" src=${series.coverUrl} alt="" />`
-          : html`<div
-              class="series-spot-bg"
-              style=${styleMap({ background: paletteFor(series.slug) })}
-            ></div>`}
-        <div class="series-spot-veil" aria-hidden="true"></div>
+        <a class="series-spot-cover" href=${`/series/${series.slug}`} aria-label=${series.name}>
+          ${series.coverUrl
+            ? html`<img src=${series.coverUrl} alt="" />`
+            : html`<div class="series-spot-fallback" style=${styleMap({ background: paletteFor(series.slug) })}></div>`}
+        </a>
         <div class="series-spot-body">
-          <span class="series-spot-kicker">系列</span>
-          <h2><a href=${`/series/${series.slug}`}>${series.name}</a></h2>
-          <div class="series-spot-row">
-            <p class="series-spot-desc">${series.description ?? ''}</p>
-            <div class="series-spot-action">
-              <a class="series-spot-cta" href=${ctaHref}>${ctaLabel}</a>
-              <div class="series-spot-progress">
-                <div class="bar"><i style=${styleMap({ width: `${percent}%` })}></i></div>
-                <div class="num">
-                  ${readCount > 0 ? `你已读 ${readCount} / ${total} 章` : `共 ${total} 章`}
-                </div>
+          <div class="meta">
+            <span class="cat">系列</span>
+            <span>${readCount > 0 ? `你已读 ${readCount} / ${total} 章` : `共 ${total} 章`}</span>
+          </div>
+          <h3><a href=${`/series/${series.slug}`}>${series.name}</a></h3>
+          <p class="summary">${series.description ?? ''}</p>
+          <div class="foot">
+            <div class="series-spot-progress" aria-hidden="true">
+              <div class="bar"><i style=${styleMap({ width: `${percent}%` })}></i></div>
+              <div class="num">
+                ${readCount > 0 ? `阅读进度 ${percent}%` : '还没有开始读'}
               </div>
             </div>
+            <a class="series-spot-cta" href=${ctaHref}>${ctaLabel}</a>
           </div>
         </div>
       </section>
@@ -2575,6 +2574,20 @@ export class YukiApp extends LitElement {
     const readCount = countReadChapters(this.store.seriesRead, detail.slug, slugs);
     return html`
       <main class="inner-page">
+        <a
+          class="post-back"
+          href="/series"
+          @click=${(event: Event) => {
+            event.preventDefault();
+            if (this.spaNavigated && this.previousPath === '/series' && window.history.length > 1) {
+              window.history.back();
+            } else {
+              window.history.pushState(null, '', '/series');
+              this.handleRouteChange();
+            }
+          }}
+          >← 返回系列</a
+        >
         ${this.pageHead(
           'YukiLog — Series',
           detail.name,
@@ -3694,7 +3707,7 @@ export class YukiApp extends LitElement {
         ${window.location.pathname.startsWith('/articles/')
           ? (() => {
               const series = this.currentArticle()?.series ?? null;
-              return html`<div class="layout-switch${this.layoutMenuOpen ? ' open' : ''}">
+              return html`<div class="layout-switch${this.layoutMenuOpen ? ' open' : ''}${series ? ' has-episodes' : ''}">
                 ${this.layoutMenuOpen
                   ? html`<div
                       class="layout-backdrop"
@@ -3721,22 +3734,25 @@ export class YukiApp extends LitElement {
                     : nothing}
                   <div class="layout-menu-section">
                     <p class="layout-menu-kicker">阅读布局</p>
-                    ${[
-                      ['default', '紧凑', '720px 正文'],
-                      ['wide', '宽松', '880px 正文（≥1500px 视口生效）'],
-                      ['full-compact', '全宽', '18 / 60 / 18 三栏'],
-                    ].map(
-                      ([key, name, desc]) => html`<button
-                        class="layout-option${this.layoutChoice === key ? ' active' : ''}"
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked=${this.layoutChoice === key}
-                        @click=${() => this.setArticleLayout(key)}
-                      >
-                        <span class="opt-name">${name}</span>
-                        <span class="opt-desc">${desc}</span>
-                      </button>`,
-                    )}
+                    <div class="layout-options">
+                      ${[
+                        ['default', '紧凑', '720px'],
+                        ['wide', '宽松', '880px'],
+                        ['full-compact', '全宽', '三栏'],
+                      ].map(
+                        ([key, name, desc]) => html`<button
+                          class="layout-option${this.layoutChoice === key ? ' active' : ''}"
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked=${this.layoutChoice === key}
+                          title=${key === 'wide' ? '880px 正文（≥1500px 视口生效）' : key === 'full-compact' ? '18 / 60 / 18 三栏' : '720px 正文'}
+                          @click=${() => this.setArticleLayout(key)}
+                        >
+                          <span class="opt-name">${name}</span>
+                          <span class="opt-desc">${desc}</span>
+                        </button>`,
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button

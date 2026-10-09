@@ -235,13 +235,14 @@ fn wants_ssr(headers: &HeaderMap, query: Option<&str>) -> bool {
     is_bot_user_agent(user_agent)
 }
 
-/// 显式 ?ssr=1/0 时把版本选择写进 cookie（30 天；ssr=0 立即清除）。
+/// 显式 ?ssr=1/0 时把版本选择写进 cookie（会话级；ssr=0 立即清除）。
+/// 不写 Max-Age：调试参数误触后不应把访客长期困在书简版。
 fn render_cookie_layer(response: Response, query: Option<&str>) -> Response {
     let Some(query) = query else {
         return response;
     };
     let value = if query.split('&').any(|pair| pair == "ssr=1") {
-        Some("yukilog_render=ssr; Path=/; Max-Age=2592000; SameSite=Lax")
+        Some("yukilog_render=ssr; Path=/; SameSite=Lax")
     } else if query.split('&').any(|pair| pair == "ssr=0") {
         Some("yukilog_render=; Path=/; Max-Age=0; SameSite=Lax")
     } else {

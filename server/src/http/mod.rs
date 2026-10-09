@@ -143,6 +143,10 @@ pub fn router(state: AppState) -> Router {
             patch(admin::update_series).delete(admin::delete_series),
         )
         .route(
+            "/api/admin/series/{id}/chapters",
+            put(admin::update_series_chapters),
+        )
+        .route(
             "/api/admin/articles",
             get(admin::list_articles).post(admin::create_article),
         )

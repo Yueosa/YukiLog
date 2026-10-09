@@ -161,19 +161,21 @@ export class AdminStore extends EventTarget {
   }
 
   /** 所有写操作的统一入口：预览拦截 + busy + toast + 错误提示。 */
-  async run(action: () => Promise<void>, notice: string | (() => string) = '已保存') {
+  async run(action: () => Promise<void>, notice: string | (() => string) = '已保存'): Promise<boolean> {
     if (this.previewMode) {
       this.toast('预览模式：改动不会保存', 'info');
-      return;
+      return false;
     }
-    if (this.busy) return;
+    if (this.busy) return false;
     this.busy = true;
     this.emit();
     try {
       await action();
       this.toast(typeof notice === 'function' ? notice() : notice, 'ok');
+      return true;
     } catch (error) {
       this.toast(error instanceof Error ? error.message : '发生未知错误', 'err');
+      return false;
     } finally {
       this.busy = false;
       this.emit();
@@ -330,8 +332,8 @@ export class AdminStore extends EventTarget {
     return saved;
   }
 
-  async dynamicAction(id: string, action: 'publish' | 'withdraw', publishedAt?: string) {
-    await this.run(async () => {
+  async dynamicAction(id: string, action: 'publish' | 'withdraw', publishedAt?: string): Promise<boolean> {
+    return this.run(async () => {
       await api(`/api/admin/dynamics/${id}/${action}`, {
         method: 'POST',
         body: action === 'publish' ? (publishedAt ? { published_at: publishedAt } : {}) : undefined,
@@ -358,6 +360,22 @@ export class AdminStore extends EventTarget {
       });
       this.seriesList = await api('/api/admin/series');
     }, id ? '系列已更新' : '系列已创建');
+  }
+
+  /** 整组替换系列章节（含移出列表），成功后刷新文章与系列。 */
+  async saveSeriesChapters(
+    id: string,
+    chapters: Array<{ article_id: string; series_order: number; series_title: string | null }>,
+    remove: string[],
+  ): Promise<boolean> {
+    return this.run(async () => {
+      await api(`/api/admin/series/${id}/chapters`, {
+        method: 'PUT',
+        body: { chapters, remove },
+      });
+      this.articles = await api('/api/admin/articles');
+      this.seriesList = await api('/api/admin/series');
+    }, '章节已保存');
   }
 
   async deleteSeries(item: Series) {

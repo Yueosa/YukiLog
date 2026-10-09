@@ -4502,6 +4502,13 @@ export const appStyles = css`
       height: 19px;
     }
 
+    /* 窄屏且非系列文章：浮层里没有任何可用项，整个工具按钮隐藏 */
+    @media (max-width: 1339.5px) {
+      .layout-switch:not(.has-episodes) {
+        display: none;
+      }
+    }
+
     .layout-backdrop {
       position: fixed;
       z-index: 61;
@@ -4570,14 +4577,24 @@ export const appStyles = css`
       text-transform: uppercase;
     }
 
+    .layout-options {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+
     .layout-option {
       display: grid;
-      gap: 2px;
-      padding: 9px 12px;
+      gap: 3px;
+      justify-items: center;
+      align-content: center;
+      min-height: 54px;
+      padding: 8px 4px;
       border: 1px solid var(--line);
       border-radius: 10px;
       background: var(--surface);
-      text-align: left;
+      text-align: center;
+      cursor: pointer;
       transition:
         border-color 200ms ease,
         background 200ms ease;
@@ -4605,7 +4622,7 @@ export const appStyles = css`
     .layout-option .opt-desc {
       color: var(--faint);
       font-family: var(--mono);
-      font-size: 11px;
+      font-size: 10px;
     }
 
     /* 布局切换动画：三栏宽度/位置平滑过渡 */
@@ -6045,116 +6062,97 @@ export const appStyles = css`
     }
 
     /* ---------- 系列：首页精选卡（方案 C 修订版） ---------- */
+    /* 首页精选系列卡：封面在上（与文章卡同圆角/同悬停语言），正文排版对齐 feed */
     .series-spot {
-      position: relative;
-      display: flex;
-      align-items: flex-end;
-      min-height: 320px;
+      display: block;
+    }
+
+    .series-spot-cover {
+      display: block;
       overflow: hidden;
-      border-radius: calc(var(--radius) + 4px);
-      box-shadow: 0 2px 14px rgb(28 39 51 / 5%);
+      border-radius: 14px;
+      aspect-ratio: 21 / 9;
       transition:
-        box-shadow 300ms ease,
-        transform 300ms ease;
+        translate 450ms cubic-bezier(0.22, 0.61, 0.36, 1),
+        box-shadow 450ms ease;
     }
 
-    .series-spot:hover {
-      box-shadow: 0 10px 32px rgb(28 39 51 / 14%);
-      transform: translateY(-2px);
-    }
-
-    .series-spot-bg {
-      position: absolute;
-      inset: 0;
+    .series-spot-cover img,
+    .series-spot-fallback {
+      display: block;
       width: 100%;
       height: 100%;
       object-fit: cover;
     }
 
-    .series-spot-veil {
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, rgb(24 32 40 / 5%) 35%, rgb(24 32 40 / 80%) 90%);
+    .series-spot:hover .series-spot-cover {
+      translate: 0 -6px;
+      box-shadow: 0 22px 44px -14px rgb(74 147 194 / 38%);
     }
 
     .series-spot-body {
-      position: relative;
-      width: 100%;
-      padding: 28px 32px 26px;
-      color: #fff;
+      margin-top: 18px;
     }
 
-    .series-spot-kicker {
-      color: #f3c3cf;
+    .series-spot-body .meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      color: var(--faint);
       font-size: 12px;
+    }
+
+    .series-spot-body .meta .cat {
+      color: var(--secondary-d);
       font-weight: 600;
-      letter-spacing: 0.22em;
+      letter-spacing: 0.1em;
     }
 
-    .series-spot h2 {
-      margin: 8px 0 10px;
-      font-size: 26px;
-      font-weight: 700;
-    }
-
-    .series-spot h2 a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    .series-spot h2 a:hover {
-      text-decoration: underline;
-      text-underline-offset: 4px;
-    }
-
-    .series-spot-row {
-      display: flex;
-      align-items: flex-end;
-      gap: 24px;
-    }
-
-    .series-spot-desc {
-      flex: 1;
-      max-width: 620px;
+    .series-spot-body h3 {
       margin: 0;
-      color: rgb(255 255 255 / 85%);
-      font-size: 14px;
-      line-height: 1.75;
+      font-family: var(--serif);
+      font-size: 25px;
+      font-weight: 700;
+      line-height: 1.45;
     }
 
-    .series-spot-action {
+    .series-spot-body h3 a {
+      background-image: linear-gradient(currentColor, currentColor);
+      background-repeat: no-repeat;
+      background-size: 0 1.5px;
+      background-position: 0 97%;
+      transition: background-size 400ms cubic-bezier(0.22, 0.61, 0.36, 1);
+    }
+
+    .series-spot-body h3 a:hover {
+      background-size: 100% 1.5px;
+    }
+
+    .series-spot-body .summary {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 14.5px;
+      line-height: 1.95;
+    }
+
+    .series-spot-body .foot {
       display: flex;
-      flex-shrink: 0;
-      flex-direction: column;
-      align-items: stretch;
-      gap: 10px;
-      min-width: 210px;
+      align-items: center;
+      gap: 16px;
+      margin-top: 16px;
     }
 
-    .series-spot-cta {
-      padding: 11px 24px;
-      border-radius: 999px;
-      background: rgb(255 255 255 / 94%);
-      color: var(--ink);
-      font-size: 14px;
-      font-weight: 600;
-      text-align: center;
-      text-decoration: none;
-      transition:
-        background 250ms ease,
-        transform 250ms ease;
-    }
-
-    .series-spot-cta:hover {
-      background: #fff;
-      transform: translateX(2px);
+    .series-spot-progress {
+      flex: 1;
+      max-width: 240px;
     }
 
     .series-spot-progress .bar {
       height: 3px;
       overflow: hidden;
       border-radius: 2px;
-      background: rgb(255 255 255 / 25%);
+      background: var(--surface-soft);
     }
 
     .series-spot-progress .bar i {
@@ -6167,20 +6165,45 @@ export const appStyles = css`
 
     .series-spot-progress .num {
       margin-top: 6px;
-      color: rgb(255 255 255 / 68%);
+      color: var(--faint);
       font-size: 11.5px;
-      text-align: right;
+    }
+
+    .series-spot-cta {
+      flex-shrink: 0;
+      padding: 9px 20px;
+      border-radius: 999px;
+      background: var(--ink);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      transition:
+        background 250ms ease,
+        transform 250ms ease;
+    }
+
+    .series-spot-cta:hover {
+      background: var(--primary-d);
+      transform: translateX(2px);
     }
 
     @media (max-width: 720px) {
-      .series-spot-row {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 16px;
+      .series-spot-cover {
+        aspect-ratio: 16 / 9;
       }
 
-      .series-spot-action {
-        min-width: 0;
+      .series-spot-body .foot {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .series-spot-progress {
+        max-width: none;
+      }
+
+      .series-spot-cta {
+        text-align: center;
       }
     }
 

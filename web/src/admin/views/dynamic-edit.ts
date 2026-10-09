@@ -28,7 +28,6 @@ export class AdmDynamicEdit extends AdmView {
       :host {
         display: grid;
         gap: 18px;
-        max-width: 760px;
       }
 
       .back {
@@ -121,7 +120,8 @@ export class AdmDynamicEdit extends AdmView {
   }
 
   protected willUpdate() {
-    if (this.syncedFor === this.dynamicId) return;    if (this.dynamicId) {
+    if (this.syncedFor === this.dynamicId) return;
+    if (this.dynamicId) {
       const item = this.store.dynamics.find((entry) => entry.id === this.dynamicId);
       if (!item) return;
       this.content = item.content_markdown;
@@ -186,10 +186,8 @@ export class AdmDynamicEdit extends AdmView {
     const saved = await this.save();
     const id = this.dynamicId ?? saved?.id;
     if (!id) return;
-    await this.store.dynamicAction(id, 'publish');
-    if (this.store.dynamics.find((item) => item.id === id)?.status === 'published') {
-      location.hash = '#/dynamics';
-    }
+    const ok = await this.store.dynamicAction(id, 'publish');
+    if (ok) location.hash = '#/dynamics';
   }
 
   private async schedule() {
@@ -208,10 +206,8 @@ export class AdmDynamicEdit extends AdmView {
     const saved = await this.save();
     const id = this.dynamicId ?? saved?.id;
     if (!id) return;
-    await this.store.dynamicAction(id, 'publish', at.toISOString());
-    if (this.store.dynamics.find((item) => item.id === id)?.status === 'published') {
-      location.hash = '#/dynamics';
-    }
+    const ok = await this.store.dynamicAction(id, 'publish', at.toISOString());
+    if (ok) location.hash = '#/dynamics';
   }
 
   private async removeDynamic() {

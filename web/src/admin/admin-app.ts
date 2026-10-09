@@ -21,7 +21,7 @@ type Route =
   | { name: 'dashboard' }
   | { name: 'articles' }
   | { name: 'article-edit'; id: string | null }
-  | { name: 'series' }
+  | { name: 'series'; id?: string }
   | { name: 'dynamics' }
   | { name: 'dynamic-edit'; id: string | null }
   | { name: 'taxonomy' }
@@ -63,7 +63,9 @@ function parseHash(): Route {
       if (second) return { name: 'dynamic-edit', id: second };
       return { name: 'dynamics' };
     case 'taxonomy': return { name: 'taxonomy' };
-    case 'series': return { name: 'series' };
+    case 'series':
+      if (second) return { name: 'series', id: second };
+      return { name: 'series' };
     case 'comments': return { name: 'comments' };
     case 'media': return { name: 'media' };
     case 'friends': return { name: 'friends' };
@@ -421,7 +423,7 @@ export class YukiAdmin extends LitElement {
       case 'dynamics': return html`<adm-dynamics .store=${store}></adm-dynamics>`;
       case 'dynamic-edit': return html`<adm-dynamic-edit .store=${store} .dynamicId=${this.route.id}></adm-dynamic-edit>`;
       case 'taxonomy': return html`<adm-taxonomy .store=${store}></adm-taxonomy>`;
-      case 'series': return html`<adm-series .store=${store}></adm-series>`;
+      case 'series': return html`<adm-series .store=${store} .seriesId=${this.route.id ?? null}></adm-series>`;
       case 'comments': return html`<adm-comments .store=${store}></adm-comments>`;
       case 'media': return html`<adm-media .store=${store}></adm-media>`;
       case 'friends': return html`<adm-friends .store=${store}></adm-friends>`;

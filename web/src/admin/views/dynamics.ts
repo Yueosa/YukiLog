@@ -35,10 +35,11 @@ export class AdmDynamics extends AdmView {
 
       .card {
         display: flex;
-        gap: 16px;
-        padding: 14px;
+        gap: 14px;
+        align-items: center;
+        padding: 12px 16px;
         border: 1px solid var(--line);
-        border-radius: 16px;
+        border-radius: 14px;
         background: var(--surface);
         transition:
           border-color 220ms ease,
@@ -49,14 +50,20 @@ export class AdmDynamics extends AdmView {
         position: relative;
         flex: none;
         display: grid;
-        width: 118px;
-        height: 118px;
+        width: 88px;
+        height: 88px;
         place-items: center;
         overflow: hidden;
         border: 1px solid var(--line);
         border-radius: 12px;
         background: var(--surface-muted);
-        font-size: 30px;
+        font-size: 26px;
+      }
+
+      .cover.mood-fallback {
+        background: linear-gradient(135deg, color-mix(in srgb, var(--primary) 12%, var(--surface)), color-mix(in srgb, var(--secondary) 14%, var(--surface)));
+        font-size: 15px;
+        color: var(--muted);
       }
 
       .cover img {

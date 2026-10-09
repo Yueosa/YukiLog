@@ -294,6 +294,120 @@ pub async fn delete_series(
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SeriesChapterWrite {
+    article_id: Uuid,
+    series_order: i32,
+    #[serde(default)]
+    series_title: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SeriesChaptersWrite {
+    #[serde(default)]
+    chapters: Vec<SeriesChapterWrite>,
+    #[serde(default)]
+    remove: Vec<Uuid>,
+}
+
+/// 整组替换系列章节（单事务）：先把本系列序号全部清空，避开
+/// (series_id, series_order) 部分唯一索引的中间态冲突，再按新序落盘。
+/// remove 里的文章从系列移出（series 三列置 NULL）。
+pub async fn update_series_chapters(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Json(input): Json<SeriesChaptersWrite>,
+) -> Result<Json<SeriesResponse>, AppError> {
+    auth::authorize_write(&state, &headers, &jar).await?;
+    series::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    let mut orders = std::collections::HashSet::new();
+    for chapter in &input.chapters {
+        if chapter.series_order < 0 {
+            return Err(AppError::InvalidRequest("章节序号不能为负"));
+        }
+        if !orders.insert(chapter.series_order) {
+            return Err(AppError::InvalidRequest("章节序号重复"));
+        }
+        if input.remove.contains(&chapter.article_id) {
+            return Err(AppError::InvalidRequest("同一文章不能既在章节里又在移出列表里"));
+        }
+        if let Some(title) = &chapter.series_title {
+            let trimmed = title.trim();
+            if trimmed.is_empty() || trimmed.chars().count() > 120 {
+                return Err(AppError::InvalidRequest("系列短标题长度必须为 1–120 字符"));
+            }
+        }
+    }
+
+    let transaction = state.database.begin().await?;
+    articles::Entity::update_many()
+        .col_expr(
+            articles::Column::SeriesOrder,
+            sea_orm::sea_query::Expr::value(Option::<i32>::None),
+        )
+        .filter(articles::Column::SeriesId.eq(id))
+        .exec(&transaction)
+        .await?;
+    if !input.remove.is_empty() {
+        articles::Entity::update_many()
+            .col_expr(
+                articles::Column::SeriesId,
+                sea_orm::sea_query::Expr::value(Option::<Uuid>::None),
+            )
+            .col_expr(
+                articles::Column::SeriesTitle,
+                sea_orm::sea_query::Expr::value(Option::<String>::None),
+            )
+            .filter(articles::Column::SeriesId.eq(id))
+            .filter(articles::Column::Id.is_in(input.remove.iter().copied()))
+            .exec(&transaction)
+            .await?;
+    }
+    for chapter in &input.chapters {
+        let result = articles::Entity::update_many()
+            .col_expr(
+                articles::Column::SeriesId,
+                sea_orm::sea_query::Expr::value(id),
+            )
+            .col_expr(
+                articles::Column::SeriesOrder,
+                sea_orm::sea_query::Expr::value(chapter.series_order),
+            )
+            .col_expr(
+                articles::Column::SeriesTitle,
+                sea_orm::sea_query::Expr::value(
+                    chapter
+                        .series_title
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|title| !title.is_empty())
+                        .map(str::to_owned),
+                ),
+            )
+            .filter(articles::Column::Id.eq(chapter.article_id))
+            .exec(&transaction)
+            .await?;
+        if result.rows_affected == 0 {
+            return Err(AppError::InvalidRequest("章节文章不存在"));
+        }
+    }
+    transaction.commit().await?;
+
+    let model = series::Entity::find_by_id(id)
+        .one(&state.database)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    Ok(Json(series_response(&state, model).await?))
+}
+
 async fn series_response(
     state: &AppState,
     model: series::Model,

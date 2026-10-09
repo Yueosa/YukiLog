@@ -16,6 +16,11 @@
   布尔映射到 `featured_at`（置精选时保留原时间戳，取消则清空）；slug/name 冲突
   由数据库唯一约束返回 409；删除系列后其文章的 `series_id` 自动置 NULL；列表与
   单条响应带 `chapter_count`（该系列全部文章数，含草稿）；
+- `PUT /api/admin/series/{id}/chapters`：整组替换系列章节（单事务）。请求体
+  `{ chapters: [{ article_id, series_order, series_title | null }], remove: [uuid] }`：
+  先把本系列全部序号清空（避开 `(series_id, series_order)` 部分唯一索引的中间态
+  冲突），再按新序落盘；`remove` 中的文章系列三列置 NULL。序号必须非负且不重复，
+  文章不存在或与 remove 相交均 422；响应同系列单条（带最新 `chapter_count`）；
 - `/api/admin/articles`、`/api/admin/articles/{id}`：文章 CRUD；写请求体严格校验
   字段名（未知字段直接 422，不再静默丢弃），封面字段接受 `cover_media_id`，
   并兼容 camelCase 别名 `coverMediaId`；文章写请求体另接受可选
